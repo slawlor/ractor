@@ -1,0 +1,18 @@
+[package]
+name = "ractor-repl"
+default-run = "ractor-repl"
+version = "0.0.0"
+authors = ["Sean Lawlor <seanlawlor@fb.com>"]
+description = "A actor framework for Rust - REPL"
+license = "MIT"
+edition = "2018"
+keywords = ["actor", "ractor"]
+repository = "https://github.com/slawlor/ractor"
+readme = "../README.md"
+publish = false
+
+[dependencies]
+async-trait = "0.1"
+ractor = { path="../ractor" }
+rustyrepl = "0.1"
+tokio = { version = "1.23", features = ["full"]}
