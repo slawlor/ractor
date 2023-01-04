@@ -15,6 +15,9 @@ pub mod actor_cell;
 pub mod errors;
 pub mod supervision;
 
+#[cfg(test)]
+mod tests;
+
 use crate::{Message, State};
 use actor_cell::{ActorCell, ActorPortSet, ActorStatus};
 use errors::{ActorProcessingErr, SpawnErr};
@@ -93,7 +96,6 @@ where
     THandler: ActorHandler<Msg = TMsg, State = TState>,
 {
     base: ActorCell,
-
     handler: Arc<THandler>,
 }
 
@@ -124,7 +126,7 @@ where
         self,
         ports: ActorPortSet,
         supervisor: Option<ActorCell>,
-    ) -> Result<tokio::task::JoinHandle<()>, SpawnErr> {
+    ) -> Result<(ActorCell, tokio::task::JoinHandle<()>), SpawnErr> {
         self.base.set_status(ActorStatus::Starting);
 
         // Perform the pre-start routine, crashing immediately if we fail to start
@@ -135,6 +137,7 @@ where
         }
 
         let myself = self.base.clone();
+        let myself_ret = self.base.clone();
 
         let handle = tokio::spawn(async move {
             Self::processing_loop(ports, state, self.handler.clone(), self.base.clone()).await
@@ -162,7 +165,7 @@ where
                 sup.unlink(myself.clone()).await;
             }
         });
-        Ok(handle)
+        Ok((myself_ret, handle))
     }
 
     async fn processing_loop(

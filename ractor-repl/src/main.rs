@@ -10,5 +10,6 @@ mod ping_pong;
 async fn main() {
     let actor_handler = ping_pong::PingPong;
     let (agent, ports) = ractor::Actor::new(None, actor_handler);
-    agent.start(ports, None).await.unwrap().await.unwrap();
+    let (_actor_ref, actor_handle) = agent.start(ports, None).await.unwrap();
+    actor_handle.await.unwrap();
 }
