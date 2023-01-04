@@ -77,7 +77,7 @@ impl Debug for BoxedMessage {
 }
 
 /// A supervision event from the supervision tree
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum SupervisionEvent {
     /// An actor was started
     ActorStarted(super::actor_cell::ActorCell),

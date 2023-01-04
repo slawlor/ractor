@@ -52,7 +52,7 @@ impl SupervisionTree {
 
     /// Terminate all your supervised children
     #[async_recursion::async_recursion]
-    pub async fn terminate(&self) {
+    pub async fn terminate_children(&self) {
         let guard = self.children.read().await;
 
         for (_, child) in guard.iter() {
@@ -79,5 +79,15 @@ impl SupervisionTree {
             parent.send_supervisor_evt(evt.clone())?;
         }
         Ok(())
+    }
+
+    /// Retrieve the number of supervised children
+    pub async fn get_num_children(&self) -> usize {
+        self.children.read().await.len()
+    }
+
+    /// Retrieve the number of supervised children
+    pub async fn get_num_parents(&self) -> usize {
+        self.parents.read().await.len()
     }
 }

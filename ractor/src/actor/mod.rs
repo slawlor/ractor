@@ -5,8 +5,9 @@
 
 //! Holds the logic to a basic actor building-block
 
-use std::panic::{self, AssertUnwindSafe, RefUnwindSafe};
 use std::sync::Arc;
+
+use tokio::task::JoinHandle;
 
 pub mod messages;
 use messages::*;
@@ -32,9 +33,32 @@ pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
+enum PanickableResult<T> {
+    Ok(T),
+    Cancelled,
+    Panic(String),
+}
+
+async fn handle_panickable<TResult>(
+    handle: tokio::task::JoinHandle<TResult>,
+) -> PanickableResult<TResult> {
+    match handle.await {
+        Ok(t) => PanickableResult::Ok(t),
+        Err(maybe_panic) => {
+            if maybe_panic.is_panic() {
+                let panic_message = get_panic_string(maybe_panic.into_panic());
+                PanickableResult::Panic(panic_message)
+            } else {
+                // task cancelled, just notify of exit
+                PanickableResult::Cancelled
+            }
+        }
+    }
+}
+
 /// The message handling implementation for an actor with a specific type of input message and state
 #[async_trait::async_trait]
-pub trait ActorHandler: Sync + Send + RefUnwindSafe + 'static {
+pub trait ActorHandler: Sync + Send + 'static {
     /// The message type for this handler
     type Msg: Message;
     /// The type of state this actor deals with
@@ -47,7 +71,7 @@ pub trait ActorHandler: Sync + Send + RefUnwindSafe + 'static {
     ///
     /// Panics in `pre_start` do not invoke the
     /// supervision strategy and the actor will be terminated.
-    fn pre_start(&self, _this_actor: ActorCell) -> Self::State;
+    async fn pre_start(&self, _this_actor: ActorCell) -> Self::State;
 
     /// Invoked after an actor has started.
     ///
@@ -55,12 +79,16 @@ pub trait ActorHandler: Sync + Send + RefUnwindSafe + 'static {
     /// to a log file, emmitting metrics.
     ///
     /// Panics in `post_start` follow the supervision strategy.
-    fn post_start(&self, _this_actor: ActorCell, _state: &Self::State) -> Option<Self::State> {
+    async fn post_start(
+        &self,
+        _this_actor: ActorCell,
+        _state: &Self::State,
+    ) -> Option<Self::State> {
         None
     }
 
     /// Invoked after an actor has been stopped.
-    fn post_stop(&self, _state: &Self::State) {}
+    async fn post_stop(&self, _this_actor: ActorCell, _state: &Self::State) {}
 
     /// Handle the incoming message in a basic event processing loop. Unhandled panic's will be captured and
     /// treated as agent death in the supervision tree
@@ -117,6 +145,25 @@ where
         )
     }
 
+    /// Spawn an actor, which is unsupervised
+    pub async fn spawn(
+        name: Option<String>,
+        handler: THandler,
+    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
+        let (actor, ports) = Self::new(name, handler);
+        actor.start(ports, None).await
+    }
+
+    /// Spawn an actor with a supervisor
+    pub async fn spawn_linked(
+        name: Option<String>,
+        handler: THandler,
+        supervisor: ActorCell,
+    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
+        let (actor, ports) = Self::new(name, handler);
+        actor.start(ports, Some(supervisor)).await
+    }
+
     /// Start the actor immediately, optionally linking to a parent actor (supervision tree)
     ///
     /// NOTE: This returned [tokio::task::JoinHandle] is guaranteed to not panic (unless the runtime is shutting down perhaps).
@@ -126,45 +173,54 @@ where
         self,
         ports: ActorPortSet,
         supervisor: Option<ActorCell>,
-    ) -> Result<(ActorCell, tokio::task::JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
+        // cannot start an actor more than once
+        if self.base.get_status() != ActorStatus::Unstarted {
+            return Err(SpawnErr::ActorAlreadyStarted);
+        }
+
         self.base.set_status(ActorStatus::Starting);
 
         // Perform the pre-start routine, crashing immediately if we fail to start
-        let state = Self::do_pre_start(self.base.clone(), self.handler.clone())?;
+        let state = Self::do_pre_start(self.base.clone(), self.handler.clone()).await?;
+
         // setup supervision
         if let Some(sup) = &supervisor {
             sup.link(self.base.clone()).await;
         }
 
+        // run the processing loop, capturing panic's
         let myself = self.base.clone();
         let myself_ret = self.base.clone();
-
         let handle = tokio::spawn(async move {
-            Self::processing_loop(ports, state, self.handler.clone(), self.base.clone()).await
-        });
+            let evt =
+                match Self::processing_loop(ports, state, self.handler.clone(), self.base.clone())
+                    .await
+                {
+                    Ok(_) => SupervisionEvent::ActorTerminated(myself.clone()),
+                    Err(actor_err) => match actor_err {
+                        ActorProcessingErr::Cancelled => {
+                            SupervisionEvent::ActorTerminated(myself.clone())
+                        }
+                        ActorProcessingErr::Panic(msg) => {
+                            SupervisionEvent::ActorPanicked(myself.clone(), msg)
+                        }
+                    },
+                };
 
-        let handle = tokio::spawn(async move {
-            let evt = match handle.await {
-                Ok(_) => SupervisionEvent::ActorTerminated(myself.clone()),
-                Err(maybe_panic) => {
-                    if maybe_panic.is_panic() {
-                        let panic_message = get_panic_string(maybe_panic.into_panic());
-                        SupervisionEvent::ActorPanicked(myself.clone(), panic_message)
-                    } else {
-                        // task cancelled, just notify of exit
-                        SupervisionEvent::ActorTerminated(myself.clone())
-                    }
-                }
-            };
+            // terminate children
+            myself.terminate().await;
+
+            // notify supervisors of the actor's death
             let _ = myself.notify_supervisors(evt).await;
 
             myself.set_status(ActorStatus::Stopped);
-
             // signal received or process exited cleanly, we should already have "handled" the signal, so we can just terminate
             if let Some(sup) = supervisor {
                 sup.unlink(myself.clone()).await;
             }
         });
+
         Ok((myself_ret, handle))
     }
 
@@ -173,34 +229,47 @@ where
         state: TState,
         handler: Arc<THandler>,
         myself: ActorCell,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
         // perform the post-start, with supervision enabled
-        let mut state = match Self::do_post_start(myself.clone(), handler.clone(), state) {
-            Ok(state) => state,
-            Err(err) => {
-                panic!("{}", err);
-            }
-        };
+        let mut state = Self::do_post_start(myself.clone(), handler.clone(), state).await?;
 
         myself.set_status(ActorStatus::Running);
         let _ = myself
             .notify_supervisors(SupervisionEvent::ActorStarted(myself.clone()))
             .await;
 
-        let mut ports = ports;
-        let mut last_state = state.clone();
-        while let (n_state, None) =
-            Self::process_message(myself.clone(), state, handler.clone(), &mut ports).await
-        {
-            state = n_state;
-            last_state = state.clone();
+        // let mut last_state = state.clone();
+        let myself_clone = myself.clone();
+        let handler_clone = handler.clone();
+
+        let last_state = Arc::new(tokio::sync::RwLock::new(state.clone()));
+
+        let last_state_clone = last_state.clone();
+        let handle = tokio::spawn(async move {
+            let mut ports = ports;
+            while let (n_state, None) = Self::process_message(
+                myself_clone.clone(),
+                state,
+                handler_clone.clone(),
+                &mut ports,
+            )
+            .await
+            {
+                state = n_state;
+                *(last_state_clone.write().await) = state.clone();
+            }
+        });
+
+        match handle_panickable(handle).await {
+            PanickableResult::Ok(_) => (),
+            PanickableResult::Cancelled => return Err(ActorProcessingErr::Cancelled),
+            PanickableResult::Panic(msg) => return Err(ActorProcessingErr::Panic(msg)),
         }
 
         myself.set_status(ActorStatus::Stopping);
 
-        if let Err(err) = Self::do_post_stop(handler, &last_state) {
-            panic!("{}", err);
-        };
+        let deref_state = last_state.read().await;
+        Self::do_post_stop(myself, handler, deref_state.clone()).await
     }
 
     /// Process a message, returning the "new" state (if changed)
@@ -283,54 +352,60 @@ where
         }
     }
 
-    fn do_pre_start(myself: ActorCell, handler: Arc<THandler>) -> Result<TState, SpawnErr> {
-        let start_result = panic::catch_unwind(AssertUnwindSafe(|| handler.pre_start(myself)));
+    async fn do_pre_start(myself: ActorCell, handler: Arc<THandler>) -> Result<TState, SpawnErr> {
+        let handle = tokio::spawn(async move { handler.pre_start(myself).await });
+        let start_result = handle_panickable(handle).await;
+        // let start_result = panic::catch_unwind(AssertUnwindSafe(|| handler.pre_start(myself)));
         match start_result {
-            Ok(state) => {
+            PanickableResult::Ok(state) => {
                 // intitialize the state
                 Ok(state)
             }
-            Err(e) => {
-                let panic_information = get_panic_string(e);
-                Err(SpawnErr::StartupPanic(format!(
-                    "Actor panicked during pre_start with '{}'",
-                    panic_information
-                )))
-            }
+            PanickableResult::Cancelled => Err(SpawnErr::StartupCancelled),
+            PanickableResult::Panic(panic_information) => Err(SpawnErr::StartupPanic(format!(
+                "Actor panicked during pre_start with '{}'",
+                panic_information
+            ))),
         }
     }
 
-    fn do_post_start(
+    async fn do_post_start(
         myself: ActorCell,
         handler: Arc<THandler>,
         state: TState,
     ) -> Result<TState, ActorProcessingErr> {
-        let post_start_result =
-            panic::catch_unwind(AssertUnwindSafe(|| handler.post_start(myself, &state)));
+        // TODO: ugh i hate cloning here :/ but the async move moves ownership of "state" into
+        // the async block
+        let original_state = state.clone();
+        let handle = tokio::spawn(async move { handler.post_start(myself, &state).await });
+        let post_start_result = handle_panickable(handle).await;
         match post_start_result {
-            Ok(Some(new_state)) => Ok(new_state),
-            Ok(None) => Ok(state),
-            Err(e) => {
-                let panic_information = get_panic_string(e);
-                Err(ActorProcessingErr::Panic(format!(
-                    "Actor panicked in post_start with '{}'",
-                    panic_information
-                )))
-            }
+            PanickableResult::Ok(Some(new_state)) => Ok(new_state),
+            PanickableResult::Ok(None) => Ok(original_state),
+            PanickableResult::Cancelled => Err(ActorProcessingErr::Cancelled),
+            PanickableResult::Panic(panic_information) => Err(ActorProcessingErr::Panic(format!(
+                "Actor panicked in post_start with '{}'",
+                panic_information
+            ))),
         }
     }
 
-    fn do_post_stop(handler: Arc<THandler>, state: &TState) -> Result<(), ActorProcessingErr> {
-        let post_stop_result = panic::catch_unwind(AssertUnwindSafe(|| handler.post_stop(state)));
+    async fn do_post_stop(
+        myself: ActorCell,
+        handler: Arc<THandler>,
+        state: TState,
+    ) -> Result<(), ActorProcessingErr> {
+        let post_stop_result = handle_panickable(tokio::spawn(async move {
+            handler.post_stop(myself, &state).await
+        }))
+        .await;
         match post_stop_result {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                let panic_information = get_panic_string(e);
-                Err(ActorProcessingErr::Panic(format!(
-                    "Actor panicked in post_start with '{}'",
-                    panic_information
-                )))
-            }
+            PanickableResult::Ok(_) => Ok(()),
+            PanickableResult::Cancelled => Err(ActorProcessingErr::Cancelled),
+            PanickableResult::Panic(panic_information) => Err(ActorProcessingErr::Panic(format!(
+                "Actor panicked in post_start with '{}'",
+                panic_information
+            ))),
         }
     }
 }

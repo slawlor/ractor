@@ -119,6 +119,12 @@ pub struct ActorCell {
     inner: Arc<ActorProperties>,
 }
 
+impl std::fmt::Debug for ActorCell {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Agent {}", self.get_id())
+    }
+}
+
 impl ActorCell {
     /// Construct a new actor cell and return the message reception channels
     pub fn new(name: Option<String>) -> (Self, ActorPortSet) {
@@ -163,16 +169,16 @@ impl ActorCell {
 
     /// Terminate yourself and all children beneath you
     pub async fn terminate(&self) {
-        // kill myself immediately. Ignores failures, as a failure means either
-        // 1. we're already dead or
-        // 2. the channel is full of "signals"
+        // we don't need to nofity of exit if we're already stopping or stopped
         if self.get_status() as u8 <= ActorStatus::Upgrading as u8 {
-            // we don't need to nofity of exit if we're already stopping or stopped
+            // kill myself immediately. Ignores failures, as a failure means either
+            // 1. we're already dead or
+            // 2. the channel is full of "signals"
             let _ = self.send_signal(Signal::Exit).await;
         }
 
         // notify children they should die. They will unlink themselves from the supervisor
-        self.inner.tree.terminate().await;
+        self.inner.tree.terminate_children().await;
     }
 
     /// Link another actor to the supervised list
@@ -227,5 +233,10 @@ impl ActorCell {
         message: SupervisionEvent,
     ) -> Result<(), mpsc::error::SendError<SupervisionEvent>> {
         self.inner.tree.notify_supervisors(message).await
+    }
+
+    #[cfg(test)]
+    pub fn get_tree(&self) -> SupervisionTree {
+        self.inner.tree.clone()
     }
 }
