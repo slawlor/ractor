@@ -10,7 +10,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
 use super::{actor_cell::ActorCell, messages::SupervisionEvent};
-use crate::ActorId;
+use crate::{ActorHandler, ActorId};
 
 /// A supervision tree
 #[derive(Clone, Default)]
@@ -71,14 +71,15 @@ impl SupervisionTree {
     }
 
     /// Send a notification to all supervisors
-    pub async fn notify_supervisors(
-        &self,
-        evt: SupervisionEvent,
-    ) -> Result<(), tokio::sync::mpsc::error::SendError<SupervisionEvent>> {
+    pub async fn notify_supervisors<TActor, TState>(&self, evt: SupervisionEvent)
+    where
+        TActor: ActorHandler<State = TState>,
+        TState: crate::State,
+    {
         for (_, parent) in self.parents.read().await.iter() {
-            parent.send_supervisor_evt(evt.clone())?;
+            let evt_clone = evt.duplicate::<TState>().unwrap();
+            let _ = parent.send_supervisor_evt(evt_clone);
         }
-        Ok(())
     }
 
     /// Retrieve the number of supervised children

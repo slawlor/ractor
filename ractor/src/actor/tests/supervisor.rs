@@ -23,9 +23,7 @@ async fn test_supervision_panic_in_post_startup() {
     impl ActorHandler for Child {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {
-            ()
-        }
+        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
         async fn post_start(
             &self,
             _this_actor: ActorCell,
@@ -60,7 +58,7 @@ async fn test_supervision_panic_in_post_startup() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                let _ = this_actor.stop().await;
+                this_actor.stop().await;
             }
 
             None
@@ -138,7 +136,7 @@ async fn test_supervision_panic_in_handle() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                let _ = this_actor.stop().await;
+                this_actor.stop().await;
             }
 
             None
@@ -167,8 +165,8 @@ async fn test_supervision_panic_in_handle() {
 
     // trigger the child failure
     child_ref
-        .send_message_t(())
-        .expect("Failed to send message to child");
+        .send_message::<Child, _>(())
+        .expect("Failed to send message");
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
@@ -191,10 +189,9 @@ async fn test_supervision_panic_in_post_stop() {
         type State = ();
         async fn pre_start(&self, this_actor: ActorCell) -> Self::State {
             // trigger stop, which starts shutdown
-            let _ = this_actor.stop().await;
-            ()
+            this_actor.stop().await;
         }
-        async fn post_stop(&self, _this_actor: ActorCell, _state: &Self::State) {
+        async fn post_stop(&self, _this_actor: ActorCell, _state: Self::State) -> Self::State {
             panic!("Boom");
         }
     }
@@ -224,7 +221,7 @@ async fn test_supervision_panic_in_post_stop() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                let _ = this_actor.stop().await;
+                this_actor.stop().await;
             }
 
             None
@@ -323,7 +320,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                let _ = this_actor.stop().await;
+                this_actor.stop().await;
             }
 
             None
@@ -363,12 +360,12 @@ async fn test_supervision_panic_in_supervisor_handle() {
 
     // trigger the child failure
     child_ref
-        .send_message_t(())
-        .expect("Failed to send message to child");
+        .send_message::<Child, _>(())
+        .expect("Failed to send message");
 
     // which triggers the handler in the midpoint, which panic's in supervision
 
-    // wait for all agents to die in the test
+    // wait for all actors to die in the test
     let _ = s_handle.await;
     let _ = c_handle.await;
     let _ = m_handle.await;

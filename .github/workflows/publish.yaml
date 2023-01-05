@@ -1,0 +1,28 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    steps:
+    - uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: ${{ matrix.rust }}
+    - uses: actions/checkout@main
+    - name: Login to crates.io
+      run: cargo login $CRATES_IO_TOKEN
+      env:
+        CRATES_IO_TOKEN: ${{ secrets.crates_io_token }}
+    - name: Dry run publish ractor
+      run: cargo publish --dry-run --manifest-path Cargo.toml -p ractor
+    - name: Publish crate ractor
+      run: cargo publish --manifest-path Cargo.toml -p ractor
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.crates_io_token }}

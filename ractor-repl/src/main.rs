@@ -9,7 +9,7 @@ mod ping_pong;
 #[tokio::main]
 async fn main() {
     let actor_handler = ping_pong::PingPong;
-    let (agent, ports) = ractor::Actor::new(None, actor_handler);
-    let (_actor_ref, actor_handle) = agent.start(ports, None).await.unwrap();
+    let (the_actor, ports) = ractor::Actor::new(None, actor_handler);
+    let (_actor_ref, actor_handle) = the_actor.start(ports, None).await.unwrap();
     actor_handle.await.unwrap();
 }
