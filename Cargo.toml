@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "ractor",
+    "ractor-repl"
+]

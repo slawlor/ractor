@@ -1,0 +1,15 @@
+[package]
+name = "ractor"
+version = "0.1.0"
+authors = ["Sean Lawlor <seanlawlor@fb.com>"]
+description = "A actor framework for Rust"
+license = "MIT"
+edition = "2018"
+keywords = ["actor", "ractor"]
+repository = "https://github.com/slawlor/ractor"
+readme = "../README.md"
+
+[dependencies]
+async-recursion = "1"
+async-trait = "0.1"
+tokio = { version = "1.23", features = ["rt", "time", "sync", "macros"]}
