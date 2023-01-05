@@ -196,7 +196,7 @@ where
 
         // setup supervision
         if let Some(sup) = &supervisor {
-            sup.link(self.base.clone()).await;
+            sup.link(self.base.clone());
         }
 
         // run the processing loop, capturing panic's
@@ -222,15 +222,15 @@ where
                 };
 
             // terminate children
-            myself.terminate().await;
+            myself.terminate();
 
             // notify supervisors of the actor's death
-            myself.notify_supervisors::<THandler, TState>(evt).await;
+            myself.notify_supervisors::<THandler, TState>(evt);
 
             myself.set_status(ActorStatus::Stopped);
             // signal received or process exited cleanly, we should already have "handled" the signal, so we can just terminate
             if let Some(sup) = supervisor {
-                sup.unlink(myself.clone()).await;
+                sup.unlink(myself.clone());
             }
         });
 
@@ -248,8 +248,7 @@ where
 
         myself.set_status(ActorStatus::Running);
         myself
-            .notify_supervisors::<THandler, TState>(SupervisionEvent::ActorStarted(myself.clone()))
-            .await;
+            .notify_supervisors::<THandler, TState>(SupervisionEvent::ActorStarted(myself.clone()));
 
         // let mut last_state = state.clone();
         let myself_clone = myself.clone();
@@ -346,7 +345,7 @@ where
     async fn handle_signal(myself: ActorCell, signal: Signal) -> Signal {
         match &signal {
             Signal::Exit => {
-                myself.terminate().await;
+                myself.terminate();
             }
         }
         // signal's always bubble up

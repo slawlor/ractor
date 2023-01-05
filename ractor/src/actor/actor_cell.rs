@@ -99,8 +99,8 @@ impl ActorProperties {
         self.status.store(status as u8, Ordering::Relaxed);
     }
 
-    pub async fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr> {
-        self.signal.send(signal).await.map_err(|e| e.into())
+    pub fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr> {
+        self.signal.try_send(signal).map_err(|e| e.into())
     }
 
     pub fn send_supervisor_evt(&self, message: SupervisionEvent) -> Result<(), MessagingErr> {
@@ -165,42 +165,36 @@ impl ActorCell {
     }
 
     /// Terminate yourself and all children beneath you
-    pub async fn terminate(&self) {
+    pub fn terminate(&self) {
         // we don't need to nofity of exit if we're already stopping or stopped
         if self.get_status() as u8 <= ActorStatus::Upgrading as u8 {
             // kill myself immediately. Ignores failures, as a failure means either
             // 1. we're already dead or
             // 2. the channel is full of "signals"
-            let _ = self.send_signal(Signal::Exit).await;
+            self.stop();
         }
 
         // notify children they should die. They will unlink themselves from the supervisor
-        self.inner.tree.terminate_children().await;
+        self.inner.tree.terminate_children();
     }
 
     /// Link another actor to the supervised list
-    pub async fn link(&self, other: ActorCell) {
-        other.inner.tree.insert_parent(self.clone()).await;
-        self.inner.tree.insert_child(other).await;
+    pub fn link(&self, other: ActorCell) {
+        other.inner.tree.insert_parent(self.clone());
+        self.inner.tree.insert_child(other);
     }
 
     /// Unlink another actor from the supervised list
-    pub async fn unlink(&self, other: ActorCell) {
-        other.inner.tree.remove_parent(self.clone()).await;
-        self.inner.tree.remove_child(other).await;
+    pub fn unlink(&self, other: ActorCell) {
+        other.inner.tree.remove_parent(self.clone());
+        self.inner.tree.remove_child(other);
     }
-
-    /// Send a signal event to the signal port
-    pub async fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr> {
-        self.inner.send_signal(signal).await
-    }
-
     /// Stop this actor, but sending Signal::Exit
-    pub async fn stop(&self) {
+    pub fn stop(&self) {
         // ignore failures, since either the actor is already dead
         // or the channel is full of "signals" which is also fine
         // since it'll die shortly
-        let _ = self.send_signal(Signal::Exit).await;
+        let _ = self.inner.send_signal(Signal::Exit);
     }
 
     /// Send a supervisor event to the supervisory port
@@ -222,12 +216,12 @@ impl ActorCell {
     }
 
     /// Notify the supervisors that a supervision event occurred
-    pub async fn notify_supervisors<TActor, TState>(&self, evt: SupervisionEvent)
+    pub fn notify_supervisors<TActor, TState>(&self, evt: SupervisionEvent)
     where
         TActor: ActorHandler<State = TState>,
         TState: crate::State,
     {
-        self.inner.tree.notify_supervisors::<TActor, _>(evt).await
+        self.inner.tree.notify_supervisors::<TActor, _>(evt)
     }
 
     /// Alias of [rpc::cast]

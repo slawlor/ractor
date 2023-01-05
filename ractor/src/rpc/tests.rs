@@ -63,7 +63,7 @@ async fn test_rpc_cast() {
     assert_eq!(2, counter.load(Ordering::Relaxed));
 
     // cleanup
-    actor_ref.stop().await;
+    actor_ref.stop();
     handle.await.expect("Actor stopped with err");
 }
 
@@ -126,7 +126,7 @@ async fn test_rpc_call() {
     assert_eq!("howdy".to_string(), rpc_result);
 
     // cleanup
-    actor_ref.stop().await;
+    actor_ref.stop();
     handle.await.expect("Actor stopped with err");
 }
 
@@ -248,8 +248,8 @@ async fn test_rpc_call_forwarding() {
     assert_eq!(2, counter.load(Ordering::Relaxed));
 
     // cleanup
-    forwarder_ref.stop().await;
-    worker_ref.stop().await;
+    forwarder_ref.stop();
+    worker_ref.stop();
 
     forwarder_handle.await.expect("Actor stopped with err");
     worker_handle.await.expect("Actor stopped with err");

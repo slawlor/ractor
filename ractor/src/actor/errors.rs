@@ -86,6 +86,12 @@ impl<T> From<tokio::sync::watch::error::SendError<T>> for MessagingErr {
     }
 }
 
+impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for MessagingErr {
+    fn from(_: tokio::sync::mpsc::error::TrySendError<T>) -> Self {
+        Self::ChannelClosed
+    }
+}
+
 impl Display for MessagingErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

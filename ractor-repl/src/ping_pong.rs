@@ -73,7 +73,7 @@ impl ActorHandler for PingPong {
             }
             Message::Stop => {
                 println!("Stopping");
-                myself.stop().await;
+                myself.stop();
                 return None;
             }
         };
