@@ -3,9 +3,18 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! A ping-pong actor implementation
+//! An example ping-pong actor which posts back to itself to pass the
+//! ping or pong back + forth
+//!
+//! Execute with
+//!
+//! ```text
+//! cargo run --example ping_pong
+//! ```
 
-use ractor::{ActorCell, ActorHandler};
+extern crate ractor;
+
+use ractor::{Actor, ActorCell, ActorHandler};
 
 pub struct PingPong;
 
@@ -38,26 +47,10 @@ impl ActorHandler for PingPong {
     type State = u8;
 
     async fn pre_start(&self, myself: ActorCell) -> Self::State {
-        println!("pre_start called");
         // startup the event processing
         self.send_message(myself, Message::Ping).unwrap();
         // create the initial state
         0u8
-    }
-
-    async fn post_start(
-        &self,
-        _this_actor: ActorCell,
-        _state: &Self::State,
-    ) -> Option<Self::State> {
-        println!("post_start called");
-        None
-    }
-
-    /// Invoked after an actor has been stopped.
-    async fn post_stop(&self, _this_actor: ActorCell, _state: Self::State) -> Self::State {
-        println!("post_stop called");
-        _state
     }
 
     async fn handle(
@@ -73,8 +66,17 @@ impl ActorHandler for PingPong {
         } else {
             println!();
             myself.stop(None);
-            // don't send another message, rather stop the agent after 10 iterations
             None
         }
     }
+}
+
+#[tokio::main]
+async fn main() {
+    let (_actor, handle) = Actor::spawn(None, PingPong)
+        .await
+        .expect("Failed to start ping-pong actor");
+    handle
+        .await
+        .expect("Ping-pong actor failed to exit properly");
 }

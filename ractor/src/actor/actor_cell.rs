@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 
 use super::errors::MessagingErr;
-use super::messages::{BoxedMessage, Signal};
+use super::messages::{BoxedMessage, Signal, StopMessage};
 use super::supervision::SupervisionTree;
 use super::SupervisionEvent;
 use crate::port::{
@@ -49,6 +49,7 @@ pub const ACTIVE_STATES: [ActorStatus; 3] = [
 /// The collection of ports an actor needs to listen to
 pub(crate) struct ActorPortSet {
     pub(crate) signal_rx: BoundedInputPortReceiver<Signal>,
+    pub(crate) stop_rx: BoundedInputPortReceiver<StopMessage>,
     pub(crate) supervisor_rx: InputPortReceiver<SupervisionEvent>,
     pub(crate) message_rx: InputPortReceiver<BoxedMessage>,
 }
@@ -59,6 +60,7 @@ struct ActorProperties {
     name: Option<String>,
     status: Arc<AtomicU8>,
     signal: BoundedInputPort<Signal>,
+    stop: BoundedInputPort<StopMessage>,
     supervision: InputPort<SupervisionEvent>,
     message: InputPort<BoxedMessage>,
     tree: SupervisionTree,
@@ -69,25 +71,29 @@ impl ActorProperties {
     ) -> (
         Self,
         BoundedInputPortReceiver<Signal>,
+        BoundedInputPortReceiver<StopMessage>,
         InputPortReceiver<SupervisionEvent>,
         InputPortReceiver<BoxedMessage>,
     ) {
-        let (tx, rx) = mpsc::channel(2);
-        let (tx2, rx2) = mpsc::unbounded_channel();
-        let (tx3, rx3) = mpsc::unbounded_channel();
+        let (tx_signal, rx_signal) = mpsc::channel(2);
+        let (tx_stop, rx_stop) = mpsc::channel(2);
+        let (tx_supervision, rx_supervision) = mpsc::unbounded_channel();
+        let (tx_message, rx_message) = mpsc::unbounded_channel();
         (
             Self {
                 id: crate::ACTOR_ID_ALLOCATOR.fetch_add(1u64, Ordering::Relaxed),
                 name,
                 status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
-                signal: tx,
-                supervision: tx2,
-                message: tx3,
+                signal: tx_signal,
+                stop: tx_stop,
+                supervision: tx_supervision,
+                message: tx_message,
                 tree: SupervisionTree::default(),
             },
-            rx,
-            rx2,
-            rx3,
+            rx_signal,
+            rx_stop,
+            rx_supervision,
+            rx_message,
         )
     }
 
@@ -117,6 +123,11 @@ impl ActorProperties {
     pub fn send_message(&self, message: BoxedMessage) -> Result<(), MessagingErr> {
         self.message.send(message).map_err(|e| e.into())
     }
+
+    pub fn send_stop(&self, reason: Option<String>) -> Result<(), MessagingErr> {
+        let msg = reason.map(StopMessage::Reason).unwrap_or(StopMessage::Stop);
+        self.stop.try_send(msg).map_err(|e| e.into())
+    }
 }
 
 /// A handy-dandy reference to and actor and their inner properties
@@ -143,15 +154,16 @@ impl ActorCell {
     ///
     /// Returns a tuple [(ActorCell, ActorPortSet)] to bootstrap the [Actor]
     pub(crate) fn new(name: Option<String>) -> (Self, ActorPortSet) {
-        let (props, rx1, rx2, rx3) = ActorProperties::new(name);
+        let (props, rx1, rx2, rx3, rx4) = ActorProperties::new(name);
         (
             Self {
                 inner: Arc::new(props),
             },
             ActorPortSet {
                 signal_rx: rx1,
-                supervisor_rx: rx2,
-                message_rx: rx3,
+                stop_rx: rx2,
+                supervisor_rx: rx3,
+                message_rx: rx4,
             },
         )
     }
@@ -187,7 +199,7 @@ impl ActorCell {
             // kill myself immediately. Ignores failures, as a failure means either
             // 1. we're already dead or
             // 2. the channel is full of "signals"
-            self.stop();
+            self.kill();
         }
 
         // notify children they should die. They will unlink themselves from the supervisor
@@ -210,12 +222,17 @@ impl ActorCell {
         self.inner.tree.remove_child(supervisor);
     }
 
-    /// Stop this [super::Actor], by sending [Signal::Exit]
-    pub fn stop(&self) {
-        // ignore failures, since either the actor is already dead
-        // or the channel is full of "signals" which is also fine
-        // since it'll die shortly
-        let _ = self.inner.send_signal(Signal::Exit);
+    /// Kill this [super::Actor] forcefully (terminates async work)
+    pub fn kill(&self) {
+        let _ = self.inner.send_signal(Signal::Kill);
+    }
+
+    /// Stop this [super::Actor] gracefully (stopping message processing)
+    ///
+    /// * `reason` - An optional static string reason why the stop is occurring
+    pub fn stop(&self, reason: Option<String>) {
+        // ignore failures, since that means the actor is dead already
+        let _ = self.inner.send_stop(reason);
     }
 
     /// Send a supervisor event to the supervisory port
@@ -239,10 +256,9 @@ impl ActorCell {
     /// * `message` - The message to send
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message<TActor, TMsg>(&self, message: TMsg) -> Result<(), MessagingErr>
+    pub fn send_message<TActor>(&self, message: TActor::Msg) -> Result<(), MessagingErr>
     where
-        TActor: ActorHandler<Msg = TMsg>,
-        TMsg: Message,
+        TActor: ActorHandler,
     {
         self.inner.send_message(BoxedMessage::new(message))
     }
@@ -250,21 +266,19 @@ impl ActorCell {
     /// Notify the supervisors that a supervision event occurred
     ///
     /// * `evt` - The event to send to this [super::Actor]'s supervisors
-    pub fn notify_supervisors<TActor, TState>(&self, evt: SupervisionEvent)
+    pub fn notify_supervisors<TActor>(&self, evt: SupervisionEvent)
     where
-        TActor: ActorHandler<State = TState>,
-        TState: crate::State,
+        TActor: ActorHandler,
     {
-        self.inner.tree.notify_supervisors::<TActor, _>(evt)
+        self.inner.tree.notify_supervisors::<TActor>(evt)
     }
 
     /// Alias of [rpc::cast]
-    pub fn cast<TActor, TMsg>(&self, msg: TMsg) -> Result<(), MessagingErr>
+    pub fn cast<TActor>(&self, msg: TActor::Msg) -> Result<(), MessagingErr>
     where
-        TActor: ActorHandler<Msg = TMsg>,
-        TMsg: Message,
+        TActor: ActorHandler,
     {
-        rpc::cast::<TActor, _>(self, msg)
+        rpc::cast::<TActor>(self, msg)
     }
 
     /// Alias of [rpc::call]
@@ -278,7 +292,7 @@ impl ActorCell {
         TMsg: Message,
         TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMsg,
     {
-        rpc::call::<TActor, TMsg, TReply, TMsgBuilder>(self, msg_builder, timeout_option).await
+        rpc::call::<TActor, TReply, TMsgBuilder>(self, msg_builder, timeout_option).await
     }
 
     /// Alias of [rpc::call_and_forward]
@@ -306,15 +320,7 @@ impl ActorCell {
         FwdMapFn: FnOnce(TReply) -> TForwardMessage + Send + 'static,
         TForwardMessage: Message,
     {
-        rpc::call_and_forward::<
-            TActor,
-            TForwardActor,
-            TMsg,
-            TReply,
-            TMsgBuilder,
-            FwdMapFn,
-            TForwardMessage,
-        >(
+        rpc::call_and_forward::<TActor, TForwardActor, TReply, TMsgBuilder, FwdMapFn>(
             self,
             msg_builder,
             response_forward,

@@ -49,9 +49,9 @@ async fn test_rpc_cast() {
     .await
     .expect("Failed to start test actor");
 
-    rpc::cast::<TestActor, _>(&actor_ref, ()).expect("Failed to send message");
+    rpc::cast::<TestActor>(&actor_ref, ()).expect("Failed to send message");
     actor_ref
-        .cast::<TestActor, _>(())
+        .cast::<TestActor>(())
         .expect("Failed to send message");
 
     // make sure they have time to process
@@ -61,7 +61,7 @@ async fn test_rpc_cast() {
     assert_eq!(2, counter.load(Ordering::Relaxed));
 
     // cleanup
-    actor_ref.stop();
+    actor_ref.stop(None);
     handle.await.expect("Actor stopped with err");
 }
 
@@ -104,7 +104,7 @@ async fn test_rpc_call() {
         .await
         .expect("Failed to start test actor");
 
-    let rpc_result = rpc::call::<TestActor, _, _, _>(
+    let rpc_result = rpc::call::<TestActor, _, _>(
         &actor_ref,
         MessageFormat::TestRpc,
         Some(Duration::from_millis(100)),
@@ -122,7 +122,7 @@ async fn test_rpc_call() {
     assert_eq!("howdy".to_string(), rpc_result);
 
     // cleanup
-    actor_ref.stop();
+    actor_ref.stop(None);
     handle.await.expect("Actor stopped with err");
 }
 
@@ -207,7 +207,7 @@ async fn test_rpc_call_forwarding() {
     .await
     .expect("Failed to start forwarder actor");
 
-    let forward_handle = rpc::call_and_forward::<Worker, Forwarder, _, _, _, _, _>(
+    let forward_handle = rpc::call_and_forward::<Worker, Forwarder, _, _, _>(
         &worker_ref,
         WorkerMessage::TestRpc,
         forwarder_ref.clone(),
@@ -240,8 +240,8 @@ async fn test_rpc_call_forwarding() {
     assert_eq!(2, counter.load(Ordering::Relaxed));
 
     // cleanup
-    forwarder_ref.stop();
-    worker_ref.stop();
+    forwarder_ref.stop(None);
+    worker_ref.stop(None);
 
     forwarder_handle.await.expect("Actor stopped with err");
     worker_handle.await.expect("Actor stopped with err");

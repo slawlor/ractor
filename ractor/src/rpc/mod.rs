@@ -23,12 +23,11 @@ mod tests;
 /// * `msg` - The message to send to the actor
 ///
 /// Returns [Ok(())] upon successful send, [Err(MessagingErr)] otherwise
-pub fn cast<TActor, TMsg>(actor: &ActorCell, msg: TMsg) -> Result<(), MessagingErr>
+pub fn cast<TActor>(actor: &ActorCell, msg: TActor::Msg) -> Result<(), MessagingErr>
 where
-    TActor: ActorHandler<Msg = TMsg>,
-    TMsg: Message,
+    TActor: ActorHandler,
 {
-    actor.send_message::<TActor, _>(msg)
+    actor.send_message::<TActor>(msg)
 }
 
 /// Sends an asynchronous request to the specified actor, building a one-time
@@ -41,18 +40,17 @@ where
 ///
 /// Returns [Ok(CallResult)] upon successful initial sending with the reply from
 /// the [crate::Actor], [Err(MessagingErr)] if the initial send operation failed
-pub async fn call<TActor, TMsg, TReply, TMsgBuilder>(
+pub async fn call<TActor, TReply, TMsgBuilder>(
     actor: &ActorCell,
     msg_builder: TMsgBuilder,
     timeout_option: Option<Duration>,
 ) -> Result<CallResult<TReply>, MessagingErr>
 where
-    TActor: ActorHandler<Msg = TMsg>,
-    TMsg: Message,
-    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMsg,
+    TActor: ActorHandler,
+    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
 {
     let (tx, rx) = oneshot::channel();
-    actor.send_message::<TActor, _>(msg_builder(tx.into()))?;
+    actor.send_message::<TActor>(msg_builder(tx.into()))?;
 
     // wait for the reply
     Ok(if let Some(duration) = timeout_option {
@@ -83,15 +81,7 @@ where
 ///
 /// Returns: A [JoinHandle<CallResult<()>>] which can be awaited to see if the
 /// forward was successful or ignored
-pub fn call_and_forward<
-    TActor,
-    TForwardActor,
-    TMsg,
-    TReply,
-    TMsgBuilder,
-    FwdMapFn,
-    TForwardMessage,
->(
+pub fn call_and_forward<TActor, TForwardActor, TReply, TMsgBuilder, FwdMapFn>(
     actor: &ActorCell,
     msg_builder: TMsgBuilder,
     response_forward: ActorCell,
@@ -99,16 +89,14 @@ pub fn call_and_forward<
     timeout_option: Option<Duration>,
 ) -> Result<JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
 where
-    TActor: ActorHandler<Msg = TMsg>,
-    TMsg: Message,
+    TActor: ActorHandler,
     TReply: Message,
-    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMsg,
-    TForwardActor: ActorHandler<Msg = TForwardMessage>,
-    FwdMapFn: FnOnce(TReply) -> TForwardMessage + Send + 'static,
-    TForwardMessage: Message,
+    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
+    TForwardActor: ActorHandler,
+    FwdMapFn: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,
 {
     let (tx, rx) = oneshot::channel();
-    actor.send_message::<TActor, _>(msg_builder(tx.into()))?;
+    actor.send_message::<TActor>(msg_builder(tx.into()))?;
 
     // wait for the reply
     Ok(tokio::spawn(async move {
@@ -124,6 +112,6 @@ where
                 Err(_send_err) => CallResult::SenderError,
             }
         }
-        .map(|msg| response_forward.send_message::<TForwardActor, _>(forward_mapping(msg)))
+        .map(|msg| response_forward.send_message::<TForwardActor>(forward_mapping(msg)))
     }))
 }

@@ -93,6 +93,14 @@ impl Debug for BoxedMessage {
     }
 }
 
+/// Messages to stop an actor
+pub(crate) enum StopMessage {
+    // Normal stop
+    Stop,
+    /// Stop with a reason
+    Reason(String),
+}
+
 /// A supervision event from the supervision tree
 #[derive(Debug)]
 pub enum SupervisionEvent {
@@ -135,6 +143,6 @@ impl SupervisionEvent {
 /// A signal message which takes priority above all else
 #[derive(Clone, Debug)]
 pub enum Signal {
-    /// Exit, cancelling all async work immediately
-    Exit,
+    /// Terminate the agent, cancelling all async work immediately
+    Kill,
 }

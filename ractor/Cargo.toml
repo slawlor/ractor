@@ -13,3 +13,6 @@ readme = "../README.md"
 async-trait = "0.1"
 dashmap = "5"
 tokio = { version = "1.23", features = ["rt", "time", "sync", "macros"]}
+
+[dev-dependencies]
+tokio = { version = "1.23", features = ["rt", "time", "sync", "macros", "rt-multi-thread"] }

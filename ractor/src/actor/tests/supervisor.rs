@@ -60,7 +60,7 @@ async fn test_supervision_panic_in_post_startup() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                this_actor.stop();
+                this_actor.stop(None);
             }
 
             None
@@ -134,7 +134,7 @@ async fn test_supervision_panic_in_handle() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                this_actor.stop();
+                this_actor.stop(None);
             }
 
             None
@@ -159,7 +159,7 @@ async fn test_supervision_panic_in_handle() {
 
     // trigger the child failure
     child_ref
-        .send_message::<Child, _>(())
+        .send_message::<Child>(())
         .expect("Failed to send message");
 
     let (_, _) = tokio::join!(s_handle, c_handle);
@@ -183,7 +183,7 @@ async fn test_supervision_panic_in_post_stop() {
         type State = ();
         async fn pre_start(&self, this_actor: ActorCell) -> Self::State {
             // trigger stop, which starts shutdown
-            this_actor.stop();
+            this_actor.stop(None);
         }
         async fn post_stop(&self, _this_actor: ActorCell, _state: Self::State) -> Self::State {
             panic!("Boom");
@@ -215,7 +215,7 @@ async fn test_supervision_panic_in_post_stop() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                this_actor.stop();
+                this_actor.stop(None);
             }
 
             None
@@ -310,7 +310,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                this_actor.stop();
+                this_actor.stop(None);
             }
 
             None
@@ -346,7 +346,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
 
     // trigger the child failure
     child_ref
-        .send_message::<Child, _>(())
+        .send_message::<Child>(())
         .expect("Failed to send message");
 
     // which triggers the handler in the midpoint, which panic's in supervision
@@ -387,7 +387,7 @@ async fn test_killing_a_supervisor_terminates_children() {
             _state: &Self::State,
         ) -> Option<Self::State> {
             // stop the supervisor, which starts the supervision shutdown of children
-            _this_actor.stop();
+            _this_actor.stop(None);
             None
         }
     }
@@ -408,7 +408,7 @@ async fn test_killing_a_supervisor_terminates_children() {
 
     // initate the shutdown of the supervisor
     supervisor_ref
-        .cast::<Supervisor, _>(())
+        .cast::<Supervisor>(())
         .expect("Sending message to supervisor failed");
 
     s_handle

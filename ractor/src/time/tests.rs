@@ -50,7 +50,7 @@ async fn test_intervals() {
     .await
     .expect("Failed to create test actor");
 
-    let interval_handle = crate::time::send_interval::<TestActor, _, _>(
+    let interval_handle = crate::time::send_interval::<TestActor, _>(
         Duration::from_millis(10),
         actor_ref.clone(),
         || (),
@@ -62,7 +62,7 @@ async fn test_intervals() {
 
     tokio::time::sleep(Duration::from_millis(120)).await;
     // kill the actor
-    actor_ref.stop();
+    actor_ref.stop(None);
 
     tokio::time::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again
@@ -110,7 +110,7 @@ async fn test_send_after() {
     .await
     .expect("Failed to create test actor");
 
-    let send_after_handle = crate::time::send_after::<TestActor, _, _>(
+    let send_after_handle = crate::time::send_after::<TestActor, _>(
         Duration::from_millis(10),
         actor_ref.clone(),
         || (),
@@ -122,7 +122,7 @@ async fn test_send_after() {
 
     tokio::time::sleep(Duration::from_millis(20)).await;
     // kill the actor
-    actor_ref.stop();
+    actor_ref.stop(None);
 
     tokio::time::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again
@@ -154,5 +154,44 @@ async fn test_exit_after() {
     tokio::time::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again
     assert!(exit_handle.is_finished());
+    assert!(actor_handle.is_finished());
+}
+
+#[tokio::test]
+async fn test_kill_after() {
+    struct TestActor;
+
+    #[async_trait::async_trait]
+    impl ActorHandler for TestActor {
+        type Msg = ();
+        type State = ();
+        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+        async fn handle(
+            &self,
+            _myself: ActorCell,
+            _message: Self::Msg,
+            _state: &Self::State,
+        ) -> Option<Self::State> {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            None
+        }
+    }
+
+    let (actor_ref, actor_handle) = Actor::spawn(None, TestActor)
+        .await
+        .expect("Failed to create test actor");
+
+    // put the actor into it's event processing sleep
+    actor_ref
+        .send_message::<TestActor>(())
+        .expect("Failed to send message to actor");
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    // kill the actor
+    let kill_handle = crate::time::kill_after(Duration::from_millis(10), actor_ref);
+
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    // make sure the actor is dead + the interval handle doesn't send again
+    assert!(kill_handle.is_finished());
     assert!(actor_handle.is_finished());
 }

@@ -76,13 +76,12 @@ impl SupervisionTree {
     }
 
     /// Send a notification to all supervisors
-    pub fn notify_supervisors<TActor, TState>(&self, evt: SupervisionEvent)
+    pub fn notify_supervisors<TActor>(&self, evt: SupervisionEvent)
     where
-        TActor: ActorHandler<State = TState>,
-        TState: crate::State,
+        TActor: ActorHandler,
     {
         for kvp in self.parents.iter() {
-            let evt_clone = evt.duplicate::<TState>().unwrap();
+            let evt_clone = evt.duplicate::<TActor::State>().unwrap();
             let _ = kvp.value().send_supervisor_evt(evt_clone);
         }
     }
