@@ -39,6 +39,13 @@ pub enum ActorStatus {
     Stopped = 5u8,
 }
 
+/// Denotes states where operations can continue to interact with an agent
+pub const ACTIVE_STATES: [ActorStatus; 3] = [
+    ActorStatus::Starting,
+    ActorStatus::Running,
+    ActorStatus::Upgrading,
+];
+
 /// The collection of ports an actor needs to listen to
 pub struct ActorPortSet {
     pub(crate) signal_rx: BoundedInputPortReceiver<Signal>,
@@ -189,7 +196,7 @@ impl ActorCell {
         other.inner.tree.remove_parent(self.clone());
         self.inner.tree.remove_child(other);
     }
-    /// Stop this actor, but sending Signal::Exit
+    /// Stop this actor, by sending Signal::Exit
     pub fn stop(&self) {
         // ignore failures, since either the actor is already dead
         // or the channel is full of "signals" which is also fine
