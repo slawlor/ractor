@@ -69,17 +69,13 @@ async fn test_supervision_panic_in_post_startup() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor, supervisor_ports) = Actor::new(None, Supervisor { flag: flag.clone() });
-    let (supervisor_ref, s_handle) = supervisor
-        .start(supervisor_ports, None)
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_tree = supervisor_ref.get_tree();
 
-    let (child, child_ports) = Actor::new(None, Child);
-    let (child_ref, c_handle) = child
-        .start(child_ports, Some(supervisor_ref))
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref)
         .await
         .expect("Child panicked on startup");
 
@@ -147,17 +143,13 @@ async fn test_supervision_panic_in_handle() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor, supervisor_ports) = Actor::new(None, Supervisor { flag: flag.clone() });
-    let (supervisor_ref, s_handle) = supervisor
-        .start(supervisor_ports, None)
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_tree = supervisor_ref.get_tree();
 
-    let (child, child_ports) = Actor::new(None, Child);
-    let (child_ref, c_handle) = child
-        .start(child_ports, Some(supervisor_ref))
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref)
         .await
         .expect("Child panicked on startup");
 
@@ -232,17 +224,13 @@ async fn test_supervision_panic_in_post_stop() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor, supervisor_ports) = Actor::new(None, Supervisor { flag: flag.clone() });
-    let (supervisor_ref, s_handle) = supervisor
-        .start(supervisor_ports, None)
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_tree = supervisor_ref.get_tree();
 
-    let (child, child_ports) = Actor::new(None, Child);
-    let (child_ref, c_handle) = child
-        .start(child_ports, Some(supervisor_ref))
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref)
         .await
         .expect("Child panicked on startup");
 
@@ -339,18 +327,14 @@ async fn test_supervision_panic_in_supervisor_handle() {
 
     let supervisor_tree = supervisor_ref.get_tree();
 
-    let (midpoint, midpoint_ports) = Actor::new(None, Midpoint);
-    let (midpoint_ref, m_handle) = midpoint
-        .start(midpoint_ports, Some(supervisor_ref))
+    let (midpoint_ref, m_handle) = Actor::spawn_linked(None, Midpoint, supervisor_ref)
         .await
         .expect("Midpoint actor failed to startup");
 
     let midpoint_tree = midpoint_ref.get_tree();
     let midpoint_ref_clone = midpoint_ref.clone();
 
-    let (child, child_ports) = Actor::new(None, Child);
-    let (child_ref, c_handle) = child
-        .start(child_ports, Some(midpoint_ref))
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, midpoint_ref)
         .await
         .expect("Child panicked on startup");
 
@@ -408,17 +392,13 @@ async fn test_killing_a_supervisor_terminates_children() {
         }
     }
 
-    let (supervisor, supervisor_ports) = Actor::new(None, Supervisor);
-    let (supervisor_ref, s_handle) = supervisor
-        .start(supervisor_ports, None)
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor)
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_tree = supervisor_ref.get_tree();
 
-    let (child, child_ports) = Actor::new(None, Child);
-    let (child_ref, c_handle) = child
-        .start(child_ports, Some(supervisor_ref.clone()))
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref.clone())
         .await
         .expect("Child panicked on startup");
 

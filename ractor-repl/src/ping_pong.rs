@@ -5,8 +5,7 @@
 
 //! A ping-pong actor implementation
 
-use ractor::actor::*;
-use ractor::ActorCell;
+use ractor::{ActorCell, ActorHandler};
 
 pub struct PingPong;
 
@@ -14,7 +13,6 @@ pub struct PingPong;
 pub enum Message {
     Ping,
     Pong,
-    Stop,
 }
 
 impl Message {
@@ -22,7 +20,13 @@ impl Message {
         match self {
             Self::Ping => Self::Pong,
             Self::Pong => Self::Ping,
-            Self::Stop => Self::Stop,
+        }
+    }
+
+    fn print(&self) {
+        match self {
+            Self::Ping => print!("ping.."),
+            Self::Pong => print!("pong.."),
         }
     }
 }
@@ -58,32 +62,19 @@ impl ActorHandler for PingPong {
 
     async fn handle(
         &self,
-        myself: ractor::ActorCell,
+        myself: ActorCell,
         message: Self::Msg,
         state: &Self::State,
     ) -> Option<Self::State> {
-        let result = match message {
-            Message::Ping => {
-                print!("ping..");
-                Some(*state + 1u8)
-            }
-            Message::Pong => {
-                print!("pong..");
-                Some(*state + 1u8)
-            }
-            Message::Stop => {
-                println!("Stopping");
-                myself.stop();
-                return None;
-            }
-        };
-        if *state > 10u8 {
-            println!("\nSending stop...");
-            self.send_message(myself, Message::Stop).unwrap();
+        if *state < 10u8 {
+            message.print();
+            self.send_message(myself, message.next()).unwrap();
+            Some(*state + 1)
         } else {
-            let next = message.next();
-            self.send_message(myself, next).unwrap();
+            println!();
+            myself.stop();
+            // don't send another message, rather stop the agent after 10 iterations
+            None
         }
-        result
     }
 }

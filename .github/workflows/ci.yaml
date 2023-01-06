@@ -70,3 +70,22 @@ jobs:
         with:
           command: fmt
           args: --all -- --check
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Install minimal stable with rustfmt
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt
+          override: true
+
+      - name: Run cargo doc on release profile
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --lib -r

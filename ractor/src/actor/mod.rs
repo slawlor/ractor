@@ -3,7 +3,10 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Holds the logic to a basic actor building-block
+//! This module contains the basic building blocks of an actor. They are
+//!
+//! [ActorHandler] : The internal logic for how an actor behaves
+//! [Actor] : Management structure processing the message handler, signals, and supervision events in a loop
 
 use std::sync::Arc;
 
@@ -56,7 +59,8 @@ async fn handle_panickable<TResult>(
     }
 }
 
-/// The message handling implementation for an actor with a specific type of input message and state
+/// [ActorHandler] is the "business logic" of an Actor. It defines the
+/// Message type, State type, and all processing logic for the actor
 #[async_trait::async_trait]
 pub trait ActorHandler: Sized + Sync + Send + 'static {
     /// The message type for this actor
@@ -72,7 +76,11 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     ///
     /// Panics in `pre_start` do not invoke the
     /// supervision strategy and the actor will be terminated.
-    async fn pre_start(&self, _this_actor: ActorCell) -> Self::State;
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    ///
+    /// Returns an initial [ActorHandler::State] to bootstrap the actor
+    async fn pre_start(&self, myself: ActorCell) -> Self::State;
 
     /// Invoked after an actor has started.
     ///
@@ -80,53 +88,76 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     /// to a log file, emmitting metrics.
     ///
     /// Panics in `post_start` follow the supervision strategy.
-    async fn post_start(
-        &self,
-        _this_actor: ActorCell,
-        _state: &Self::State,
-    ) -> Option<Self::State> {
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `state` - A reference to the internal actor's state
+    ///
+    /// Returns [Some(ActorHandler::State)] if the state should be updated with a new value, [None] otherwise
+    #[allow(unused_variables)]
+    async fn post_start(&self, myself: ActorCell, state: &Self::State) -> Option<Self::State> {
         None
     }
 
     /// Invoked after an actor has been stopped.
     ///
-    /// Returns: The last state (after doing any teardown) which might be necessary to re-create the actor
-    async fn post_stop(&self, _this_actor: ActorCell, _state: Self::State) -> Self::State {
-        _state
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `state` - A reference to the internal actor's state
+    ///
+    /// Returns: The last [ActorHandler::State] (after doing any teardown) which might be necessary to re-create the actor
+    #[allow(unused_variables)]
+    async fn post_stop(&self, myself: ActorCell, state: Self::State) -> Self::State {
+        state
     }
 
     /// Handle the incoming message in a basic event processing loop. Unhandled panic's will be captured and
     /// treated as actor death in the supervision tree
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The message to process
+    /// * `state` - A reference to the internal actor's state
+    ///
+    /// Returns [Some(ActorHandler::State)] if the state should be updated with a new value, [None] otherwise
+    #[allow(unused_variables)]
     async fn handle(
         &self,
-        _this_actor: ActorCell,
-        _message: Self::Msg,
-        _state: &Self::State,
+        myself: ActorCell,
+        message: Self::Msg,
+        state: &Self::State,
     ) -> Option<Self::State> {
         None
     }
 
     /// Handle the incoming supervision event. Unhandled panic's will captured and treated as actor death in
     /// the supervision tree
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The message to process
+    /// * `state` - A reference to the internal actor's state
+    ///
+    /// Returns [Some(ActorHandler::State)] if the state should be updated with a new value, [None] otherwise
+    #[allow(unused_variables)]
     async fn handle_supervisor_evt(
         &self,
-        _this_actor: ActorCell,
-        _message: SupervisionEvent,
-        _state: &Self::State,
+        myself: ActorCell,
+        message: SupervisionEvent,
+        state: &Self::State,
     ) -> Option<Self::State> {
         None
     }
 
     /// Send a message to the specified actor, which is strong-typed to the message handler's type
-    fn send_message(&self, this_actor: ActorCell, msg: Self::Msg) -> Result<(), MessagingErr> {
-        this_actor.send_message::<Self, Self::Msg>(msg)
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `msg` - The message to send to this actor
+    ///
+    /// Returns [Ok(())] on successful send, [Err(MessagingError)] in the event sending failed
+    fn send_message(&self, myself: ActorCell, msg: Self::Msg) -> Result<(), MessagingErr> {
+        myself.send_message::<Self, Self::Msg>(msg)
     }
 }
 
-/// The basic actor with a
-/// 1. input message type
-/// 2. state
-/// 3. message handling implementation
+/// [Actor] is a struct which represents the actor. This struct is consumed by the
+/// `start` operation, but results in an [ActorCell] to communicate and operate with
 pub struct Actor<TMsg, TState, THandler>
 where
     TMsg: Message,
@@ -143,8 +174,47 @@ where
     TState: State + Clone,
     THandler: ActorHandler<Msg = TMsg, State = TState>,
 {
+    /// Spawn an actor, which is unsupervised, automatically starting the actor
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The [ActorHandler] defining the logic for this actor
+    ///
+    /// Returns a [Ok((ActorCell, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    pub async fn spawn(
+        name: Option<String>,
+        handler: THandler,
+    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
+        let (actor, ports) = Self::new(name, handler);
+        actor.start(ports, None).await
+    }
+
+    /// Spawn an actor with a supervisor, automatically starting the actor
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The [ActorHandler] defining the logic for this actor
+    /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
+    ///
+    /// Returns a [Ok((ActorCell, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    pub async fn spawn_linked(
+        name: Option<String>,
+        handler: THandler,
+        supervisor: ActorCell,
+    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
+        let (actor, ports) = Self::new(name, handler);
+        actor.start(ports, Some(supervisor)).await
+    }
+
     /// Create a new actor with some handler implementation and initial state
-    pub fn new(name: Option<String>, handler: THandler) -> (Self, ActorPortSet) {
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The [ActorHandler] defining the logic for this actor
+    ///
+    /// Returns A tuple [(Actor, ActorPortSet)] to be passed to the `start` function of [Actor]
+    fn new(name: Option<String>, handler: THandler) -> (Self, ActorPortSet) {
         let (actor_cell, ports) = ActorCell::new(name);
         (
             Self {
@@ -155,31 +225,19 @@ where
         )
     }
 
-    /// Spawn an actor, which is unsupervised
-    pub async fn spawn(
-        name: Option<String>,
-        handler: THandler,
-    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
-        let (actor, ports) = Self::new(name, handler);
-        actor.start(ports, None).await
-    }
-
-    /// Spawn an actor with a supervisor
-    pub async fn spawn_linked(
-        name: Option<String>,
-        handler: THandler,
-        supervisor: ActorCell,
-    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
-        let (actor, ports) = Self::new(name, handler);
-        actor.start(ports, Some(supervisor)).await
-    }
-
     /// Start the actor immediately, optionally linking to a parent actor (supervision tree)
     ///
     /// NOTE: This returned [tokio::task::JoinHandle] is guaranteed to not panic (unless the runtime is shutting down perhaps).
     /// An inner join handle is capturing panic results from any part of the inner tasks, so therefore
     /// we can safely ignore it, or wait on it to block on the actor's progress
-    pub async fn start(
+    ///
+    /// * `ports` - The [ActorPortSet] for this actor
+    /// * `supervisor` - The optional [ActorCell] representing the supervisor of this actor
+    ///
+    /// Returns a [Ok((ActorCell, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    async fn start(
         self,
         ports: ActorPortSet,
         supervisor: Option<ActorCell>,

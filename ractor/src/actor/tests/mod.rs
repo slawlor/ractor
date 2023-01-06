@@ -24,8 +24,6 @@ async fn test_panic_on_start_captured() {
         }
     }
 
-    let (actor, ports) = Actor::new(None, TestActor);
-    let actor_output = actor.start(ports, None).await;
-
+    let actor_output = Actor::spawn(None, TestActor).await;
     assert!(matches!(actor_output, Err(SpawnErr::StartupPanic(_))));
 }

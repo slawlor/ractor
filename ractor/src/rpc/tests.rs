@@ -40,16 +40,14 @@ async fn test_rpc_cast() {
         }
     }
 
-    let (actor, ports) = Actor::new(
+    let (actor_ref, handle) = Actor::spawn(
         None,
         TestActor {
             counter: counter.clone(),
         },
-    );
-    let (actor_ref, handle) = actor
-        .start(ports, None)
-        .await
-        .expect("Failed to start test actor");
+    )
+    .await
+    .expect("Failed to start test actor");
 
     rpc::cast::<TestActor, _>(&actor_ref, ()).expect("Failed to send message");
     actor_ref
@@ -102,9 +100,7 @@ async fn test_rpc_call() {
         }
     }
 
-    let (actor, ports) = Actor::new(None, TestActor);
-    let (actor_ref, handle) = actor
-        .start(ports, None)
+    let (actor_ref, handle) = Actor::spawn(None, TestActor)
         .await
         .expect("Failed to start test actor");
 
@@ -198,22 +194,18 @@ async fn test_rpc_call_forwarding() {
         }
     }
 
-    let (worker, ports) = Actor::new(None, Worker);
-    let (worker_ref, worker_handle) = worker
-        .start(ports, None)
+    let (worker_ref, worker_handle) = Actor::spawn(None, Worker)
         .await
         .expect("Failed to start worker actor");
 
-    let (forwarder, ports) = Actor::new(
+    let (forwarder_ref, forwarder_handle) = Actor::spawn(
         None,
         Forwarder {
             counter: counter.clone(),
         },
-    );
-    let (forwarder_ref, forwarder_handle) = forwarder
-        .start(ports, None)
-        .await
-        .expect("Failed to start forwarder actor");
+    )
+    .await
+    .expect("Failed to start forwarder actor");
 
     let forward_handle = rpc::call_and_forward::<Worker, Forwarder, _, _, _, _, _>(
         &worker_ref,

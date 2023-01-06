@@ -21,7 +21,7 @@ use crate::port::{
 use crate::rpc::{self, CallResult};
 use crate::{ActorHandler, ActorId, Message};
 
-/// The status of the actor
+/// [ActorStatus] represents the status of an actor
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
 #[repr(u8)]
 pub enum ActorStatus {
@@ -39,7 +39,7 @@ pub enum ActorStatus {
     Stopped = 5u8,
 }
 
-/// Denotes states where operations can continue to interact with an agent
+/// Actor states where operations can continue to interact with an agent
 pub const ACTIVE_STATES: [ActorStatus; 3] = [
     ActorStatus::Starting,
     ActorStatus::Running,
@@ -47,7 +47,7 @@ pub const ACTIVE_STATES: [ActorStatus; 3] = [
 ];
 
 /// The collection of ports an actor needs to listen to
-pub struct ActorPortSet {
+pub(crate) struct ActorPortSet {
     pub(crate) signal_rx: BoundedInputPortReceiver<Signal>,
     pub(crate) supervisor_rx: InputPortReceiver<SupervisionEvent>,
     pub(crate) message_rx: InputPortReceiver<BoxedMessage>,
@@ -119,7 +119,8 @@ impl ActorProperties {
     }
 }
 
-/// A handy-dandy reference to actor's and their inner properties
+/// A handy-dandy reference to and actor and their inner properties
+/// which can be cloned and passed around
 #[derive(Clone)]
 pub struct ActorCell {
     inner: Arc<ActorProperties>,
@@ -136,8 +137,12 @@ impl std::fmt::Debug for ActorCell {
 }
 
 impl ActorCell {
-    /// Construct a new actor cell and return the message reception channels
-    pub fn new(name: Option<String>) -> (Self, ActorPortSet) {
+    /// Construct a new [ActorCell] pointing to an [super::Actor] and return the message reception channels as a [ActorPortSet]
+    ///
+    /// * `name` - Optional name for the actor
+    ///
+    /// Returns a tuple [(ActorCell, ActorPortSet)] to bootstrap the [Actor]
+    pub(crate) fn new(name: Option<String>) -> (Self, ActorPortSet) {
         let (props, rx1, rx2, rx3) = ActorProperties::new(name);
         (
             Self {
@@ -151,28 +156,32 @@ impl ActorCell {
         )
     }
 
-    /// Retrieve the actor's id
+    /// Retrieve the [super::Actor]'s unique identifier [ActorId]
     pub fn get_id(&self) -> ActorId {
         self.inner.id
     }
 
-    /// Retrieve the actor's name
+    /// Retrieve the [super::Actor]'s name
     pub fn get_name(&self) -> Option<String> {
         self.inner.name.clone()
     }
 
-    /// Retrieve the status of an actor
+    /// Retrieve the current status of an [super::Actor]
+    ///
+    /// Returns the [super::Actor]'s current [ActorStatus]
     pub fn get_status(&self) -> ActorStatus {
         self.inner.get_status()
     }
 
-    /// Set the status of the actor
-    pub fn set_status(&self, status: ActorStatus) {
+    /// Set the status of the [super::Actor]
+    ///
+    /// * `status` - The [ActorStatus] to set
+    pub(crate) fn set_status(&self, status: ActorStatus) {
         self.inner.set_status(status)
     }
 
-    /// Terminate yourself and all children beneath you
-    pub fn terminate(&self) {
+    /// Terminate this [super::Actor] and all it's children
+    pub(crate) fn terminate(&self) {
         // we don't need to nofity of exit if we're already stopping or stopped
         if self.get_status() as u8 <= ActorStatus::Upgrading as u8 {
             // kill myself immediately. Ignores failures, as a failure means either
@@ -185,18 +194,23 @@ impl ActorCell {
         self.inner.tree.terminate_children();
     }
 
-    /// Link another actor to the supervised list
-    pub fn link(&self, other: ActorCell) {
-        other.inner.tree.insert_parent(self.clone());
-        self.inner.tree.insert_child(other);
+    /// Link this [super::Actor] to the supervisor
+    ///
+    /// * `supervisor` - The supervisor to link this [super::Actor] to
+    pub fn link(&self, supervisor: ActorCell) {
+        supervisor.inner.tree.insert_parent(self.clone());
+        self.inner.tree.insert_child(supervisor);
     }
 
-    /// Unlink another actor from the supervised list
-    pub fn unlink(&self, other: ActorCell) {
-        other.inner.tree.remove_parent(self.clone());
-        self.inner.tree.remove_child(other);
+    /// Unlink this [super::Actor] from the supervisor
+    ///
+    /// * `supervisor` - The supervisor to unlink this [super::Actor] from
+    pub fn unlink(&self, supervisor: ActorCell) {
+        supervisor.inner.tree.remove_parent(self.clone());
+        self.inner.tree.remove_child(supervisor);
     }
-    /// Stop this actor, by sending Signal::Exit
+
+    /// Stop this [super::Actor], by sending [Signal::Exit]
     pub fn stop(&self) {
         // ignore failures, since either the actor is already dead
         // or the channel is full of "signals" which is also fine
@@ -205,7 +219,14 @@ impl ActorCell {
     }
 
     /// Send a supervisor event to the supervisory port
-    pub fn send_supervisor_evt(&self, message: SupervisionEvent) -> Result<(), MessagingErr> {
+    ///
+    /// * `message` - The [SupervisionEvent] to send to the supervisory port
+    ///
+    /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
+    pub(crate) fn send_supervisor_evt(
+        &self,
+        message: SupervisionEvent,
+    ) -> Result<(), MessagingErr> {
         self.inner.send_supervisor_evt(message)
     }
 
@@ -214,6 +235,10 @@ impl ActorCell {
     /// Note: The type requirement of `TActor` assures that `TMsg` is the supported
     /// message type for `TActor` such that we can't send boxed messages of an unsupported
     /// type to the specified actor.
+    ///
+    /// * `message` - The message to send
+    ///
+    /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
     pub fn send_message<TActor, TMsg>(&self, message: TMsg) -> Result<(), MessagingErr>
     where
         TActor: ActorHandler<Msg = TMsg>,
@@ -223,6 +248,8 @@ impl ActorCell {
     }
 
     /// Notify the supervisors that a supervision event occurred
+    ///
+    /// * `evt` - The event to send to this [super::Actor]'s supervisors
     pub fn notify_supervisors<TActor, TState>(&self, evt: SupervisionEvent)
     where
         TActor: ActorHandler<State = TState>,
