@@ -3,8 +3,9 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! This module contains the basic building blocks of an actor. They are
+//! This module contains the basic building blocks of an actor.
 //!
+//! They are:
 //! [ActorHandler] : The internal logic for how an actor behaves
 //! [Actor] : Management structure processing the message handler, signals, and supervision events in a loop
 
@@ -152,7 +153,7 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     ///
     /// Returns [Ok(())] on successful send, [Err(MessagingError)] in the event sending failed
     fn send_message(&self, myself: ActorCell, msg: Self::Msg) -> Result<(), MessagingErr> {
-        myself.send_message::<Self, Self::Msg>(msg)
+        myself.send_message::<Self>(msg)
     }
 }
 
@@ -283,7 +284,7 @@ where
             myself.terminate();
 
             // notify supervisors of the actor's death
-            myself.notify_supervisors::<THandler, TState>(evt);
+            myself.notify_supervisors::<THandler>(evt);
 
             myself.set_status(ActorStatus::Stopped);
             // signal received or process exited cleanly, we should already have "handled" the signal, so we can just terminate
@@ -305,8 +306,7 @@ where
         let mut state = Self::do_post_start(myself.clone(), handler.clone(), state).await?;
 
         myself.set_status(ActorStatus::Running);
-        myself
-            .notify_supervisors::<THandler, TState>(SupervisionEvent::ActorStarted(myself.clone()));
+        myself.notify_supervisors::<THandler>(SupervisionEvent::ActorStarted(myself.clone()));
 
         // let mut last_state = state.clone();
         let myself_clone = myself.clone();
@@ -317,7 +317,7 @@ where
         let last_state_clone = last_state.clone();
         let handle = tokio::spawn(async move {
             let mut ports = ports;
-            while let (n_state, None) = Self::process_message(
+            while let (n_state, false) = Self::process_message(
                 myself_clone.clone(),
                 state,
                 handler_clone.clone(),
@@ -344,22 +344,57 @@ where
 
     /// Process a message, returning the "new" state (if changed)
     /// along with optionally whether we were signaled mid-processing or not
+    ///
+    /// * `myself` - The current [ActorCell]
+    /// * `state` - The current [ActorHandler::State] object
+    /// * `handler` - Pointer to the [ActorHandler] definition
+    /// * `ports` - The mutable [ActorPortSet] which are the message ports for this actor
+    ///
+    /// Returns a tuple of the next [ActorHandler::State] and a flag to denote if the processing
+    /// loop is done
     async fn process_message(
         myself: ActorCell,
         state: TState,
         handler: Arc<THandler>,
         ports: &mut ActorPortSet,
-    ) -> (TState, Option<Signal>) {
+    ) -> (TState, bool) {
         tokio::select! {
             signal = ports.signal_rx.recv() => {
-                (state, Some(Self::handle_signal(myself, signal.unwrap_or(Signal::Exit)).await))
+                Self::handle_signal(myself, signal.unwrap_or(Signal::Kill)).await;
+                (state, true)
+            },
+            _stop = ports.stop_rx.recv() => {
+                // TODO: pass the "stop reason" somewhere
+                (state, true)
             },
             supervision = ports.supervisor_rx.recv() => {
-                let state = Self::handle_supervision_message(myself.clone(), &state, handler.clone(), supervision).await.unwrap_or(state);
-                (state, None)
+                if let Ok(signal) = ports.signal_rx.try_recv() {
+                    Self::handle_signal(myself, signal).await;
+                    (state, true)
+                } else if let Ok(_stop) = ports.stop_rx.try_recv() {
+                    // TODO: pass the stop reason up
+                    (state, true)
+                } else {
+                    match supervision {
+                        None => (state, true),
+                        Some(s) => Self::handle_supervision_message(myself.clone(), ports, state, handler.clone(), s).await
+                    }
+                }
             }
             message = ports.message_rx.recv() => {
-                Self::handle_message(myself, ports, state, handler, message).await
+                // double check signal and stop to make sure they have priority
+                if let Ok(signal) = ports.signal_rx.try_recv() {
+                    Self::handle_signal(myself, signal).await;
+                    (state, true)
+                } else if let Ok(_stop) = ports.stop_rx.try_recv() {
+                    // TODO: pass the stop reason up
+                    (state, true)
+                } else {
+                    match message {
+                        None => (state, true),
+                        Some(m) => Self::handle_message(myself, ports, state, handler, m).await,
+                    }
+                }
             }
         }
     }
@@ -369,58 +404,54 @@ where
         ports: &mut ActorPortSet,
         state: TState,
         handler: Arc<THandler>,
-        message: Option<BoxedMessage>,
-    ) -> (TState, Option<Signal>) {
-        if let Some(mut msg) = message {
-            let typed_msg = match msg.take() {
-                Ok(m) => m,
-                Err(_) => {
-                    panic!(
-                        "Failed to convert message from `BoxedMessage` to `{}`",
-                        std::any::type_name::<TMsg>()
-                    )
-                }
-            };
-            // NOTE: We listen for the signal port again during the processing of async work in order
-            // to "cancel" any pending work should a signal be received immediately
-            tokio::select! {
-                signal = ports.signal_rx.recv() => {
-                    (state, Some(Self::handle_signal(myself, signal.unwrap_or(Signal::Exit)).await))
-                }
-                maybe_new_state = handler.handle(myself.clone(), typed_msg, &state) => {
-                    if let Some(new_state) = maybe_new_state {
-                        (new_state, None)
-                    } else {
-                        (state, None)
-                    }
-                }
+        mut msg: BoxedMessage,
+    ) -> (TState, bool) {
+        let typed_msg = match msg.take() {
+            Ok(m) => m,
+            Err(_) => {
+                panic!(
+                    "Failed to convert message from `BoxedMessage` to `{}`",
+                    std::any::type_name::<TMsg>()
+                )
             }
-        } else {
-            (state, Some(Self::handle_signal(myself, Signal::Exit).await))
+        };
+        // NOTE: We listen for the signal port again during the processing of async work in order
+        // to "cancel" any pending work should a signal be received immediately
+        tokio::select! {
+            signal = ports.signal_rx.recv() => {
+                Self::handle_signal(myself, signal.unwrap_or(Signal::Kill)).await;
+                (state, true)
+            }
+            maybe_new_state = handler.handle(myself.clone(), typed_msg, &state) => {
+                (maybe_new_state.unwrap_or(state), false)
+            }
         }
     }
 
-    async fn handle_signal(myself: ActorCell, signal: Signal) -> Signal {
+    async fn handle_signal(myself: ActorCell, signal: Signal) {
         match &signal {
-            Signal::Exit => {
+            Signal::Kill => {
                 myself.terminate();
             }
         }
-        // signal's always bubble up
-        signal
     }
 
     async fn handle_supervision_message(
         myself: ActorCell,
-        state: &TState,
+        ports: &mut ActorPortSet,
+        state: TState,
         handler: Arc<THandler>,
-        message: Option<SupervisionEvent>,
-    ) -> Option<TState> {
-        if let Some(evt) = message {
-            let maybe_new_state = handler.handle_supervisor_evt(myself, evt, state).await;
-            maybe_new_state
-        } else {
-            None
+        message: SupervisionEvent,
+    ) -> (TState, bool) {
+        let me_clone = myself.clone();
+        tokio::select! {
+            signal = ports.signal_rx.recv() => {
+                Self::handle_signal(me_clone, signal.unwrap_or(Signal::Kill)).await;
+                (state, true)
+            }
+            maybe_new_state = handler.handle_supervisor_evt(myself, message, &state) => {
+                (maybe_new_state.unwrap_or(state), false)
+            }
         }
     }
 

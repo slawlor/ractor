@@ -81,7 +81,7 @@
 //!             self.send_message(myself, message.next()).unwrap();
 //!             Some(*state + 1)
 //!         } else {
-//!             myself.stop();
+//!             myself.stop(None);
 //!             // don't send another message, rather stop the agent after 10 iterations
 //!             None
 //!         }
@@ -113,6 +113,21 @@
 //! NOTE: panic's in `pre_start` of an actor will cause failures to spawn, rather than supervision notified failurs as the actor hasn't "linked"
 //! to its supervisor yet. However failures in `post_start`, `handle`, `handle_supervisor_evt`, `post_stop` will notify the supervisor should a failure
 //! occur. See [crate::ActorHandler] documentation for more information
+//!
+//! ## Messaging actors
+//!
+//! The means of communication between actors is that they pass messages to each other. A developer can define any message type which is `Send + 'static` and it
+//! will be supported by `ractor`. There are 4 concurrent message types, which are listened to in priority. They are
+//!
+//! 1. Signals: Signals are the highest-priority of all and will interrupt the actor wherever processing currently is (this includes terminating async work). There
+//! is only 1 signal today, which is `Signal::Kill`, and it immediately terminates all work. This includes message processing or supervision event processing.
+//! 2. Stop: There is also a pre-defined stop signal. You can give a "stop reason" if you want, but it's optional. Stop is a graceful exit, meaning currently executing async
+//! work will complete, and on the next message processing iteration Stop will take prioritity over future supervision events or regular messages. It will **not** terminate
+//! currently executing work, regardless of the provided reason.
+//! 3. SupervisionEvent: Supervision events are messages from child actors to their supervisors in the event of their startup, death, and/or unhandled panic. Supervision events
+//! are how an actor's supervisor(s) are notified of events of their children and can handle lifetime events for them.
+//! 4. Messages: Regular, user-defined, messages are the last channel of communication to actors. They are the lowest priority of the 4 message types and denote general actor work. The first
+//! 3 messages types (signals, stop, supervision) are generally quiet unless it's a lifecycle event for the actor, but this channel is the "work" channel doing what your actor wants to do!
 
 #![deny(warnings)]
 #![warn(unused_imports)]

@@ -3,11 +3,11 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Timers for posting to actors periodically
+//! Timers for sending messages to actors periodically
 
 use tokio::{task::JoinHandle, time::Duration};
 
-use crate::{ActorCell, ActorHandler, Message, MessagingErr, ACTIVE_STATES};
+use crate::{ActorCell, ActorHandler, MessagingErr, ACTIVE_STATES};
 
 #[cfg(test)]
 mod tests;
@@ -24,18 +24,17 @@ mod tests;
 ///
 /// Returns: The [JoinHandle] which represents the backgrounded work (can be ignored to
 /// "fire and forget")
-pub fn send_interval<TActor, TMsg, F>(period: Duration, actor: ActorCell, msg: F) -> JoinHandle<()>
+pub fn send_interval<TActor, F>(period: Duration, actor: ActorCell, msg: F) -> JoinHandle<()>
 where
-    TActor: ActorHandler<Msg = TMsg>,
-    TMsg: Message,
-    F: Fn() -> TMsg + Send + 'static,
+    TActor: ActorHandler,
+    F: Fn() -> TActor::Msg + Send + 'static,
 {
     tokio::spawn(async move {
         while ACTIVE_STATES.contains(&actor.get_status()) {
             tokio::time::sleep(period).await;
             // if we receive an error trying to send, the channel is closed and we should stop trying
             // actor died
-            if actor.send_message::<TActor, TMsg>(msg()).is_err() {
+            if actor.send_message::<TActor>(msg()).is_err() {
                 break;
             }
         }
@@ -53,32 +52,46 @@ where
 /// Returns: The [JoinHandle<Result<(), MessagingErr>>] which represents the backgrounded work.
 /// Awaiting the handle will yield the result of the send operation. Can be safely ignored to
 /// "fire and forget"
-pub fn send_after<TActor, TMsg, F>(
+pub fn send_after<TActor, F>(
     period: Duration,
     actor: ActorCell,
     msg: F,
 ) -> JoinHandle<Result<(), MessagingErr>>
 where
-    TActor: ActorHandler<Msg = TMsg>,
-    TMsg: Message,
-    F: Fn() -> TMsg + Send + 'static,
+    TActor: ActorHandler,
+    F: Fn() -> TActor::Msg + Send + 'static,
 {
     tokio::spawn(async move {
         tokio::time::sleep(period).await;
-        actor.send_message::<TActor, TMsg>(msg())
+        actor.send_message::<TActor>(msg())
     })
 }
 
-/// Sends the [crate::Signal::Exit] signal to the actor after a specified duration
+/// Sends the stop signal to the actor after a specified duration, attaching a reason
+/// of "Exit after {}ms" by default
 ///
 /// * `period` - The [Duration] representing the time to delay before sending
 /// * `actor` - The [ActorCell] representing the [crate::Actor] to exit after the duration
 ///
 /// Returns: The [JoinHandle] which denotes the backgrounded operation. To cancel the
-/// exit operation, you can abort the handle to cancel the work.
+/// exit operation, you can abort the handle
 pub fn exit_after(period: Duration, actor: ActorCell) -> JoinHandle<()> {
     tokio::spawn(async move {
         tokio::time::sleep(period).await;
-        actor.stop()
+        actor.stop(Some(format!("Exit after {}ms", period.as_millis())))
+    })
+}
+
+/// Sends the KILL signal to the actor after a specified duration
+///
+/// * `period` - The [Duration] representing the time to delay before sending
+/// * `actor` - The [ActorCell] representing the [crate::Actor] to kill after the duration
+///
+/// Returns: The [JoinHandle] which denotes the backgrounded operation. To cancel the
+/// kill operation, you can abort the handle
+pub fn kill_after(period: Duration, actor: ActorCell) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        tokio::time::sleep(period).await;
+        actor.kill()
     })
 }
