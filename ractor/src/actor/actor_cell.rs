@@ -9,14 +9,19 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
+use tokio::time::Duration;
 
+use super::errors::MessagingErr;
 use super::messages::{BoxedMessage, Signal};
 use super::supervision::SupervisionTree;
 use super::SupervisionEvent;
-use crate::port::input::InputPortReceiver;
-use crate::ActorId;
+use crate::port::{
+    BoundedInputPort, BoundedInputPortReceiver, InputPort, InputPortReceiver, RpcReplyPort,
+};
+use crate::rpc::{self, CallResult};
+use crate::{ActorHandler, ActorId, Message};
 
-/// The status of the agent
+/// The status of the actor
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
 #[repr(u8)]
 pub enum ActorStatus {
@@ -34,10 +39,10 @@ pub enum ActorStatus {
     Stopped = 5u8,
 }
 
-/// The collection of ports an agent needs to listen to
+/// The collection of ports an actor needs to listen to
 pub struct ActorPortSet {
-    pub(crate) signal_rx: mpsc::Receiver<Signal>,
-    pub(crate) supervisor_rx: mpsc::UnboundedReceiver<SupervisionEvent>,
+    pub(crate) signal_rx: BoundedInputPortReceiver<Signal>,
+    pub(crate) supervisor_rx: InputPortReceiver<SupervisionEvent>,
     pub(crate) message_rx: InputPortReceiver<BoxedMessage>,
 }
 
@@ -46,9 +51,9 @@ struct ActorProperties {
     id: ActorId,
     name: Option<String>,
     status: Arc<AtomicU8>,
-    signal: mpsc::Sender<Signal>,
-    supervision: mpsc::UnboundedSender<SupervisionEvent>,
-    message: mpsc::UnboundedSender<BoxedMessage>,
+    signal: BoundedInputPort<Signal>,
+    supervision: InputPort<SupervisionEvent>,
+    message: InputPort<BoxedMessage>,
     tree: SupervisionTree,
 }
 impl ActorProperties {
@@ -56,16 +61,16 @@ impl ActorProperties {
         name: Option<String>,
     ) -> (
         Self,
-        mpsc::Receiver<Signal>,
-        mpsc::UnboundedReceiver<SupervisionEvent>,
-        mpsc::UnboundedReceiver<BoxedMessage>,
+        BoundedInputPortReceiver<Signal>,
+        InputPortReceiver<SupervisionEvent>,
+        InputPortReceiver<BoxedMessage>,
     ) {
         let (tx, rx) = mpsc::channel(2);
         let (tx2, rx2) = mpsc::unbounded_channel();
         let (tx3, rx3) = mpsc::unbounded_channel();
         (
             Self {
-                id: crate::AGENT_ID_ALLOCATOR.fetch_add(1u64, Ordering::Relaxed),
+                id: crate::ACTOR_ID_ALLOCATOR.fetch_add(1u64, Ordering::Relaxed),
                 name,
                 status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
                 signal: tx,
@@ -94,22 +99,16 @@ impl ActorProperties {
         self.status.store(status as u8, Ordering::Relaxed);
     }
 
-    pub async fn send_signal(&self, signal: Signal) -> Result<(), mpsc::error::SendError<Signal>> {
-        self.signal.send(signal).await
+    pub fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr> {
+        self.signal.try_send(signal).map_err(|e| e.into())
     }
 
-    pub fn send_supervisor_evt(
-        &self,
-        message: SupervisionEvent,
-    ) -> Result<(), mpsc::error::SendError<SupervisionEvent>> {
-        self.supervision.send(message)
+    pub fn send_supervisor_evt(&self, message: SupervisionEvent) -> Result<(), MessagingErr> {
+        self.supervision.send(message).map_err(|e| e.into())
     }
 
-    pub fn send_message(
-        &self,
-        message: BoxedMessage,
-    ) -> Result<(), mpsc::error::SendError<BoxedMessage>> {
-        self.message.send(message)
+    pub fn send_message(&self, message: BoxedMessage) -> Result<(), MessagingErr> {
+        self.message.send(message).map_err(|e| e.into())
     }
 }
 
@@ -121,7 +120,11 @@ pub struct ActorCell {
 
 impl std::fmt::Debug for ActorCell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Agent {}", self.get_id())
+        if let Some(name) = self.get_name() {
+            write!(f, "Actor '{}' (id: {})", name, self.get_id())
+        } else {
+            write!(f, "Actor with id: {}", self.get_id())
+        }
     }
 }
 
@@ -141,12 +144,12 @@ impl ActorCell {
         )
     }
 
-    /// Retrieve the agent's id
+    /// Retrieve the actor's id
     pub fn get_id(&self) -> ActorId {
         self.inner.id
     }
 
-    /// Retrieve the agent's name
+    /// Retrieve the actor's name
     pub fn get_name(&self) -> Option<String> {
         self.inner.name.clone()
     }
@@ -161,82 +164,134 @@ impl ActorCell {
         self.inner.set_status(status)
     }
 
-    // /// Returns the state object, only in the event of a dead actor. Otherwise
-    // /// returns None. We cannot read the state of a live actor (for thread safety)
-    // pub fn get_state(&self) -> Option<Box<dyn std::any::Any>> {
-    //     None
-    // }
-
     /// Terminate yourself and all children beneath you
-    pub async fn terminate(&self) {
+    pub fn terminate(&self) {
         // we don't need to nofity of exit if we're already stopping or stopped
         if self.get_status() as u8 <= ActorStatus::Upgrading as u8 {
             // kill myself immediately. Ignores failures, as a failure means either
             // 1. we're already dead or
             // 2. the channel is full of "signals"
-            let _ = self.send_signal(Signal::Exit).await;
+            self.stop();
         }
 
         // notify children they should die. They will unlink themselves from the supervisor
-        self.inner.tree.terminate_children().await;
+        self.inner.tree.terminate_children();
     }
 
     /// Link another actor to the supervised list
-    pub async fn link(&self, other: ActorCell) {
-        other.inner.tree.insert_parent(self.clone()).await;
-        self.inner.tree.insert_child(other).await;
+    pub fn link(&self, other: ActorCell) {
+        other.inner.tree.insert_parent(self.clone());
+        self.inner.tree.insert_child(other);
     }
 
     /// Unlink another actor from the supervised list
-    pub async fn unlink(&self, other: ActorCell) {
-        other.inner.tree.remove_parent(self.clone()).await;
-        self.inner.tree.remove_child(other).await;
+    pub fn unlink(&self, other: ActorCell) {
+        other.inner.tree.remove_parent(self.clone());
+        self.inner.tree.remove_child(other);
     }
-
-    /// Send a signal event to the signal port
-    pub async fn send_signal(&self, signal: Signal) -> Result<(), mpsc::error::SendError<Signal>> {
-        self.inner.send_signal(signal).await
-    }
-
-    /// Stop this agent, but sending Signal::Exit
-    pub async fn stop(&self) -> Result<(), mpsc::error::SendError<Signal>> {
-        self.send_signal(Signal::Exit).await
+    /// Stop this actor, but sending Signal::Exit
+    pub fn stop(&self) {
+        // ignore failures, since either the actor is already dead
+        // or the channel is full of "signals" which is also fine
+        // since it'll die shortly
+        let _ = self.inner.send_signal(Signal::Exit);
     }
 
     /// Send a supervisor event to the supervisory port
-    pub fn send_supervisor_evt(
-        &self,
-        message: SupervisionEvent,
-    ) -> Result<(), mpsc::error::SendError<SupervisionEvent>> {
+    pub fn send_supervisor_evt(&self, message: SupervisionEvent) -> Result<(), MessagingErr> {
         self.inner.send_supervisor_evt(message)
     }
 
-    /// Send a message to the regular message handling port
-    pub fn send_message(
-        &self,
-        message: BoxedMessage,
-    ) -> Result<(), mpsc::error::SendError<BoxedMessage>> {
-        self.inner.send_message(message)
-    }
-
     /// Send a strongly-typed message, constructing the boxed message on the fly
-    pub fn send_message_t<TMsg: crate::Message>(
-        &self,
-        message: TMsg,
-    ) -> Result<(), mpsc::error::SendError<BoxedMessage>> {
-        self.inner.send_message(BoxedMessage::new(message, true))
+    ///
+    /// Note: The type requirement of `TActor` assures that `TMsg` is the supported
+    /// message type for `TActor` such that we can't send boxed messages of an unsupported
+    /// type to the specified actor.
+    pub fn send_message<TActor, TMsg>(&self, message: TMsg) -> Result<(), MessagingErr>
+    where
+        TActor: ActorHandler<Msg = TMsg>,
+        TMsg: Message,
+    {
+        self.inner.send_message(BoxedMessage::new(message))
     }
 
     /// Notify the supervisors that a supervision event occurred
-    pub async fn notify_supervisors(
-        &self,
-        message: SupervisionEvent,
-    ) -> Result<(), mpsc::error::SendError<SupervisionEvent>> {
-        self.inner.tree.notify_supervisors(message).await
+    pub fn notify_supervisors<TActor, TState>(&self, evt: SupervisionEvent)
+    where
+        TActor: ActorHandler<State = TState>,
+        TState: crate::State,
+    {
+        self.inner.tree.notify_supervisors::<TActor, _>(evt)
     }
 
+    /// Alias of [rpc::cast]
+    pub fn cast<TActor, TMsg>(&self, msg: TMsg) -> Result<(), MessagingErr>
+    where
+        TActor: ActorHandler<Msg = TMsg>,
+        TMsg: Message,
+    {
+        rpc::cast::<TActor, _>(self, msg)
+    }
+
+    /// Alias of [rpc::call]
+    pub async fn call<TActor, TMsg, TReply, TMsgBuilder>(
+        &self,
+        msg_builder: TMsgBuilder,
+        timeout_option: Option<Duration>,
+    ) -> Result<CallResult<TReply>, MessagingErr>
+    where
+        TActor: ActorHandler<Msg = TMsg>,
+        TMsg: Message,
+        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMsg,
+    {
+        rpc::call::<TActor, TMsg, TReply, TMsgBuilder>(self, msg_builder, timeout_option).await
+    }
+
+    /// Alias of [rpc::call_and_forward]
+    pub fn call_and_forward<
+        TActor,
+        TForwardActor,
+        TMsg,
+        TReply,
+        TMsgBuilder,
+        FwdMapFn,
+        TForwardMessage,
+    >(
+        &self,
+        msg_builder: TMsgBuilder,
+        response_forward: ActorCell,
+        forward_mapping: FwdMapFn,
+        timeout_option: Option<Duration>,
+    ) -> Result<tokio::task::JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
+    where
+        TActor: ActorHandler<Msg = TMsg>,
+        TMsg: Message,
+        TReply: Message,
+        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMsg,
+        TForwardActor: ActorHandler<Msg = TForwardMessage>,
+        FwdMapFn: FnOnce(TReply) -> TForwardMessage + Send + 'static,
+        TForwardMessage: Message,
+    {
+        rpc::call_and_forward::<
+            TActor,
+            TForwardActor,
+            TMsg,
+            TReply,
+            TMsgBuilder,
+            FwdMapFn,
+            TForwardMessage,
+        >(
+            self,
+            msg_builder,
+            response_forward,
+            forward_mapping,
+            timeout_option,
+        )
+    }
+
+    /// Test utility to retrieve a clone of the underlying supervision tree
     #[cfg(test)]
-    pub fn get_tree(&self) -> SupervisionTree {
+    pub(crate) fn get_tree(&self) -> SupervisionTree {
         self.inner.tree.clone()
     }
 }

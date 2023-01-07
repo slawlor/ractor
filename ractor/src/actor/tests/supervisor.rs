@@ -10,7 +10,9 @@ use std::sync::{
     Arc,
 };
 
-use crate::{Actor, ActorCell, ActorHandler, SupervisionEvent};
+use tokio::time::Duration;
+
+use crate::{Actor, ActorCell, ActorHandler, ActorStatus, SupervisionEvent};
 
 #[tokio::test]
 async fn test_supervision_panic_in_post_startup() {
@@ -23,9 +25,7 @@ async fn test_supervision_panic_in_post_startup() {
     impl ActorHandler for Child {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {
-            ()
-        }
+        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
         async fn post_start(
             &self,
             _this_actor: ActorCell,
@@ -60,7 +60,7 @@ async fn test_supervision_panic_in_post_startup() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                let _ = this_actor.stop().await;
+                this_actor.stop();
             }
 
             None
@@ -88,7 +88,7 @@ async fn test_supervision_panic_in_post_startup() {
     assert_eq!(child_ref.get_id(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
-    assert_eq!(0, supervisor_tree.get_num_children().await);
+    assert_eq!(0, supervisor_tree.get_num_children());
 }
 
 #[tokio::test]
@@ -138,7 +138,7 @@ async fn test_supervision_panic_in_handle() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                let _ = this_actor.stop().await;
+                this_actor.stop();
             }
 
             None
@@ -162,20 +162,20 @@ async fn test_supervision_panic_in_handle() {
         .expect("Child panicked on startup");
 
     // check that the supervision is wired up correctly
-    assert_eq!(1, supervisor_tree.get_num_children().await);
-    assert_eq!(1, child_ref.get_tree().get_num_parents().await);
+    assert_eq!(1, supervisor_tree.get_num_children());
+    assert_eq!(1, child_ref.get_tree().get_num_parents());
 
     // trigger the child failure
     child_ref
-        .send_message_t(())
-        .expect("Failed to send message to child");
+        .send_message::<Child, _>(())
+        .expect("Failed to send message");
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
     assert_eq!(child_ref.get_id(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
-    assert_eq!(0, supervisor_tree.get_num_children().await);
+    assert_eq!(0, supervisor_tree.get_num_children());
 }
 
 #[tokio::test]
@@ -191,10 +191,9 @@ async fn test_supervision_panic_in_post_stop() {
         type State = ();
         async fn pre_start(&self, this_actor: ActorCell) -> Self::State {
             // trigger stop, which starts shutdown
-            let _ = this_actor.stop().await;
-            ()
+            this_actor.stop();
         }
-        async fn post_stop(&self, _this_actor: ActorCell, _state: &Self::State) {
+        async fn post_stop(&self, _this_actor: ActorCell, _state: Self::State) -> Self::State {
             panic!("Boom");
         }
     }
@@ -224,7 +223,7 @@ async fn test_supervision_panic_in_post_stop() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                let _ = this_actor.stop().await;
+                this_actor.stop();
             }
 
             None
@@ -252,7 +251,7 @@ async fn test_supervision_panic_in_post_stop() {
     assert_eq!(child_ref.get_id(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
-    assert_eq!(0, supervisor_tree.get_num_children().await);
+    assert_eq!(0, supervisor_tree.get_num_children());
 }
 
 /// Test that a panic in the supervisor's handling propogates to
@@ -323,7 +322,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
                 self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
-                let _ = this_actor.stop().await;
+                this_actor.stop();
             }
 
             None
@@ -356,19 +355,19 @@ async fn test_supervision_panic_in_supervisor_handle() {
         .expect("Child panicked on startup");
 
     // check that the supervision is wired up correctly
-    assert_eq!(1, supervisor_tree.get_num_children().await);
-    assert_eq!(1, midpoint_tree.get_num_children().await);
-    assert_eq!(1, midpoint_tree.get_num_parents().await);
-    assert_eq!(1, child_ref.get_tree().get_num_parents().await);
+    assert_eq!(1, supervisor_tree.get_num_children());
+    assert_eq!(1, midpoint_tree.get_num_children());
+    assert_eq!(1, midpoint_tree.get_num_parents());
+    assert_eq!(1, child_ref.get_tree().get_num_parents());
 
     // trigger the child failure
     child_ref
-        .send_message_t(())
-        .expect("Failed to send message to child");
+        .send_message::<Child, _>(())
+        .expect("Failed to send message");
 
     // which triggers the handler in the midpoint, which panic's in supervision
 
-    // wait for all agents to die in the test
+    // wait for all actors to die in the test
     let _ = s_handle.await;
     let _ = c_handle.await;
     let _ = m_handle.await;
@@ -377,5 +376,69 @@ async fn test_supervision_panic_in_supervisor_handle() {
     assert_eq!(midpoint_ref_clone.get_id(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
-    assert_eq!(0, supervisor_tree.get_num_children().await);
+    assert_eq!(0, supervisor_tree.get_num_children());
+}
+
+#[tokio::test]
+async fn test_killing_a_supervisor_terminates_children() {
+    struct Child;
+    struct Supervisor;
+
+    #[async_trait::async_trait]
+    impl ActorHandler for Child {
+        type Msg = ();
+        type State = ();
+        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+    }
+
+    #[async_trait::async_trait]
+    impl ActorHandler for Supervisor {
+        type Msg = ();
+        type State = ();
+        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+        async fn handle(
+            &self,
+            _this_actor: ActorCell,
+            _message: Self::Msg,
+            _state: &Self::State,
+        ) -> Option<Self::State> {
+            // stop the supervisor, which starts the supervision shutdown of children
+            _this_actor.stop();
+            None
+        }
+    }
+
+    let (supervisor, supervisor_ports) = Actor::new(None, Supervisor);
+    let (supervisor_ref, s_handle) = supervisor
+        .start(supervisor_ports, None)
+        .await
+        .expect("Supervisor panicked on startup");
+
+    let supervisor_tree = supervisor_ref.get_tree();
+
+    let (child, child_ports) = Actor::new(None, Child);
+    let (child_ref, c_handle) = child
+        .start(child_ports, Some(supervisor_ref.clone()))
+        .await
+        .expect("Child panicked on startup");
+
+    // check that the supervision is wired up correctly
+    assert_eq!(1, supervisor_tree.get_num_children());
+    assert_eq!(1, child_ref.get_tree().get_num_parents());
+
+    // initate the shutdown of the supervisor
+    supervisor_ref
+        .cast::<Supervisor, _>(())
+        .expect("Sending message to supervisor failed");
+
+    s_handle
+        .await
+        .expect("Failed to wait for supervisor to shutdown");
+
+    // wait for async shutdown
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    assert_eq!(ActorStatus::Stopped, child_ref.get_status());
+
+    c_handle.await.expect("Failed to wait for child to die");
 }

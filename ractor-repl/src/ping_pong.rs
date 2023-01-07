@@ -36,7 +36,7 @@ impl ActorHandler for PingPong {
     async fn pre_start(&self, myself: ActorCell) -> Self::State {
         println!("pre_start called");
         // startup the event processing
-        let _ = myself.send_message_t(Message::Ping);
+        self.send_message(myself, Message::Ping).unwrap();
         // create the initial state
         0u8
     }
@@ -51,8 +51,9 @@ impl ActorHandler for PingPong {
     }
 
     /// Invoked after an actor has been stopped.
-    async fn post_stop(&self, _this_actor: ActorCell, _state: &Self::State) {
+    async fn post_stop(&self, _this_actor: ActorCell, _state: Self::State) -> Self::State {
         println!("post_stop called");
+        _state
     }
 
     async fn handle(
@@ -72,16 +73,16 @@ impl ActorHandler for PingPong {
             }
             Message::Stop => {
                 println!("Stopping");
-                let _ = myself.stop().await;
+                myself.stop();
                 return None;
             }
         };
         if *state > 10u8 {
             println!("\nSending stop...");
-            let _ = myself.send_message_t(Message::Stop);
+            self.send_message(myself, Message::Stop).unwrap();
         } else {
             let next = message.next();
-            let _ = myself.send_message_t(next);
+            self.send_message(myself, next).unwrap();
         }
         result
     }

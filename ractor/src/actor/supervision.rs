@@ -5,89 +5,89 @@
 
 //! Supervision management logic
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use dashmap::DashMap;
 
 use super::{actor_cell::ActorCell, messages::SupervisionEvent};
-use crate::ActorId;
+use crate::{ActorHandler, ActorId};
 
 /// A supervision tree
 #[derive(Clone, Default)]
 pub struct SupervisionTree {
-    children: Arc<RwLock<HashMap<ActorId, ActorCell>>>,
-    parents: Arc<RwLock<HashMap<ActorId, ActorCell>>>,
+    children: Arc<DashMap<ActorId, ActorCell>>,
+    parents: Arc<DashMap<ActorId, ActorCell>>,
 }
 
 impl SupervisionTree {
     /// Push a child into the tere
-    pub async fn insert_child(&self, child: ActorCell) {
-        let mut guard = self.children.write().await;
-        guard.insert(child.get_id(), child.clone());
+    pub fn insert_child(&self, child: ActorCell) {
+        self.children.insert(child.get_id(), child);
     }
 
     /// Remove a specific actor from the supervision tree (e.g. actor died)
-    pub async fn remove_child(&self, child: ActorCell) {
-        let mut guard = self.children.write().await;
+    pub fn remove_child(&self, child: ActorCell) {
         let id = child.get_id();
-        if guard.contains_key(&id) {
-            guard.remove(&id);
+        match self.children.entry(id) {
+            dashmap::mapref::entry::Entry::Occupied(item) => {
+                item.remove();
+            }
+            dashmap::mapref::entry::Entry::Vacant(_) => {}
         }
     }
 
     /// Push a parent into the tere
-    pub async fn insert_parent(&self, parent: ActorCell) {
-        let mut guard = self.parents.write().await;
-        guard.insert(parent.get_id(), parent.clone());
+    pub fn insert_parent(&self, parent: ActorCell) {
+        self.parents.insert(parent.get_id(), parent);
     }
 
     /// Remove a specific actor from the supervision tree (e.g. actor died)
-    pub async fn remove_parent(&self, parent: ActorCell) {
-        let mut guard = self.parents.write().await;
+    pub fn remove_parent(&self, parent: ActorCell) {
         let id = parent.get_id();
-        if guard.contains_key(&id) {
-            guard.remove(&id);
+        match self.parents.entry(id) {
+            dashmap::mapref::entry::Entry::Occupied(item) => {
+                item.remove();
+            }
+            dashmap::mapref::entry::Entry::Vacant(_) => {}
         }
     }
 
     /// Terminate all your supervised children
-    #[async_recursion::async_recursion]
-    pub async fn terminate_children(&self) {
-        let guard = self.children.read().await;
-
-        for (_, child) in guard.iter() {
-            child.terminate().await;
+    pub fn terminate_children(&self) {
+        for kvp in self.children.iter() {
+            kvp.value().terminate();
         }
     }
 
     /// Determine if the specified actor is a member of this supervision tree
-    pub async fn is_supervisor_of(&self, id: ActorId) -> bool {
-        self.children.read().await.contains_key(&id)
+    pub fn is_supervisor_of(&self, id: ActorId) -> bool {
+        self.children.contains_key(&id)
     }
 
     /// Determine if the specified actor is a parent of this actor
-    pub async fn is_child_of(&self, id: ActorId) -> bool {
-        self.parents.read().await.contains_key(&id)
+    pub fn is_child_of(&self, id: ActorId) -> bool {
+        self.parents.contains_key(&id)
     }
 
     /// Send a notification to all supervisors
-    pub async fn notify_supervisors(
-        &self,
-        evt: SupervisionEvent,
-    ) -> Result<(), tokio::sync::mpsc::error::SendError<SupervisionEvent>> {
-        for (_, parent) in self.parents.read().await.iter() {
-            parent.send_supervisor_evt(evt.clone())?;
+    pub fn notify_supervisors<TActor, TState>(&self, evt: SupervisionEvent)
+    where
+        TActor: ActorHandler<State = TState>,
+        TState: crate::State,
+    {
+        for kvp in self.parents.iter() {
+            let evt_clone = evt.duplicate::<TState>().unwrap();
+            let _ = kvp.value().send_supervisor_evt(evt_clone);
         }
-        Ok(())
     }
 
     /// Retrieve the number of supervised children
-    pub async fn get_num_children(&self) -> usize {
-        self.children.read().await.len()
+    pub fn get_num_children(&self) -> usize {
+        self.children.len()
     }
 
     /// Retrieve the number of supervised children
-    pub async fn get_num_parents(&self) -> usize {
-        self.parents.read().await.len()
+    pub fn get_num_parents(&self) -> usize {
+        self.parents.len()
     }
 }

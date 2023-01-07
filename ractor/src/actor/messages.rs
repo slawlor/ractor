@@ -3,70 +3,87 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Messages which are built-in for the agent
+//! Messages which are built-in for the actor
 
 use std::any::Any;
 use std::fmt::Debug;
 
-use crate::Message;
+use crate::{Message, State};
+
+/// An error downcasting a boxed item to a strong type
+#[derive(Debug)]
+pub struct BoxedDowncastErr;
 
 /// A "boxed" message denoting a strong-type message
 /// but generic so it can be passed around without type
 /// constraints
 pub struct BoxedMessage {
-    /// Flag denoting if message can be consumed 1 time
-    pub one_time: bool,
     /// The message value
     pub msg: Option<Box<dyn Any + Send>>,
 }
 
-/// An error downcasting a boxed message to a strong type
-pub struct DowncastBoxedMessageErr;
-
 impl BoxedMessage {
     /// Create a new [BoxedMessage] from a strongly-typed message
-    /// and a flag denoting if the message can be consumed 1 time
-    /// or can be cloned and re-consumed
-    pub fn new<T>(msg: T, one_time: bool) -> Self
+    pub fn new<T>(msg: T) -> Self
     where
         T: Any + Message,
     {
         Self {
-            one_time,
             msg: Some(Box::new(msg)),
         }
     }
 
     /// Try and take the resulting message as a specific type, consumes
-    /// the boxed message if one_time = true
-    pub fn take<T>(&mut self) -> Result<T, DowncastBoxedMessageErr>
+    /// the boxed message
+    pub fn take<T>(&mut self) -> Result<T, BoxedDowncastErr>
     where
         T: Any + Message,
     {
-        if self.one_time {
-            match self.msg.take() {
-                Some(m) => {
-                    if m.is::<T>() {
-                        Ok(*m.downcast::<T>().unwrap())
-                    } else {
-                        Err(DowncastBoxedMessageErr)
-                    }
+        match self.msg.take() {
+            Some(m) => {
+                if m.is::<T>() {
+                    Ok(*m.downcast::<T>().unwrap())
+                } else {
+                    Err(BoxedDowncastErr)
                 }
-                None => Err(DowncastBoxedMessageErr),
             }
-        } else {
-            match self.msg.as_ref() {
-                Some(m) if m.is::<T>() => Ok(m.downcast_ref::<T>().cloned().unwrap()),
-                Some(_) => Err(DowncastBoxedMessageErr),
-                None => Err(DowncastBoxedMessageErr),
-            }
+            None => Err(BoxedDowncastErr),
         }
     }
 }
 
-impl Clone for BoxedMessage {
-    fn clone(&self) -> Self {
-        panic!("Cloning of an `BoxedMessage` type is not supported");
+/// A "boxed" state denoting a strong-type state
+/// but generic so it can be passed around without type
+/// constraints
+#[derive(Debug)]
+pub struct BoxedState {
+    /// The state value
+    pub state: Box<dyn Any + Send>,
+}
+
+impl BoxedState {
+    /// Create a new [BoxedState] from a strongly-typed state
+    pub fn new<T>(msg: T) -> Self
+    where
+        T: Any + State,
+    {
+        Self {
+            state: Box::new(msg),
+        }
+    }
+
+    /// Try and take the resulting type via cloning, such that we don't
+    /// consume the value
+    pub fn take<T>(&self) -> Result<T, BoxedDowncastErr>
+    where
+        T: Any + State,
+    {
+        let state_ref = &self.state;
+        if state_ref.is::<T>() {
+            Ok(state_ref.downcast_ref::<T>().cloned().unwrap())
+        } else {
+            Err(BoxedDowncastErr)
+        }
     }
 }
 
@@ -77,14 +94,42 @@ impl Debug for BoxedMessage {
 }
 
 /// A supervision event from the supervision tree
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum SupervisionEvent {
     /// An actor was started
     ActorStarted(super::actor_cell::ActorCell),
-    /// An actor terminated
-    ActorTerminated(super::actor_cell::ActorCell),
+    /// An actor terminated. In the event it shutdown cleanly (i.e. didn't panic or get
+    /// signaled) we capture the last state of the actor which can be used to re-build an actor
+    /// should the need arise
+    ActorTerminated(super::actor_cell::ActorCell, Option<BoxedState>),
     /// An actor panicked
     ActorPanicked(super::actor_cell::ActorCell, String),
+}
+
+impl SupervisionEvent {
+    /// A custom "clone" for [SupervisionEvent]s, because they hold a handle to a [BoxedState]
+    /// which can't directly implement the clone trait, therefore the [SupervisionEvent]
+    /// can't implement [Clone]. This requires that you give the intended strongly typed [State]
+    /// which will downcast, clone the underlying type, and create a new boxed state for you
+    pub(crate) fn duplicate<TState>(&self) -> Result<Self, BoxedDowncastErr>
+    where
+        TState: State,
+    {
+        match self {
+            Self::ActorStarted(actor) => Ok(Self::ActorStarted(actor.clone())),
+            Self::ActorTerminated(actor, maybe_state) => {
+                let cloned_maybe_state = match maybe_state {
+                    Some(state) => Some(state.take::<TState>()?),
+                    _ => None,
+                }
+                .map(BoxedState::new);
+                Ok(Self::ActorTerminated(actor.clone(), cloned_maybe_state))
+            }
+            Self::ActorPanicked(actor, message) => {
+                Ok(Self::ActorPanicked(actor.clone(), message.clone()))
+            }
+        }
+    }
 }
 
 /// A signal message which takes priority above all else
