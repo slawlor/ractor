@@ -4,6 +4,12 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 //! Supervision management logic
+//!
+//! Supervision is a special notion of "ownership" over actors by a parent (supervisor).
+//! Supervisors are responsible for the lifecycle of a child actor such that they get notified
+//! when a child actor starts, stops, or panics (when possible). The supervisor can then decide
+//! how to handle the event. Should it restart the actor, leave it dead, potentially die itself
+//! notifying the supervisor's supervisor? That's up to the implementation of the [super::ActorHandler]
 
 use std::sync::Arc;
 

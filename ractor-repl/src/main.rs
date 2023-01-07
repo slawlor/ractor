@@ -5,11 +5,13 @@
 
 mod ping_pong;
 
+use ractor::Actor;
+
 // MAIN //
 #[tokio::main]
 async fn main() {
-    let actor_handler = ping_pong::PingPong;
-    let (the_actor, ports) = ractor::Actor::new(None, actor_handler);
-    let (_actor_ref, actor_handle) = the_actor.start(ports, None).await.unwrap();
-    actor_handle.await.unwrap();
+    let (_, actor_handle) = Actor::spawn(None, ping_pong::PingPong)
+        .await
+        .expect("Failed to start actor");
+    actor_handle.await.expect("Actor failed to exit cleanly");
 }
