@@ -3,7 +3,8 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! This module contains the remote procedure call [CallResult] structure and supported operations
+//! This module contains the remote procedure call's [CallResult] structure
+//! and supported operations
 
 /// The result from a [crate::rpc::call] operation
 #[derive(Debug, Eq, PartialEq)]

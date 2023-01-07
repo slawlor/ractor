@@ -10,6 +10,10 @@
 //! when a child actor starts, stops, or panics (when possible). The supervisor can then decide
 //! how to handle the event. Should it restart the actor, leave it dead, potentially die itself
 //! notifying the supervisor's supervisor? That's up to the implementation of the [super::ActorHandler]
+//!
+//! This is currently an initial implementation of [Erlang supervisors](https://www.erlang.org/doc/man/supervisor.html)
+//! which will be expanded upon as the library develops. Next in line is likely supervision strategies
+//! for automatic restart routines.
 
 use std::sync::Arc;
 

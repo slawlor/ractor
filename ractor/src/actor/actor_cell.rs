@@ -3,7 +3,11 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! A reference counted actor which can be passed around as needed
+//! [ActorCell] is reference counted actor which can be passed around as needed
+//!
+//! This module contains all the functionality around the [ActorCell], including
+//! the internal properties, ports, states, etc. [ActorCell] is the basic primitive
+//! for references to a given actor and its communication channels
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
@@ -19,7 +23,7 @@ use crate::port::{
     BoundedInputPort, BoundedInputPortReceiver, InputPort, InputPortReceiver, RpcReplyPort,
 };
 use crate::rpc::{self, CallResult};
-use crate::{ActorHandler, ActorId, Message};
+use crate::{ActorHandler, ActorId, ActorName, Message, SpawnErr};
 
 /// [ActorStatus] represents the status of an actor
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
@@ -54,10 +58,84 @@ pub(crate) struct ActorPortSet {
     pub(crate) message_rx: InputPortReceiver<BoxedMessage>,
 }
 
+pub(crate) enum ActorPortMessage {
+    Signal(Signal),
+    Stop(StopMessage),
+    Supervision(SupervisionEvent),
+    Message(BoxedMessage),
+}
+
+impl ActorPortSet {
+    /// Run a future beside the signal port, so that
+    /// the signal port can terminate the async work
+    ///
+    /// * `future` - The future to execute
+    ///
+    /// Returns [Ok(`TState`)] when the future completes without
+    /// signal interruption, [Err(Signal)] in the event the
+    /// signal interrupts the async work.
+    pub async fn run_with_signal<TState>(
+        &mut self,
+        future: impl futures::Future<Output = TState>,
+    ) -> Result<TState, Signal>
+    where
+        TState: crate::State,
+    {
+        tokio::select! {
+            // Biased ensures that we poll the ports in the order they appear, giving
+            // priority to our message reception operations. See:
+            // https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
+            // for more information
+            biased;
+
+            // supervision or message processing work
+            // can be interrupted by the signal port receiving
+            // a kill signal
+            signal = self.signal_rx.recv() => {
+                Err(signal.unwrap_or(Signal::Kill))
+            }
+            new_state = future => {
+                Ok(new_state)
+            }
+        }
+    }
+
+    /// List to the input ports in priority. The priority of listening for messages is
+    /// 1. Signal port
+    /// 2. Stop port
+    /// 3. Supervision message port
+    /// 4. General message port
+    ///
+    /// Returns [Ok(ActorPortMessage)] on a successful message reception, [MessagingErr]
+    /// in the event any of the channels is closed.
+    pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr> {
+        tokio::select! {
+            // Biased ensures that we poll the ports in the order they appear, giving
+            // priority to our message reception operations. See:
+            // https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
+            // for more information
+            biased;
+
+            signal = self.signal_rx.recv() => {
+                signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
+            }
+            stop = self.stop_rx.recv() => {
+                stop.map(ActorPortMessage::Stop).ok_or(MessagingErr::ChannelClosed)
+            }
+            supervision = self.supervisor_rx.recv() => {
+                supervision.map(ActorPortMessage::Supervision).ok_or(MessagingErr::ChannelClosed)
+            }
+            message = self.message_rx.recv() => {
+                message.map(ActorPortMessage::Message).ok_or(MessagingErr::ChannelClosed)
+            }
+        }
+    }
+}
+
 /// The inner-properties of an Actor
 struct ActorProperties {
     id: ActorId,
-    name: Option<String>,
+    name: Option<ActorName>,
     status: Arc<AtomicU8>,
     signal: BoundedInputPort<Signal>,
     stop: BoundedInputPort<StopMessage>,
@@ -65,9 +143,10 @@ struct ActorProperties {
     message: InputPort<BoxedMessage>,
     tree: SupervisionTree,
 }
+
 impl ActorProperties {
     pub fn new(
-        name: Option<String>,
+        name: Option<ActorName>,
     ) -> (
         Self,
         BoundedInputPortReceiver<Signal>,
@@ -147,25 +226,44 @@ impl std::fmt::Debug for ActorCell {
     }
 }
 
+impl Drop for ActorCell {
+    fn drop(&mut self) {
+        if let (Some(name), pid) = (self.get_name(), self.get_id()) {
+            let count = Arc::strong_count(&self.inner);
+            if count <= 2 && crate::registry::is_enrolled(name, pid) {
+                // there's 2 references left
+                // 1. This reference which is being dropped and
+                // 2. The reference in the registry so drop it from there which will complete the teardown of this actor
+                crate::registry::unenroll(name);
+            }
+        }
+    }
+}
+
 impl ActorCell {
     /// Construct a new [ActorCell] pointing to an [super::Actor] and return the message reception channels as a [ActorPortSet]
     ///
     /// * `name` - Optional name for the actor
     ///
     /// Returns a tuple [(ActorCell, ActorPortSet)] to bootstrap the [Actor]
-    pub(crate) fn new(name: Option<String>) -> (Self, ActorPortSet) {
+    pub(crate) fn new(name: Option<ActorName>) -> Result<(Self, ActorPortSet), SpawnErr> {
         let (props, rx1, rx2, rx3, rx4) = ActorProperties::new(name);
-        (
-            Self {
-                inner: Arc::new(props),
-            },
+        let cell = Self {
+            inner: Arc::new(props),
+        };
+        if let Some(r_name) = name {
+            crate::registry::enroll(r_name, cell.clone())?;
+        }
+
+        Ok((
+            cell,
             ActorPortSet {
                 signal_rx: rx1,
                 stop_rx: rx2,
                 supervisor_rx: rx3,
                 message_rx: rx4,
             },
-        )
+        ))
     }
 
     /// Retrieve the [super::Actor]'s unique identifier [ActorId]
@@ -174,8 +272,8 @@ impl ActorCell {
     }
 
     /// Retrieve the [super::Actor]'s name
-    pub fn get_name(&self) -> Option<String> {
-        self.inner.name.clone()
+    pub fn get_name(&self) -> Option<ActorName> {
+        self.inner.name
     }
 
     /// Retrieve the current status of an [super::Actor]

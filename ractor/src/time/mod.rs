@@ -4,6 +4,15 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 //! Timers for sending messages to actors periodically
+//!
+//! The methodology of timers in `ractor` are based on [Erlang's `timer` module](https://www.erlang.org/doc/man/timer.html).
+//! We aren't supporting all timer functions, as many of them don't make sense but we
+//! support the relevant ones for `ractor`. In short
+//!
+//! 1. Send on a period
+//! 2. Send after a delay
+//! 3. Stop after a delay
+//! 4. Kill after a delay
 
 use tokio::{task::JoinHandle, time::Duration};
 
