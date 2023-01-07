@@ -19,9 +19,10 @@ pub static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0u64);
 pub mod actor;
 pub mod port;
 pub mod rpc;
+pub mod time;
 
 // re-exports
-pub use actor::actor_cell::{ActorCell, ActorStatus};
+pub use actor::actor_cell::{ActorCell, ActorStatus, ACTIVE_STATES};
 pub use actor::errors::{ActorErr, MessagingErr, SpawnErr};
 pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorHandler};
