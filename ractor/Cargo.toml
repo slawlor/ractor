@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Sean Lawlor <seanlawlor@fb.com>"]
 description = "A actor framework for Rust"
 license = "MIT"
@@ -8,6 +8,9 @@ edition = "2018"
 keywords = ["actor", "ractor"]
 repository = "https://github.com/slawlor/ractor"
 readme = "../README.md"
+license-file = "../LICENSE"
+homepage = "https://github.com/slawlor/ractor"
+categories = ["actor"]
 
 [dependencies]
 async-trait = "0.1"
