@@ -2,6 +2,11 @@
 
 A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.erlang.org/doc/man/gen_server.html), with the speed + performance of Rust!
 
+[<img alt="github" src="https://img.shields.io/badge/github-slawlor/ractor-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/slawlor/ractor)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/ractor.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/ractor)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-ractor-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/ractor)
+[![CI/main](https://github.com/slawlor/repl/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/slawlor/repl/actions/workflows/ci.yaml)
+
 ## About
 
 `ractor` tries to solve the problem of building and maintaing an Erlang-like actor framework in Rust. It gives
@@ -9,6 +14,24 @@ a set of generic primitives and helps automate the supervision tree and manageme
 hard requirement for `ractor`. 
 
 `ractor` is a modern actor framework written in 100% rust with NO `unsafe` code. 
+
+### Why ractor?
+
+There are other actor frameworks written in Rust ([Actix](https://github.com/actix/actix), [riker](https://github.com/riker-rs/riker), or [just actors in Tokio](https://ryhl.io/blog/actors-with-tokio/)) plus a whole list compiled on [this Reddit post](https://www.reddit.com/r/rust/comments/n2cmvd/there_are_a_lot_of_actor_framework_projects_on/)
+
+Ractor tries to be different my modelling more on a pure Erlang `gen_server`. This means that each actor can also simply be a supervisor to other actors with no additional cost (simply link them together!). Additionally we're aiming to maintain close logic with Erlang's patterns, as they work quite well and are well utilized in the industry.
+
+Additionally we wrote `ractor` without building on some kind of "Runtime" or "System" which needs to be spawned. Actors can be run independently, in conjunction with other basic `tokio` runtimes with little additional overhead.
+
+We currently have full support for 
+
+1. Single-threaded message processing
+2. Actor supervision tree
+3. Remote procedure calls to actors
+4. Timers
+
+
+On our roadmap is to add more of the Erlang functionality including potentially a distributed actor cluster.
 
 ## Installation
 
