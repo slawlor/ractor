@@ -17,7 +17,7 @@ async fn test_basic_registation() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
     }
 
     let (actor, handle) = Actor::spawn(Some("my_actor"), EmptyActor)
@@ -40,7 +40,7 @@ async fn test_duplicate_registration() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
     }
 
     let (actor, handle) = Actor::spawn(Some("my_second_actor"), EmptyActor)
@@ -73,7 +73,7 @@ async fn test_actor_registry_unenrollment() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
     }
 
     let (actor, handle) = Actor::spawn(Some("unenrollment"), EmptyActor)

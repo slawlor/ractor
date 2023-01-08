@@ -12,7 +12,7 @@ use std::sync::{
 
 use tokio::time::Duration;
 
-use crate::{Actor, ActorCell, ActorHandler};
+use crate::{Actor, ActorHandler, ActorRef};
 
 #[tokio::test]
 async fn test_intervals() {
@@ -26,12 +26,12 @@ async fn test_intervals() {
     impl ActorHandler for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {
+        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {
             self.counter.clone()
         }
         async fn handle(
             &self,
-            _this_actor: ActorCell,
+            _this_actor: ActorRef<Self>,
             _message: Self::Msg,
             state: &Self::State,
         ) -> Option<Self::State> {
@@ -52,7 +52,7 @@ async fn test_intervals() {
 
     let interval_handle = crate::time::send_interval::<TestActor, _>(
         Duration::from_millis(10),
-        actor_ref.clone(),
+        actor_ref.clone().into(),
         || (),
     );
 
@@ -86,12 +86,12 @@ async fn test_send_after() {
     impl ActorHandler for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {
+        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {
             self.counter.clone()
         }
         async fn handle(
             &self,
-            _this_actor: ActorCell,
+            _this_actor: ActorRef<Self>,
             _message: Self::Msg,
             state: &Self::State,
         ) -> Option<Self::State> {
@@ -112,7 +112,7 @@ async fn test_send_after() {
 
     let send_after_handle = crate::time::send_after::<TestActor, _>(
         Duration::from_millis(10),
-        actor_ref.clone(),
+        actor_ref.clone().into(),
         || (),
     );
 
@@ -142,14 +142,14 @@ async fn test_exit_after() {
     impl ActorHandler for TestActor {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
     }
 
     let (actor_ref, actor_handle) = Actor::spawn(None, TestActor)
         .await
         .expect("Failed to create test actor");
 
-    let exit_handle = crate::time::exit_after(Duration::from_millis(10), actor_ref);
+    let exit_handle = crate::time::exit_after(Duration::from_millis(10), actor_ref.into());
 
     tokio::time::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again
@@ -165,10 +165,10 @@ async fn test_kill_after() {
     impl ActorHandler for TestActor {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
         async fn handle(
             &self,
-            _myself: ActorCell,
+            _myself: ActorRef<Self>,
             _message: Self::Msg,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -183,12 +183,12 @@ async fn test_kill_after() {
 
     // put the actor into it's event processing sleep
     actor_ref
-        .send_message::<TestActor>(())
+        .send_message(())
         .expect("Failed to send message to actor");
     tokio::time::sleep(Duration::from_millis(10)).await;
 
     // kill the actor
-    let kill_handle = crate::time::kill_after(Duration::from_millis(10), actor_ref);
+    let kill_handle = crate::time::kill_after(Duration::from_millis(10), actor_ref.into());
 
     tokio::time::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again

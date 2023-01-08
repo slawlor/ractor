@@ -12,7 +12,7 @@ use std::sync::{
 
 use tokio::time::Duration;
 
-use crate::{Actor, ActorCell, ActorHandler, ActorStatus, SpawnErr, SupervisionEvent};
+use crate::{Actor, ActorCell, ActorHandler, ActorRef, ActorStatus, SpawnErr, SupervisionEvent};
 
 mod supervisor;
 
@@ -26,7 +26,7 @@ async fn test_panic_on_start_captured() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorCell) -> Self::State {
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {
             panic!("Boom!");
         }
     }
@@ -49,11 +49,11 @@ async fn test_stop_higher_priority_over_messages() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
 
         async fn handle(
             &self,
-            _myself: ActorCell,
+            _myself: ActorRef<Self>,
             _message: Self::Msg,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -75,7 +75,7 @@ async fn test_stop_higher_priority_over_messages() {
     // pump 10 messages on the queue
     for _i in 0..10 {
         actor
-            .send_message::<TestActor>(())
+            .send_message(())
             .expect("Failed to send message to actor");
     }
 
@@ -113,11 +113,11 @@ async fn test_kill_terminates_work() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
 
         async fn handle(
             &self,
-            _myself: ActorCell,
+            _myself: ActorRef<Self>,
             _message: Self::Msg,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -131,7 +131,7 @@ async fn test_kill_terminates_work() {
         .expect("Actor failed to start");
 
     actor
-        .send_message::<TestActor>(())
+        .send_message(())
         .expect("Failed to send message to actor");
     tokio::time::sleep(Duration::from_millis(10)).await;
 
@@ -152,11 +152,11 @@ async fn test_stop_does_not_terminate_async_work() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
 
         async fn handle(
             &self,
-            _myself: ActorCell,
+            _myself: ActorRef<Self>,
             _message: Self::Msg,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -171,7 +171,7 @@ async fn test_stop_does_not_terminate_async_work() {
 
     // send a work message followed by a stop message
     actor
-        .send_message::<TestActor>(())
+        .send_message(())
         .expect("Failed to send message to actor");
     tokio::time::sleep(Duration::from_millis(2)).await;
     actor.stop(None);
@@ -198,11 +198,11 @@ async fn test_kill_terminates_supervision_work() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
 
         async fn handle_supervisor_evt(
             &self,
-            _myself: ActorCell,
+            _myself: ActorRef<Self>,
             _message: SupervisionEvent,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -216,8 +216,9 @@ async fn test_kill_terminates_supervision_work() {
         .expect("Actor failed to start");
 
     // send some dummy event to cause the supervision stuff to hang
+    let actor_cell: ActorCell = actor.clone().into();
     actor
-        .send_supervisor_evt(SupervisionEvent::ActorStarted(actor.clone()))
+        .send_supervisor_evt(SupervisionEvent::ActorStarted(actor_cell))
         .expect("Failed to send message to actor");
     tokio::time::sleep(Duration::from_millis(10)).await;
 

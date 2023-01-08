@@ -14,7 +14,7 @@
 
 extern crate ractor;
 
-use ractor::{rpc, Actor, ActorCell, ActorHandler, RpcReplyPort};
+use ractor::{Actor, ActorHandler, ActorRef, RpcReplyPort};
 use tokio::time::Duration;
 
 struct Counter;
@@ -36,14 +36,14 @@ impl ActorHandler for Counter {
 
     type State = CounterState;
 
-    async fn pre_start(&self, _myself: ActorCell) -> Self::State {
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
         // create the initial state
         CounterState { count: 0 }
     }
 
     async fn handle(
         &self,
-        _myself: ActorCell,
+        _myself: ActorRef<Self>,
         message: Self::Msg,
         state: &Self::State,
     ) -> Option<Self::State> {
@@ -73,22 +73,19 @@ async fn main() {
     // +5 +10 -5 a few times, printing the value via RPC
     for _i in 0..4 {
         actor
-            .send_message::<Counter>(CounterMessage::Increment(5))
+            .send_message(CounterMessage::Increment(5))
             .expect("Failed to send message");
         actor
-            .send_message::<Counter>(CounterMessage::Increment(10))
+            .send_message(CounterMessage::Increment(10))
             .expect("Failed to send message");
         actor
-            .send_message::<Counter>(CounterMessage::Decrement(5))
+            .send_message(CounterMessage::Decrement(5))
             .expect("Failed to send message");
 
-        let rpc_result = rpc::call::<Counter, _, _>(
-            &actor,
-            CounterMessage::Retrieve,
-            Some(Duration::from_millis(10)),
-        )
-        .await
-        .expect("Failed to send RPC");
+        let rpc_result = actor
+            .call(CounterMessage::Retrieve, Some(Duration::from_millis(10)))
+            .await
+            .expect("Failed to send RPC");
 
         println!(
             "Count is: {}",

@@ -104,3 +104,36 @@ pub fn kill_after(period: Duration, actor: ActorCell) -> JoinHandle<()> {
         actor.kill()
     })
 }
+
+/// Add the timing functionality on top of the [crate::ActorRef]
+impl<TActor> crate::ActorRef<TActor>
+where
+    TActor: ActorHandler,
+{
+    /// Alias of [send_interval]
+    pub fn send_interval<F>(&self, period: Duration, msg: F) -> JoinHandle<()>
+    where
+        TActor: ActorHandler,
+        F: Fn() -> TActor::Msg + Send + 'static,
+    {
+        send_interval::<TActor, F>(period, self.get_cell(), msg)
+    }
+
+    /// Alias of [send_after]
+    pub fn send_after<F>(&self, period: Duration, msg: F) -> JoinHandle<Result<(), MessagingErr>>
+    where
+        F: Fn() -> TActor::Msg + Send + 'static,
+    {
+        send_after::<TActor, F>(period, self.get_cell(), msg)
+    }
+
+    /// Alias of [exit_after]
+    pub fn exit_after(&self, period: Duration) -> JoinHandle<()> {
+        exit_after(period, self.get_cell())
+    }
+
+    /// Alias of [kill_after]
+    pub fn kill_after(&self, period: Duration) -> JoinHandle<()> {
+        kill_after(period, self.get_cell())
+    }
+}

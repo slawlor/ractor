@@ -15,7 +15,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{self, Duration};
 
-use crate::{ActorCell, ActorHandler, Message, MessagingErr, RpcReplyPort};
+use crate::{ActorCell, ActorHandler, ActorRef, Message, MessagingErr, RpcReplyPort};
 
 pub mod call_result;
 pub use call_result::CallResult;
@@ -174,4 +174,52 @@ where
         }
         .map(|msg| response_forward.send_message::<TForwardActor>(forward_mapping(msg)))
     }))
+}
+
+impl<TActor> ActorRef<TActor>
+where
+    TActor: ActorHandler,
+{
+    /// Alias of [cast]
+    pub fn cast(&self, msg: TActor::Msg) -> Result<(), MessagingErr>
+    where
+        TActor: ActorHandler,
+    {
+        cast::<TActor>(&self.inner, msg)
+    }
+
+    /// Alias of [call]
+    pub async fn call<TReply, TMsgBuilder>(
+        &self,
+        msg_builder: TMsgBuilder,
+        timeout_option: Option<Duration>,
+    ) -> Result<CallResult<TReply>, MessagingErr>
+    where
+        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
+    {
+        call::<TActor, TReply, TMsgBuilder>(&self.inner, msg_builder, timeout_option).await
+    }
+
+    /// Alias of [call_and_forward]
+    pub fn call_and_forward<TReply, TForwardActor, TMsgBuilder, TFwdMessageBuilder>(
+        &self,
+        msg_builder: TMsgBuilder,
+        response_forward: &ActorRef<TForwardActor>,
+        forward_mapping: TFwdMessageBuilder,
+        timeout_option: Option<Duration>,
+    ) -> Result<tokio::task::JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
+    where
+        TReply: Message,
+        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
+        TForwardActor: ActorHandler,
+        TFwdMessageBuilder: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,
+    {
+        call_and_forward::<TActor, TForwardActor, TReply, TMsgBuilder, TFwdMessageBuilder>(
+            &self.inner,
+            msg_builder,
+            response_forward.inner.clone(),
+            forward_mapping,
+            timeout_option,
+        )
+    }
 }
