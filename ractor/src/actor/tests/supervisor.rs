@@ -59,7 +59,8 @@ async fn test_supervision_panic_in_post_startup() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
-                self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
+                self.flag
+                    .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
                 this_actor.stop(None);
             }
 
@@ -82,7 +83,7 @@ async fn test_supervision_panic_in_post_startup() {
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
-    assert_eq!(child_ref.get_id(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_tree.get_num_children());
@@ -134,7 +135,8 @@ async fn test_supervision_panic_in_handle() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
-                self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
+                self.flag
+                    .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
                 this_actor.stop(None);
             }
 
@@ -165,7 +167,7 @@ async fn test_supervision_panic_in_handle() {
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
-    assert_eq!(child_ref.get_id(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_tree.get_num_children());
@@ -215,7 +217,8 @@ async fn test_supervision_panic_in_post_stop() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
-                self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
+                self.flag
+                    .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
                 this_actor.stop(None);
             }
 
@@ -238,7 +241,7 @@ async fn test_supervision_panic_in_post_stop() {
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
-    assert_eq!(child_ref.get_id(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_tree.get_num_children());
@@ -311,7 +314,8 @@ async fn test_supervision_panic_in_supervisor_handle() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
-                self.flag.store(dead_actor.get_id(), Ordering::Relaxed);
+                self.flag
+                    .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
                 this_actor.stop(None);
             }
 
@@ -358,7 +362,10 @@ async fn test_supervision_panic_in_supervisor_handle() {
     let _ = m_handle.await;
 
     // check that we got the midpoint's ref id
-    assert_eq!(midpoint_ref_clone.get_id(), flag.load(Ordering::Relaxed));
+    assert_eq!(
+        midpoint_ref_clone.get_id().get_pid(),
+        flag.load(Ordering::Relaxed)
+    );
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_tree.get_num_children());
