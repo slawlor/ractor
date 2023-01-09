@@ -33,11 +33,10 @@ async fn test_intervals() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            state: &Self::State,
-        ) -> Option<Self::State> {
+            state: &mut Self::State,
+        ) {
             // stop the supervisor, which starts the supervision shutdown of children
             state.fetch_add(1, Ordering::Relaxed);
-            None
         }
     }
 
@@ -64,7 +63,7 @@ async fn test_intervals() {
     // kill the actor
     actor_ref.stop(None);
 
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
     // make sure the actor is dead + the interval handle doesn't send again
     assert!(interval_handle.is_finished());
     assert!(actor_handle.is_finished());
@@ -93,11 +92,10 @@ async fn test_send_after() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            state: &Self::State,
-        ) -> Option<Self::State> {
+            state: &mut Self::State,
+        ) {
             // stop the supervisor, which starts the supervision shutdown of children
             state.fetch_add(1, Ordering::Relaxed);
-            None
         }
     }
 
@@ -170,10 +168,9 @@ async fn test_kill_after() {
             &self,
             _myself: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            None
         }
     }
 

@@ -15,18 +15,16 @@
 //! which will be expanded upon as the library develops. Next in line is likely supervision strategies
 //! for automatic restart routines.
 
-use std::sync::Arc;
-
 use dashmap::DashMap;
 
 use super::{actor_cell::ActorCell, messages::SupervisionEvent};
 use crate::{ActorHandler, ActorId};
 
 /// A supervision tree
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct SupervisionTree {
-    children: Arc<DashMap<ActorId, ActorCell>>,
-    parents: Arc<DashMap<ActorId, ActorCell>>,
+    children: DashMap<ActorId, ActorCell>,
+    parents: DashMap<ActorId, ActorCell>,
 }
 
 impl SupervisionTree {

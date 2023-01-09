@@ -5,6 +5,8 @@
 
 //! Tests on the actor registry
 
+use tokio::time::Duration;
+
 use crate::{Actor, ActorHandler, SpawnErr};
 
 #[tokio::test]
@@ -88,6 +90,9 @@ async fn test_actor_registry_unenrollment() {
 
     // drop the actor ref's
     drop(actor);
+
+    // unenrollment is a cast operation, so it's not immediate. wait for cleanup
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // the actor was automatically removed
     assert!(crate::registry::try_get("unenrollment").is_none());

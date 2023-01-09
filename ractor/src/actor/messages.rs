@@ -146,6 +146,9 @@ pub enum SupervisionEvent {
     ),
     /// An actor panicked
     ActorPanicked(super::actor_cell::ActorCell, String),
+
+    /// A subscribed process group changed
+    ProcessGroupChanged(crate::pg::GroupChangeMessage),
 }
 
 impl Debug for SupervisionEvent {
@@ -169,6 +172,9 @@ impl std::fmt::Display for SupervisionEvent {
             }
             SupervisionEvent::ActorPanicked(actor, panic_msg) => {
                 write!(f, "Actor panicked {:?} - {}", actor, panic_msg)
+            }
+            SupervisionEvent::ProcessGroupChanged(change) => {
+                write!(f, "Process group {} changed", change.get_group())
             }
         }
     }
@@ -200,6 +206,7 @@ impl SupervisionEvent {
             Self::ActorPanicked(actor, message) => {
                 Ok(Self::ActorPanicked(actor.clone(), message.clone()))
             }
+            Self::ProcessGroupChanged(change) => Ok(Self::ProcessGroupChanged(change.clone())),
         }
     }
 }

@@ -55,11 +55,10 @@ async fn test_stop_higher_priority_over_messages() {
             &self,
             _myself: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             self.counter.fetch_add(1, Ordering::Relaxed);
             tokio::time::sleep(Duration::from_millis(100)).await;
-            None
         }
     }
 
@@ -119,10 +118,9 @@ async fn test_kill_terminates_work() {
             &self,
             _myself: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             tokio::time::sleep(Duration::from_secs(10)).await;
-            None
         }
     }
 
@@ -158,10 +156,9 @@ async fn test_stop_does_not_terminate_async_work() {
             &self,
             _myself: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            None
         }
     }
 
@@ -204,10 +201,9 @@ async fn test_kill_terminates_supervision_work() {
             &self,
             _myself: ActorRef<Self>,
             _message: SupervisionEvent,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            None
         }
     }
 

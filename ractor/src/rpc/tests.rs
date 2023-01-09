@@ -33,10 +33,9 @@ async fn test_rpc_cast() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             self.counter.fetch_add(1u8, Ordering::Relaxed);
-            None
         }
     }
 
@@ -83,8 +82,8 @@ async fn test_rpc_call() {
             &self,
             _this_actor: ActorRef<Self>,
             message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             match message {
                 Self::Msg::TestRpc(reply) => {
                     // An error sending means no one is listening anymore (the receiver was dropped),
@@ -94,7 +93,6 @@ async fn test_rpc_call() {
                     }
                 }
             }
-            None
         }
     }
 
@@ -141,8 +139,8 @@ async fn test_rpc_call_forwarding() {
             &self,
             _this_actor: ActorRef<Self>,
             message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             match message {
                 Self::Msg::TestRpc(reply) => {
                     // An error sending means no one is listening anymore (the receiver was dropped),
@@ -152,7 +150,6 @@ async fn test_rpc_call_forwarding() {
                     }
                 }
             }
-            None
         }
     }
 
@@ -177,15 +174,14 @@ async fn test_rpc_call_forwarding() {
             &self,
             _this_actor: ActorRef<Self>,
             message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             match message {
                 Self::Msg::ForwardResult(s) if s == *"howdy" => {
                     self.counter.fetch_add(1, Ordering::Relaxed);
                 }
                 _ => {}
             }
-            None
         }
     }
 

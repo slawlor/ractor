@@ -74,16 +74,15 @@
 //!         &self,
 //!         myself: ActorRef<Self>,
 //!         message: Self::Msg,
-//!         state: &Self::State,
-//!     ) -> Option<Self::State> {
+//!         state: &mut Self::State,
+//!     ) {
 //!         if *state < 10u8 {
 //!             message.print();
 //!             myself.send_message(message.next()).unwrap();
-//!             Some(*state + 1)
+//!             *state += 1;
 //!         } else {
 //!             myself.stop(None);
 //!             // don't send another message, rather stop the agent after 10 iterations
-//!             None
 //!         }
 //!     }
 //! }
@@ -141,8 +140,12 @@ use std::any::Any;
 /// An actor's `atom()` similar name
 pub type ActorName = &'static str;
 
+/// A process group's name, equivalent to an Erlang `atom()`
+pub type GroupName = &'static str;
+
 pub mod actor;
 pub mod actor_id;
+pub mod pg;
 pub mod port;
 pub mod registry;
 pub mod rpc;

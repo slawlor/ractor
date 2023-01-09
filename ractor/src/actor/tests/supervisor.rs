@@ -26,11 +26,7 @@ async fn test_supervision_panic_in_post_startup() {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
-        async fn post_start(
-            &self,
-            _this_actor: ActorRef<Self>,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+        async fn post_start(&self, _this_actor: ActorRef<Self>, _state: &mut Self::State) {
             panic!("Boom");
         }
     }
@@ -44,17 +40,16 @@ async fn test_supervision_panic_in_post_startup() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
-            None
+            _state: &mut Self::State,
+        ) {
         }
 
         async fn handle_supervisor_evt(
             &self,
             this_actor: ActorRef<Self>,
             message: SupervisionEvent,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             println!("Supervisor event received {:?}", message);
 
             // check that the panic was captured
@@ -63,8 +58,6 @@ async fn test_supervision_panic_in_post_startup() {
                     .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
                 this_actor.stop(None);
             }
-
-            None
         }
     }
 
@@ -74,8 +67,7 @@ async fn test_supervision_panic_in_post_startup() {
         .await
         .expect("Supervisor panicked on startup");
 
-    let supervisor_cell: ActorCell = supervisor_ref.into();
-    let supervisor_tree = supervisor_cell.get_tree();
+    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
     let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_cell)
         .await
@@ -86,7 +78,7 @@ async fn test_supervision_panic_in_post_startup() {
     assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
-    assert_eq!(0, supervisor_tree.get_num_children());
+    assert_eq!(0, supervisor_ref.get_num_children());
 }
 
 #[tokio::test]
@@ -105,8 +97,8 @@ async fn test_supervision_panic_in_handle() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             panic!("Boom");
         }
     }
@@ -120,17 +112,16 @@ async fn test_supervision_panic_in_handle() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
-            None
+            _state: &mut Self::State,
+        ) {
         }
 
         async fn handle_supervisor_evt(
             &self,
             this_actor: ActorRef<Self>,
             message: SupervisionEvent,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             println!("Supervisor event received {:?}", message);
 
             // check that the panic was captured
@@ -139,8 +130,6 @@ async fn test_supervision_panic_in_handle() {
                     .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
                 this_actor.stop(None);
             }
-
-            None
         }
     }
 
@@ -150,17 +139,15 @@ async fn test_supervision_panic_in_handle() {
         .await
         .expect("Supervisor panicked on startup");
 
-    let supervisor_cell: ActorCell = supervisor_ref.into();
-    let supervisor_tree = supervisor_cell.get_tree();
+    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
     let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_cell)
         .await
         .expect("Child panicked on startup");
 
     // check that the supervision is wired up correctly
-    assert_eq!(1, supervisor_tree.get_num_children());
-    let child_cell: ActorCell = child_ref.clone().into();
-    assert_eq!(1, child_cell.get_tree().get_num_parents());
+    assert_eq!(1, supervisor_ref.get_num_children());
+    assert_eq!(1, child_ref.get_num_parents());
 
     // trigger the child failure
     child_ref.send_message(()).expect("Failed to send message");
@@ -170,7 +157,7 @@ async fn test_supervision_panic_in_handle() {
     assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
-    assert_eq!(0, supervisor_tree.get_num_children());
+    assert_eq!(0, supervisor_ref.get_num_children());
 }
 
 #[tokio::test]
@@ -188,7 +175,7 @@ async fn test_supervision_panic_in_post_stop() {
             // trigger stop, which starts shutdown
             this_actor.stop(None);
         }
-        async fn post_stop(&self, _this_actor: ActorRef<Self>, _state: Self::State) -> Self::State {
+        async fn post_stop(&self, _this_actor: ActorRef<Self>, _state: &mut Self::State) {
             panic!("Boom");
         }
     }
@@ -202,17 +189,16 @@ async fn test_supervision_panic_in_post_stop() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
-            None
+            _state: &mut Self::State,
+        ) {
         }
 
         async fn handle_supervisor_evt(
             &self,
             this_actor: ActorRef<Self>,
             message: SupervisionEvent,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             println!("Supervisor event received {:?}", message);
 
             // check that the panic was captured
@@ -221,8 +207,6 @@ async fn test_supervision_panic_in_post_stop() {
                     .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
                 this_actor.stop(None);
             }
-
-            None
         }
     }
 
@@ -232,8 +216,7 @@ async fn test_supervision_panic_in_post_stop() {
         .await
         .expect("Supervisor panicked on startup");
 
-    let supervisor_cell: ActorCell = supervisor_ref.into();
-    let supervisor_tree = supervisor_cell.get_tree();
+    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
     let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_cell)
         .await
@@ -244,7 +227,7 @@ async fn test_supervision_panic_in_post_stop() {
     assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
 
     // supervisor relationship cleaned up correctly
-    assert_eq!(0, supervisor_tree.get_num_children());
+    assert_eq!(0, supervisor_ref.get_num_children());
 }
 
 /// Test that a panic in the supervisor's handling propogates to
@@ -266,8 +249,8 @@ async fn test_supervision_panic_in_supervisor_handle() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             panic!("Boom!");
         }
     }
@@ -281,12 +264,11 @@ async fn test_supervision_panic_in_supervisor_handle() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: SupervisionEvent,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             if let SupervisionEvent::ActorPanicked(_child, _msg) = _message {
                 panic!("Boom again!");
             }
-            None
         }
     }
 
@@ -299,17 +281,16 @@ async fn test_supervision_panic_in_supervisor_handle() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
-            None
+            _state: &mut Self::State,
+        ) {
         }
 
         async fn handle_supervisor_evt(
             &self,
             this_actor: ActorRef<Self>,
             message: SupervisionEvent,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             println!("Supervisor event received {:?}", message);
 
             // check that the panic was captured
@@ -318,8 +299,6 @@ async fn test_supervision_panic_in_supervisor_handle() {
                     .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
                 this_actor.stop(None);
             }
-
-            None
         }
     }
 
@@ -329,15 +308,13 @@ async fn test_supervision_panic_in_supervisor_handle() {
         .await
         .expect("Supervisor panicked on startup");
 
-    let supervisor_cell: ActorCell = supervisor_ref.into();
-    let supervisor_tree = supervisor_cell.get_tree();
+    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
     let (midpoint_ref, m_handle) = Actor::spawn_linked(None, Midpoint, supervisor_cell)
         .await
         .expect("Midpoint actor failed to startup");
 
     let midpoint_cell: ActorCell = midpoint_ref.clone().into();
-    let midpoint_tree = midpoint_cell.get_tree();
     let midpoint_ref_clone = midpoint_ref.clone();
 
     let (child_ref, c_handle) = Actor::spawn_linked(None, Child, midpoint_cell)
@@ -345,11 +322,10 @@ async fn test_supervision_panic_in_supervisor_handle() {
         .expect("Child panicked on startup");
 
     // check that the supervision is wired up correctly
-    assert_eq!(1, supervisor_tree.get_num_children());
-    assert_eq!(1, midpoint_tree.get_num_children());
-    assert_eq!(1, midpoint_tree.get_num_parents());
-    let child_cell: ActorCell = child_ref.clone().into();
-    assert_eq!(1, child_cell.get_tree().get_num_parents());
+    assert_eq!(1, supervisor_ref.get_num_children());
+    assert_eq!(1, midpoint_ref.get_num_children());
+    assert_eq!(1, midpoint_ref.get_num_parents());
+    assert_eq!(1, child_ref.get_num_parents());
 
     // trigger the child failure
     child_ref.send_message(()).expect("Failed to send message");
@@ -368,7 +344,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
     );
 
     // supervisor relationship cleaned up correctly
-    assert_eq!(0, supervisor_tree.get_num_children());
+    assert_eq!(0, supervisor_ref.get_num_children());
 }
 
 #[tokio::test]
@@ -392,11 +368,10 @@ async fn test_killing_a_supervisor_terminates_children() {
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
-            _state: &Self::State,
-        ) -> Option<Self::State> {
+            _state: &mut Self::State,
+        ) {
             // stop the supervisor, which starts the supervision shutdown of children
             _this_actor.stop(None);
-            None
         }
     }
 
@@ -404,15 +379,13 @@ async fn test_killing_a_supervisor_terminates_children() {
         .await
         .expect("Supervisor panicked on startup");
 
-    let supervisor_tree = supervisor_ref.get_tree();
-
     let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref.clone().into())
         .await
         .expect("Child panicked on startup");
 
     // check that the supervision is wired up correctly
-    assert_eq!(1, supervisor_tree.get_num_children());
-    assert_eq!(1, child_ref.clone().get_tree().get_num_parents());
+    assert_eq!(1, supervisor_ref.get_num_children());
+    assert_eq!(1, child_ref.get_num_parents());
 
     // initate the shutdown of the supervisor
     supervisor_ref

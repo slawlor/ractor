@@ -34,19 +34,13 @@ impl ActorHandler for Publisher {
 
     async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
 
-    async fn handle(
-        &self,
-        _myself: ActorRef<Self>,
-        message: Self::Msg,
-        _state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
         match message {
             Self::Msg::Publish(msg) => {
                 println!("Publishing {}", msg);
                 self.output.send(format!("Published: {}", msg));
             }
         }
-        None
     }
 }
 
@@ -64,12 +58,7 @@ impl ActorHandler for Subscriber {
 
     async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
 
-    async fn handle(
-        &self,
-        myself: ActorRef<Self>,
-        message: Self::Msg,
-        _state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
         match message {
             Self::Msg::Published(msg) => {
                 println!(
@@ -78,7 +67,6 @@ impl ActorHandler for Subscriber {
                 );
             }
         }
-        None
     }
 }
 

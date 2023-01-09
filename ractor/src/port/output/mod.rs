@@ -74,16 +74,7 @@ where
         let mut subs = self.subscriptions.write().unwrap();
 
         // filter out dead subscriptions, since they're no longer valid
-        let dead_subs = subs
-            .iter()
-            .enumerate()
-            .rev()
-            .filter(|(_, sub)| sub.is_dead())
-            .map(|(a, _)| a)
-            .collect::<Vec<_>>();
-        for dead_sub in dead_subs {
-            subs.remove(dead_sub);
-        }
+        subs.retain(|sub| !sub.is_dead());
 
         let sub = OutputPortSubscription::new::<TMsg, F, TReceiver>(
             self.tx.subscribe(),

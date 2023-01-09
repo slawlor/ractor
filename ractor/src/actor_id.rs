@@ -18,6 +18,15 @@ pub enum ActorId {
     Remote(u64, u64),
 }
 
+impl ActorId {
+    /// Determine if this actor id is a local or remote actor
+    ///
+    /// Returns [true] if it is a local actor, [false] otherwise
+    pub fn is_local(&self) -> bool {
+        matches!(self, ActorId::Local(_))
+    }
+}
+
 impl Display for ActorId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

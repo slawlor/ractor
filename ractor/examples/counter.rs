@@ -41,24 +41,18 @@ impl ActorHandler for Counter {
         CounterState { count: 0 }
     }
 
-    async fn handle(
-        &self,
-        _myself: ActorRef<Self>,
-        message: Self::Msg,
-        state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
         match message {
-            CounterMessage::Increment(how_much) => Some(CounterState {
-                count: state.count + how_much,
-            }),
-            CounterMessage::Decrement(how_much) => Some(CounterState {
-                count: state.count - how_much,
-            }),
+            CounterMessage::Increment(how_much) => {
+                state.count += how_much;
+            }
+            CounterMessage::Decrement(how_much) => {
+                state.count -= how_much;
+            }
             CounterMessage::Retrieve(reply_port) => {
                 if !reply_port.is_closed() {
                     reply_port.send(state.count).unwrap();
                 }
-                None
             }
         }
     }

@@ -34,8 +34,8 @@ async fn test_single_forward() {
             &self,
             myself: ActorRef<Self>,
             message: Self::Msg,
-            state: &Self::State,
-        ) -> Option<Self::State> {
+            state: &mut Self::State,
+        ) {
             println!("Test actor received a message");
             match message {
                 Self::Msg::Stop => {
@@ -44,7 +44,7 @@ async fn test_single_forward() {
                     }
                 }
             }
-            Some(*state + 1)
+            *state += 1;
         }
     }
 
@@ -90,8 +90,8 @@ async fn test_50_receivers() {
             &self,
             myself: ActorRef<Self>,
             message: Self::Msg,
-            state: &Self::State,
-        ) -> Option<Self::State> {
+            state: &mut Self::State,
+        ) {
             println!("Test actor received a message");
             match message {
                 Self::Msg::Stop => {
@@ -100,7 +100,7 @@ async fn test_50_receivers() {
                     }
                 }
             }
-            Some(*state + 1)
+            *state += 1;
         }
     }
 

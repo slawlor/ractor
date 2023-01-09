@@ -48,8 +48,14 @@ impl<T> CallResult<T> {
     pub fn expect(self, msg: &'static str) -> T {
         match self {
             Self::Success(t) => t,
-            Self::Timeout => panic!("{}", msg),
-            Self::SenderError => panic!("{}", msg),
+            Self::Timeout => panic!(
+                "{} - called CallResult::<T>::expect()  on a `Timeout` value",
+                msg
+            ),
+            Self::SenderError => panic!(
+                "{} - called CallResult::<T>::expect() on a `SenderError` value",
+                msg
+            ),
         }
     }
 
