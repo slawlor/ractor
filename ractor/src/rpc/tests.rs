@@ -246,3 +246,5 @@ async fn test_rpc_call_forwarding() {
     forwarder_handle.await.expect("Actor stopped with err");
     worker_handle.await.expect("Actor stopped with err");
 }
+
+// TODO: test multi_call

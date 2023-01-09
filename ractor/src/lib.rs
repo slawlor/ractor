@@ -136,6 +136,7 @@
 #![warn(unused_crate_dependencies)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+use std::any::Any;
 use std::sync::atomic::AtomicU64;
 
 /// An actor's globally unique identifier
@@ -143,8 +144,12 @@ pub type ActorId = u64;
 /// The global id allocator for actors
 pub static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0u64);
 
+/// An actor's `atom()` similar name
+pub type ActorName = &'static str;
+
 pub mod actor;
 pub mod port;
+pub mod registry;
 pub mod rpc;
 pub mod time;
 
@@ -155,13 +160,27 @@ pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorHandler};
 pub use port::{InputPort, RpcReplyPort};
 
-/// Message type for an actor
+/// Message type for an actor. Generally an enum
+/// which muxes the various types of inner-messages the actor
+/// supports
+///
+/// ## Example
+///
+/// ```rust
+/// pub enum MyMessage {
+///     /// Record the name to the actor state
+///     RecordName(String),
+///     /// Print the recorded name from the state to command line
+///     PrintName,
+/// }
+/// ```
 pub trait Message: Send + 'static {}
 impl<T: Send + 'static> Message for T {}
 
-/// Represents the state of an actor
-pub trait State: Clone + Sync + Send + 'static {}
-impl<T: Clone + Sync + Send + 'static> State for T {}
+/// Represents the state of an actor. Must be safe
+/// to send between threads
+pub trait State: Any + Sync + Send + 'static {}
+impl<T: Any + Sync + Send + 'static> State for T {}
 
 /// Error types which can result from Ractor processes
 #[derive(Debug)]

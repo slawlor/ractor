@@ -319,9 +319,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor, supervisor_ports) = Actor::new(None, Supervisor { flag: flag.clone() });
-    let (supervisor_ref, s_handle) = supervisor
-        .start(supervisor_ports, None)
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
         .await
         .expect("Supervisor panicked on startup");
 

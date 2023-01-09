@@ -4,6 +4,11 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 //! Port implementations for signaling and reception of messages in the Ractor environment
+//!
+//! Most of the ports we utilize are direct aliases of [tokio]'s channels
+//! (in the `sync` feature of the crate), however there are some helpful wrappers
+//! and utilities to make working with mailbox processing in `ractor` easier in
+//! the actor framework.
 
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;

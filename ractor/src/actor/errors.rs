@@ -7,8 +7,10 @@
 
 use std::fmt::Display;
 
+use crate::ActorName;
+
 /// Spawn errors starting an actor
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum SpawnErr {
     /// Actor panic'd during startup
     StartupPanic(String),
@@ -16,6 +18,8 @@ pub enum SpawnErr {
     StartupCancelled,
     /// An actor cannot be started > 1 time
     ActorAlreadyStarted,
+    /// The named actor is already registered in the registry
+    ActorAlreadyRegistered(ActorName),
 }
 
 impl Display for SpawnErr {
@@ -32,6 +36,23 @@ impl Display for SpawnErr {
             }
             Self::ActorAlreadyStarted => {
                 write!(f, "Actor cannot be re-started more than once")
+            }
+            Self::ActorAlreadyRegistered(actor_name) => {
+                write!(
+                    f,
+                    "Actor '{}' is already registered in the actor registry",
+                    actor_name
+                )
+            }
+        }
+    }
+}
+
+impl From<crate::registry::ActorRegistryErr> for SpawnErr {
+    fn from(value: crate::registry::ActorRegistryErr) -> Self {
+        match value {
+            crate::registry::ActorRegistryErr::AlreadyRegistered(actor_name) => {
+                SpawnErr::ActorAlreadyRegistered(actor_name)
             }
         }
     }

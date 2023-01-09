@@ -3,10 +3,15 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Messages which are built-in for the actor
+//! Messages which are built-in for `ractor`'s processing routines
+//!
+//! Additionally contains definitions for [BoxedMessage] and [BoxedState]
+//! which are used to handle strongly-typed messages and states in a
+//! generic way without having to know the strong type in the underlying framework
 
 use std::any::Any;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use crate::{Message, State};
 
@@ -54,33 +59,43 @@ impl BoxedMessage {
 
 /// A "boxed" state denoting a strong-type state
 /// but generic so it can be passed around without type
-/// constraints
-#[derive(Debug)]
+/// constraints.
+///
+/// It is a shared [Arc] to the last [crate::ActorHandler::State]
+/// that the actor reported. This means, that the state shouldn't
+/// be mutated once the actor is dead, it should be generally
+/// immutable since a shared [Arc] will be sent to every supervisor
 pub struct BoxedState {
     /// The state value
-    pub state: Box<dyn Any + Send>,
+    pub state: Box<dyn Any + Send + Sync + 'static>,
+}
+
+impl Debug for BoxedState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BoxedState")
+    }
 }
 
 impl BoxedState {
     /// Create a new [BoxedState] from a strongly-typed state
     pub fn new<T>(msg: T) -> Self
     where
-        T: Any + State,
+        T: State,
     {
         Self {
-            state: Box::new(msg),
+            state: Box::new(Arc::new(msg)),
         }
     }
 
     /// Try and take the resulting type via cloning, such that we don't
     /// consume the value
-    pub fn take<T>(&self) -> Result<T, BoxedDowncastErr>
+    pub fn take<T>(&self) -> Result<Arc<T>, BoxedDowncastErr>
     where
-        T: Any + State,
+        T: State,
     {
         let state_ref = &self.state;
-        if state_ref.is::<T>() {
-            Ok(state_ref.downcast_ref::<T>().cloned().unwrap())
+        if state_ref.is::<Arc<T>>() {
+            Ok(state_ref.downcast_ref::<Arc<T>>().cloned().unwrap())
         } else {
             Err(BoxedDowncastErr)
         }
@@ -101,17 +116,62 @@ pub(crate) enum StopMessage {
     Reason(String),
 }
 
+impl Debug for StopMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Stop message: {}", self)
+    }
+}
+
+impl std::fmt::Display for StopMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stop => write!(f, "Stop"),
+            Self::Reason(reason) => write!(f, "Stop (reason = {})", reason),
+        }
+    }
+}
+
 /// A supervision event from the supervision tree
-#[derive(Debug)]
 pub enum SupervisionEvent {
     /// An actor was started
     ActorStarted(super::actor_cell::ActorCell),
     /// An actor terminated. In the event it shutdown cleanly (i.e. didn't panic or get
     /// signaled) we capture the last state of the actor which can be used to re-build an actor
-    /// should the need arise
-    ActorTerminated(super::actor_cell::ActorCell, Option<BoxedState>),
+    /// should the need arise. Includes an optional "exit reason" if it could be captured
+    /// and was provided
+    ActorTerminated(
+        super::actor_cell::ActorCell,
+        Option<BoxedState>,
+        Option<String>,
+    ),
     /// An actor panicked
     ActorPanicked(super::actor_cell::ActorCell, String),
+}
+
+impl Debug for SupervisionEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Supervision event: {}", self)
+    }
+}
+
+impl std::fmt::Display for SupervisionEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SupervisionEvent::ActorStarted(actor) => {
+                write!(f, "Started actor {:?}", actor)
+            }
+            SupervisionEvent::ActorTerminated(actor, _, reason) => {
+                if let Some(r) = reason {
+                    write!(f, "Stopped actor {:?} (reason = {})", actor, r)
+                } else {
+                    write!(f, "Stopped actor {:?}", actor)
+                }
+            }
+            SupervisionEvent::ActorPanicked(actor, panic_msg) => {
+                write!(f, "Actor panicked {:?} - {}", actor, panic_msg)
+            }
+        }
+    }
 }
 
 impl SupervisionEvent {
@@ -125,13 +185,17 @@ impl SupervisionEvent {
     {
         match self {
             Self::ActorStarted(actor) => Ok(Self::ActorStarted(actor.clone())),
-            Self::ActorTerminated(actor, maybe_state) => {
+            Self::ActorTerminated(actor, maybe_state, maybe_exit_reason) => {
                 let cloned_maybe_state = match maybe_state {
                     Some(state) => Some(state.take::<TState>()?),
                     _ => None,
                 }
                 .map(BoxedState::new);
-                Ok(Self::ActorTerminated(actor.clone(), cloned_maybe_state))
+                Ok(Self::ActorTerminated(
+                    actor.clone(),
+                    cloned_maybe_state,
+                    maybe_exit_reason.clone(),
+                ))
             }
             Self::ActorPanicked(actor, message) => {
                 Ok(Self::ActorPanicked(actor.clone(), message.clone()))
@@ -141,8 +205,24 @@ impl SupervisionEvent {
 }
 
 /// A signal message which takes priority above all else
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Signal {
     /// Terminate the agent, cancelling all async work immediately
     Kill,
+}
+
+impl Debug for Signal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Signal: {}", self)
+    }
+}
+
+impl std::fmt::Display for Signal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Kill => {
+                write!(f, "killed")
+            }
+        }
+    }
 }

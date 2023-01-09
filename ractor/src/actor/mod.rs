@@ -23,7 +23,7 @@ pub mod supervision;
 #[cfg(test)]
 mod tests;
 
-use crate::{Message, State};
+use crate::{ActorName, Message, State};
 use actor_cell::{ActorCell, ActorPortSet, ActorStatus};
 use errors::{ActorErr, MessagingErr, SpawnErr};
 
@@ -162,7 +162,7 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
 pub struct Actor<TMsg, TState, THandler>
 where
     TMsg: Message,
-    TState: State + Clone,
+    TState: State,
     THandler: ActorHandler<Msg = TMsg, State = TState>,
 {
     base: ActorCell,
@@ -172,7 +172,7 @@ where
 impl<TMsg, TState, THandler> Actor<TMsg, TState, THandler>
 where
     TMsg: Message,
-    TState: State + Clone,
+    TState: State,
     THandler: ActorHandler<Msg = TMsg, State = TState>,
 {
     /// Spawn an actor, which is unsupervised, automatically starting the actor
@@ -184,10 +184,10 @@ where
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
     /// the actor failed to start
     pub async fn spawn(
-        name: Option<String>,
+        name: Option<ActorName>,
         handler: THandler,
     ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
-        let (actor, ports) = Self::new(name, handler);
+        let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, None).await
     }
 
@@ -201,11 +201,11 @@ where
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
     /// the actor failed to start
     pub async fn spawn_linked(
-        name: Option<String>,
+        name: Option<ActorName>,
         handler: THandler,
         supervisor: ActorCell,
     ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
-        let (actor, ports) = Self::new(name, handler);
+        let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, Some(supervisor)).await
     }
 
@@ -215,15 +215,15 @@ where
     /// * `handler` The [ActorHandler] defining the logic for this actor
     ///
     /// Returns A tuple [(Actor, ActorPortSet)] to be passed to the `start` function of [Actor]
-    fn new(name: Option<String>, handler: THandler) -> (Self, ActorPortSet) {
-        let (actor_cell, ports) = ActorCell::new(name);
-        (
+    fn new(name: Option<ActorName>, handler: THandler) -> Result<(Self, ActorPortSet), SpawnErr> {
+        let (actor_cell, ports) = ActorCell::new(name)?;
+        Ok((
             Self {
                 base: actor_cell,
                 handler: Arc::new(handler),
             },
             ports,
-        )
+        ))
     }
 
     /// Start the actor immediately, optionally linking to a parent actor (supervision tree)
@@ -266,14 +266,17 @@ where
                 match Self::processing_loop(ports, state, self.handler.clone(), self.base.clone())
                     .await
                 {
-                    Ok(last_state) => SupervisionEvent::ActorTerminated(
+                    Ok((last_state, exit_reason)) => SupervisionEvent::ActorTerminated(
                         myself.clone(),
                         Some(BoxedState::new(last_state)),
+                        exit_reason,
                     ),
                     Err(actor_err) => match actor_err {
-                        ActorErr::Cancelled => {
-                            SupervisionEvent::ActorTerminated(myself.clone(), None)
-                        }
+                        ActorErr::Cancelled => SupervisionEvent::ActorTerminated(
+                            myself.clone(),
+                            None,
+                            Some("killed".to_string()),
+                        ),
                         ActorErr::Panic(msg) => {
                             SupervisionEvent::ActorPanicked(myself.clone(), msg)
                         }
@@ -301,9 +304,9 @@ where
         state: TState,
         handler: Arc<THandler>,
         myself: ActorCell,
-    ) -> Result<TState, ActorErr> {
+    ) -> Result<(TState, Option<String>), ActorErr> {
         // perform the post-start, with supervision enabled
-        let mut state = Self::do_post_start(myself.clone(), handler.clone(), state).await?;
+        let state = Self::do_post_start(myself.clone(), handler.clone(), state).await?;
 
         myself.set_status(ActorStatus::Running);
         myself.notify_supervisors::<THandler>(SupervisionEvent::ActorStarted(myself.clone()));
@@ -312,34 +315,42 @@ where
         let myself_clone = myself.clone();
         let handler_clone = handler.clone();
 
-        let last_state = Arc::new(tokio::sync::RwLock::new(state.clone()));
+        // let last_state = Arc::new(tokio::sync::RwLock::new(state.clone()));
 
-        let last_state_clone = last_state.clone();
-        let handle = tokio::spawn(async move {
+        // let last_state_clone = last_state.clone();
+        let handle: JoinHandle<(TState, Option<String>)> = tokio::spawn(async move {
             let mut ports = ports;
-            while let (n_state, false) = Self::process_message(
-                myself_clone.clone(),
-                state,
-                handler_clone.clone(),
-                &mut ports,
-            )
-            .await
-            {
-                state = n_state;
-                *(last_state_clone.write().await) = state.clone();
+            let mut p_state = state;
+            // the message processing loop. If we get and exit flag, try and capture the exit reason if there
+            // is one
+            loop {
+                let (n_state, should_exit, maybe_exit_reason) = Self::process_message(
+                    myself_clone.clone(),
+                    p_state,
+                    handler_clone.clone(),
+                    &mut ports,
+                )
+                .await;
+                p_state = n_state;
+                // processing loop exit
+                if should_exit {
+                    return (p_state, maybe_exit_reason);
+                }
             }
         });
 
-        match handle_panickable(handle).await {
-            PanickableResult::Ok(_) => (),
-            PanickableResult::Cancelled => return Err(ActorErr::Cancelled),
-            PanickableResult::Panic(msg) => return Err(ActorErr::Panic(msg)),
-        }
+        let loop_done = match handle_panickable(handle).await {
+            PanickableResult::Ok(r) => Ok(r),
+            PanickableResult::Cancelled => Err(ActorErr::Cancelled),
+            PanickableResult::Panic(msg) => Err(ActorErr::Panic(msg)),
+        };
 
         myself.set_status(ActorStatus::Stopping);
 
-        let deref_state = last_state.read().await;
-        Self::do_post_stop(myself, handler, deref_state.clone()).await
+        let (last_state, exit_reason) = loop_done?;
+
+        let last_state = Self::do_post_stop(myself, handler, last_state).await?;
+        Ok((last_state, exit_reason))
     }
 
     /// Process a message, returning the "new" state (if changed)
@@ -357,55 +368,59 @@ where
         state: TState,
         handler: Arc<THandler>,
         ports: &mut ActorPortSet,
-    ) -> (TState, bool) {
-        tokio::select! {
-            signal = ports.signal_rx.recv() => {
-                Self::handle_signal(myself, signal.unwrap_or(Signal::Kill)).await;
-                (state, true)
-            },
-            _stop = ports.stop_rx.recv() => {
-                // TODO: pass the "stop reason" somewhere
-                (state, true)
-            },
-            supervision = ports.supervisor_rx.recv() => {
-                if let Ok(signal) = ports.signal_rx.try_recv() {
-                    Self::handle_signal(myself, signal).await;
-                    (state, true)
-                } else if let Ok(_stop) = ports.stop_rx.try_recv() {
-                    // TODO: pass the stop reason up
-                    (state, true)
-                } else {
-                    match supervision {
-                        None => (state, true),
-                        Some(s) => Self::handle_supervision_message(myself.clone(), ports, state, handler.clone(), s).await
+    ) -> (TState, bool, Option<String>) {
+        match ports.listen_in_priority().await {
+            Ok(actor_port_message) => match actor_port_message {
+                actor_cell::ActorPortMessage::Signal(signal) => {
+                    (state, true, Self::handle_signal(myself, signal).await)
+                }
+                actor_cell::ActorPortMessage::Stop(stop_message) => {
+                    let exit_reason = match stop_message {
+                        StopMessage::Stop => None,
+                        StopMessage::Reason(reason) => Some(reason),
+                    };
+                    (state, true, exit_reason)
+                }
+                actor_cell::ActorPortMessage::Supervision(supervision) => {
+                    let new_state_future = Self::handle_supervision_message(
+                        myself.clone(),
+                        &state,
+                        handler.clone(),
+                        supervision,
+                    );
+                    let new_state = ports.run_with_signal(new_state_future).await;
+                    match new_state {
+                        Ok(s) => (s.unwrap_or(state), false, None),
+                        Err(signal) => (state, true, Self::handle_signal(myself, signal).await),
                     }
                 }
-            }
-            message = ports.message_rx.recv() => {
-                // double check signal and stop to make sure they have priority
-                if let Ok(signal) = ports.signal_rx.try_recv() {
-                    Self::handle_signal(myself, signal).await;
-                    (state, true)
-                } else if let Ok(_stop) = ports.stop_rx.try_recv() {
-                    // TODO: pass the stop reason up
-                    (state, true)
-                } else {
-                    match message {
-                        None => (state, true),
-                        Some(m) => Self::handle_message(myself, ports, state, handler, m).await,
+                actor_cell::ActorPortMessage::Message(msg) => {
+                    let new_state_future =
+                        Self::handle_message(myself.clone(), &state, handler, msg);
+                    let new_state = ports.run_with_signal(new_state_future).await;
+                    match new_state {
+                        Ok(s) => (s.unwrap_or(state), false, None),
+                        Err(signal) => (state, true, Self::handle_signal(myself, signal).await),
                     }
                 }
+            },
+            Err(MessagingErr::ChannelClosed) => {
+                // one of the channels is closed, this means
+                // the receiver was dropped and in this case
+                // we should always die. Therefore we simply return
+                // the state and the flag to terminate
+                (state, true, None)
             }
         }
     }
 
     async fn handle_message(
         myself: ActorCell,
-        ports: &mut ActorPortSet,
-        state: TState,
+        state: &TState,
         handler: Arc<THandler>,
         mut msg: BoxedMessage,
-    ) -> (TState, bool) {
+    ) -> Option<TState> {
+        // panic in order to kill the actor
         let typed_msg = match msg.take() {
             Ok(m) => m,
             Err(_) => {
@@ -415,44 +430,26 @@ where
                 )
             }
         };
-        // NOTE: We listen for the signal port again during the processing of async work in order
-        // to "cancel" any pending work should a signal be received immediately
-        tokio::select! {
-            signal = ports.signal_rx.recv() => {
-                Self::handle_signal(myself, signal.unwrap_or(Signal::Kill)).await;
-                (state, true)
-            }
-            maybe_new_state = handler.handle(myself.clone(), typed_msg, &state) => {
-                (maybe_new_state.unwrap_or(state), false)
-            }
-        }
+
+        handler.handle(myself, typed_msg, state).await
     }
 
-    async fn handle_signal(myself: ActorCell, signal: Signal) {
+    async fn handle_signal(myself: ActorCell, signal: Signal) -> Option<String> {
         match &signal {
             Signal::Kill => {
                 myself.terminate();
             }
         }
+        Some(signal.to_string())
     }
 
     async fn handle_supervision_message(
         myself: ActorCell,
-        ports: &mut ActorPortSet,
-        state: TState,
+        state: &TState,
         handler: Arc<THandler>,
         message: SupervisionEvent,
-    ) -> (TState, bool) {
-        let me_clone = myself.clone();
-        tokio::select! {
-            signal = ports.signal_rx.recv() => {
-                Self::handle_signal(me_clone, signal.unwrap_or(Signal::Kill)).await;
-                (state, true)
-            }
-            maybe_new_state = handler.handle_supervisor_evt(myself, message, &state) => {
-                (maybe_new_state.unwrap_or(state), false)
-            }
-        }
+    ) -> Option<TState> {
+        handler.handle_supervisor_evt(myself, message, state).await
     }
 
     async fn do_pre_start(myself: ActorCell, handler: Arc<THandler>) -> Result<TState, SpawnErr> {
@@ -476,16 +473,12 @@ where
         handler: Arc<THandler>,
         state: TState,
     ) -> Result<TState, ActorErr> {
-        // TODO: Not a fan of cloning here :/ but the async move moves ownership of "state" into
-        // the async block
-        let original_state = state.clone();
         let post_start_result = handle_panickable(tokio::spawn(async move {
-            handler.post_start(myself, &state).await
+            handler.post_start(myself, &state).await.unwrap_or(state)
         }))
         .await;
         match post_start_result {
-            PanickableResult::Ok(Some(new_state)) => Ok(new_state),
-            PanickableResult::Ok(None) => Ok(original_state),
+            PanickableResult::Ok(new_state) => Ok(new_state),
             PanickableResult::Cancelled => Err(ActorErr::Cancelled),
             PanickableResult::Panic(panic_information) => Err(ActorErr::Panic(format!(
                 "Actor panicked in post_start with '{}'",

@@ -3,8 +3,14 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Helpers for remote-procedure calls
+//! Remote procedure calls (RPC) are helpful communication primitives to communicate with actors
+//!
+//! There are generally 2 kinds of RPCs, cast and call, and their definition comes from the
+//! standard [Erlang `gen_server`](https://www.erlang.org/doc/man/gen_server.html#cast-2).
+//! The tl;dr is that `cast` is an send without waiting on a reply while `call` is expecting
+//! a reply from the actor being communicated with.
 
+use futures::future::join_all;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{self, Duration};
@@ -65,6 +71,60 @@ where
             Err(_send_err) => CallResult::SenderError,
         }
     })
+}
+
+/// Sends an asynchronous request to the specified actors, building a one-time
+/// use reply channel for each actor and awaiting the results with the
+/// specified timeout
+///
+/// * `actors` - A reference to the group of [ActorCell]s to communicate with
+/// * `msg_builder` - The [FnOnce] to construct the message
+/// * `timeout_option` - An optional [Duration] which represents the amount of
+/// time until the operation times out
+///
+/// Returns [Ok(`Vec<CallResult<TReply>>>`)] upon successful initial sending with the reply from
+/// the [crate::Actor]s, [Err(MessagingErr)] if the initial send operation failed
+pub async fn multi_call<TActor, TReply, TMsgBuilder>(
+    actors: &[ActorCell],
+    msg_builder: TMsgBuilder,
+    timeout_option: Option<Duration>,
+) -> Result<Vec<CallResult<TReply>>, MessagingErr>
+where
+    TActor: ActorHandler,
+    TMsgBuilder: Fn(RpcReplyPort<TReply>) -> TActor::Msg,
+{
+    let mut rx_ports = Vec::with_capacity(actors.len());
+    // send to all actors
+    for actor in actors {
+        let (tx, rx) = oneshot::channel();
+        actor.send_message::<TActor>(msg_builder(tx.into()))?;
+        rx_ports.push(rx);
+    }
+
+    let results: Vec<_> = async move {
+        if let Some(duration) = timeout_option {
+            join_all(rx_ports.into_iter().map(|rx| async {
+                match tokio::time::timeout(duration, rx).await {
+                    Ok(Ok(result)) => CallResult::Success(result),
+                    Ok(Err(_send_err)) => CallResult::SenderError,
+                    Err(_) => CallResult::Timeout,
+                }
+            }))
+            .await
+        } else {
+            join_all(rx_ports.into_iter().map(|rx| async {
+                match rx.await {
+                    Ok(result) => CallResult::Success(result),
+                    Err(_send_err) => CallResult::SenderError,
+                }
+            }))
+            .await
+        }
+    }
+    .await;
+
+    // wait for the replies
+    Ok(results)
 }
 
 /// Send a message asynchronously to another actor, waiting in a new task for the reply
