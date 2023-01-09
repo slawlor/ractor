@@ -137,28 +137,28 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 use std::any::Any;
-use std::sync::atomic::AtomicU64;
-
-/// An actor's globally unique identifier
-pub type ActorId = u64;
-/// The global id allocator for actors
-pub static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0u64);
 
 /// An actor's `atom()` similar name
 pub type ActorName = &'static str;
 
 pub mod actor;
+pub mod actor_id;
 pub mod port;
 pub mod registry;
 pub mod rpc;
 pub mod time;
+
+// WIP
+// #[cfg(feature = "remote")]
+// pub mod distributed;
 
 // re-exports
 pub use actor::actor_cell::{ActorCell, ActorRef, ActorStatus, ACTIVE_STATES};
 pub use actor::errors::{ActorErr, MessagingErr, SpawnErr};
 pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorHandler};
-pub use port::{InputPort, RpcReplyPort};
+pub use actor_id::ActorId;
+pub use port::{InputPort, OutputMessage, OutputPort, RpcReplyPort};
 
 /// Message type for an actor. Generally an enum
 /// which muxes the various types of inner-messages the actor

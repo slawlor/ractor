@@ -28,9 +28,8 @@ pub type InputPort<TMsg> = mpsc::UnboundedSender<TMsg>;
 pub(crate) type InputPortReceiver<TMsg> = mpsc::UnboundedReceiver<TMsg>;
 
 // ============ Output Ports ============ //
-// TODO: outputs with auto-subscriptions
-// pub mod output;
-// pub use output::*;
+pub mod output;
+pub use output::*;
 
 // ============ Rpc (one-use) Ports ============ //
 

@@ -47,7 +47,7 @@ impl ActorProperties {
         let (tx_message, rx_message) = mpsc::unbounded_channel();
         (
             Self {
-                id: crate::ACTOR_ID_ALLOCATOR.fetch_add(1u64, Ordering::Relaxed),
+                id: crate::actor_id::get_new_local_id(),
                 name,
                 status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
                 signal: tx_signal,
