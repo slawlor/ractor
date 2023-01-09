@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::time::Duration;
 
 use crate::rpc;
-use crate::{Actor, ActorCell, ActorHandler};
+use crate::{Actor, ActorHandler, ActorRef};
 
 #[tokio::test]
 async fn test_rpc_cast() {
@@ -27,11 +27,11 @@ async fn test_rpc_cast() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
 
         async fn handle(
             &self,
-            _this_actor: ActorCell,
+            _this_actor: ActorRef<Self>,
             _message: Self::Msg,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -49,10 +49,8 @@ async fn test_rpc_cast() {
     .await
     .expect("Failed to start test actor");
 
-    rpc::cast::<TestActor>(&actor_ref, ()).expect("Failed to send message");
-    actor_ref
-        .cast::<TestActor>(())
-        .expect("Failed to send message");
+    actor_ref.cast(()).expect("Failed to send message");
+    actor_ref.cast(()).expect("Failed to send message");
 
     // make sure they have time to process
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -79,11 +77,11 @@ async fn test_rpc_call() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
 
         async fn handle(
             &self,
-            _this_actor: ActorCell,
+            _this_actor: ActorRef<Self>,
             message: Self::Msg,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -104,18 +102,15 @@ async fn test_rpc_call() {
         .await
         .expect("Failed to start test actor");
 
-    let rpc_result = rpc::call::<TestActor, _, _>(
-        &actor_ref,
-        MessageFormat::TestRpc,
-        Some(Duration::from_millis(100)),
-    )
-    .await
-    .expect("Failed to send message to actor")
-    .expect("RPC didn't succeed");
+    let rpc_result = actor_ref
+        .call(MessageFormat::TestRpc, Some(Duration::from_millis(100)))
+        .await
+        .expect("Failed to send message to actor")
+        .expect("RPC didn't succeed");
     assert_eq!("howdy".to_string(), rpc_result);
 
     let rpc_result = actor_ref
-        .call::<TestActor, _, _, _>(MessageFormat::TestRpc, Some(Duration::from_millis(100)))
+        .call(MessageFormat::TestRpc, Some(Duration::from_millis(100)))
         .await
         .expect("Failed to send message to actor")
         .expect("RPC didn't succeed");
@@ -140,11 +135,11 @@ async fn test_rpc_call_forwarding() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
 
         async fn handle(
             &self,
-            _this_actor: ActorCell,
+            _this_actor: ActorRef<Self>,
             message: Self::Msg,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -176,11 +171,11 @@ async fn test_rpc_call_forwarding() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: ActorCell) -> Self::State {}
+        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
 
         async fn handle(
             &self,
-            _this_actor: ActorCell,
+            _this_actor: ActorRef<Self>,
             message: Self::Msg,
             _state: &Self::State,
         ) -> Option<Self::State> {
@@ -207,10 +202,9 @@ async fn test_rpc_call_forwarding() {
     .await
     .expect("Failed to start forwarder actor");
 
-    let forward_handle = rpc::call_and_forward::<Worker, Forwarder, _, _, _>(
-        &worker_ref,
+    let forward_handle = worker_ref.call_and_forward(
         WorkerMessage::TestRpc,
-        forwarder_ref.clone(),
+        &forwarder_ref,
         ForwarderMessage::ForwardResult,
         Some(Duration::from_millis(100)),
     );
@@ -222,9 +216,9 @@ async fn test_rpc_call_forwarding() {
         .expect("Call result didn't return success")
         .expect("Failed to forward message");
 
-    let forward_handle = worker_ref.call_and_forward::<Worker, Forwarder, _, _, _, _, _>(
+    let forward_handle = worker_ref.call_and_forward(
         WorkerMessage::TestRpc,
-        forwarder_ref.clone(),
+        &forwarder_ref,
         ForwarderMessage::ForwardResult,
         Some(Duration::from_millis(100)),
     );

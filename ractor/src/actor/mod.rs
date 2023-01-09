@@ -24,7 +24,7 @@ pub mod supervision;
 mod tests;
 
 use crate::{ActorName, Message, State};
-use actor_cell::{ActorCell, ActorPortSet, ActorStatus};
+use actor_cell::{ActorCell, ActorPortSet, ActorRef, ActorStatus};
 use errors::{ActorErr, MessagingErr, SpawnErr};
 
 pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> String {
@@ -81,7 +81,7 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     /// * `myself` - A handle to the [ActorCell] representing this actor
     ///
     /// Returns an initial [ActorHandler::State] to bootstrap the actor
-    async fn pre_start(&self, myself: ActorCell) -> Self::State;
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State;
 
     /// Invoked after an actor has started.
     ///
@@ -95,7 +95,7 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     ///
     /// Returns [Some(ActorHandler::State)] if the state should be updated with a new value, [None] otherwise
     #[allow(unused_variables)]
-    async fn post_start(&self, myself: ActorCell, state: &Self::State) -> Option<Self::State> {
+    async fn post_start(&self, myself: ActorRef<Self>, state: &Self::State) -> Option<Self::State> {
         None
     }
 
@@ -106,7 +106,7 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     ///
     /// Returns: The last [ActorHandler::State] (after doing any teardown) which might be necessary to re-create the actor
     #[allow(unused_variables)]
-    async fn post_stop(&self, myself: ActorCell, state: Self::State) -> Self::State {
+    async fn post_stop(&self, myself: ActorRef<Self>, state: Self::State) -> Self::State {
         state
     }
 
@@ -121,7 +121,7 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     async fn handle(
         &self,
-        myself: ActorCell,
+        myself: ActorRef<Self>,
         message: Self::Msg,
         state: &Self::State,
     ) -> Option<Self::State> {
@@ -139,21 +139,11 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     async fn handle_supervisor_evt(
         &self,
-        myself: ActorCell,
+        myself: ActorRef<Self>,
         message: SupervisionEvent,
         state: &Self::State,
     ) -> Option<Self::State> {
         None
-    }
-
-    /// Send a message to the specified actor, which is strong-typed to the message handler's type
-    ///
-    /// * `myself` - A handle to the [ActorCell] representing this actor
-    /// * `msg` - The message to send to this actor
-    ///
-    /// Returns [Ok(())] on successful send, [Err(MessagingError)] in the event sending failed
-    fn send_message(&self, myself: ActorCell, msg: Self::Msg) -> Result<(), MessagingErr> {
-        myself.send_message::<Self>(msg)
     }
 }
 
@@ -165,7 +155,7 @@ where
     TState: State,
     THandler: ActorHandler<Msg = TMsg, State = TState>,
 {
-    base: ActorCell,
+    base: ActorRef<THandler>,
     handler: Arc<THandler>,
 }
 
@@ -186,7 +176,7 @@ where
     pub async fn spawn(
         name: Option<ActorName>,
         handler: THandler,
-    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, None).await
     }
@@ -204,7 +194,7 @@ where
         name: Option<ActorName>,
         handler: THandler,
         supervisor: ActorCell,
-    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, Some(supervisor)).await
     }
@@ -216,10 +206,10 @@ where
     ///
     /// Returns A tuple [(Actor, ActorPortSet)] to be passed to the `start` function of [Actor]
     fn new(name: Option<ActorName>, handler: THandler) -> Result<(Self, ActorPortSet), SpawnErr> {
-        let (actor_cell, ports) = ActorCell::new(name)?;
+        let (actor_cell, ports) = actor_cell::ActorCell::new::<THandler>(name)?;
         Ok((
             Self {
-                base: actor_cell,
+                base: actor_cell.into(),
                 handler: Arc::new(handler),
             },
             ports,
@@ -242,7 +232,7 @@ where
         self,
         ports: ActorPortSet,
         supervisor: Option<ActorCell>,
-    ) -> Result<(ActorCell, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         // cannot start an actor more than once
         if self.base.get_status() != ActorStatus::Unstarted {
             return Err(SpawnErr::ActorAlreadyStarted);
@@ -255,7 +245,7 @@ where
 
         // setup supervision
         if let Some(sup) = &supervisor {
-            sup.link(self.base.clone());
+            sup.link(self.base.clone().into());
         }
 
         // run the processing loop, capturing panic's
@@ -267,18 +257,18 @@ where
                     .await
                 {
                     Ok((last_state, exit_reason)) => SupervisionEvent::ActorTerminated(
-                        myself.clone(),
+                        myself.clone().into(),
                         Some(BoxedState::new(last_state)),
                         exit_reason,
                     ),
                     Err(actor_err) => match actor_err {
                         ActorErr::Cancelled => SupervisionEvent::ActorTerminated(
-                            myself.clone(),
+                            myself.clone().into(),
                             None,
                             Some("killed".to_string()),
                         ),
                         ActorErr::Panic(msg) => {
-                            SupervisionEvent::ActorPanicked(myself.clone(), msg)
+                            SupervisionEvent::ActorPanicked(myself.clone().into(), msg)
                         }
                     },
                 };
@@ -287,12 +277,12 @@ where
             myself.terminate();
 
             // notify supervisors of the actor's death
-            myself.notify_supervisors::<THandler>(evt);
+            myself.notify_supervisors(evt);
 
             myself.set_status(ActorStatus::Stopped);
             // signal received or process exited cleanly, we should already have "handled" the signal, so we can just terminate
             if let Some(sup) = supervisor {
-                sup.unlink(myself.clone());
+                sup.unlink(myself.clone().into());
             }
         });
 
@@ -303,13 +293,13 @@ where
         ports: ActorPortSet,
         state: TState,
         handler: Arc<THandler>,
-        myself: ActorCell,
+        myself: ActorRef<THandler>,
     ) -> Result<(TState, Option<String>), ActorErr> {
         // perform the post-start, with supervision enabled
         let state = Self::do_post_start(myself.clone(), handler.clone(), state).await?;
 
         myself.set_status(ActorStatus::Running);
-        myself.notify_supervisors::<THandler>(SupervisionEvent::ActorStarted(myself.clone()));
+        myself.notify_supervisors(SupervisionEvent::ActorStarted(myself.clone().into()));
 
         // let mut last_state = state.clone();
         let myself_clone = myself.clone();
@@ -364,7 +354,7 @@ where
     /// Returns a tuple of the next [ActorHandler::State] and a flag to denote if the processing
     /// loop is done
     async fn process_message(
-        myself: ActorCell,
+        myself: ActorRef<THandler>,
         state: TState,
         handler: Arc<THandler>,
         ports: &mut ActorPortSet,
@@ -411,11 +401,15 @@ where
                 // the state and the flag to terminate
                 (state, true, None)
             }
+            Err(MessagingErr::InvalidActorType) => {
+                // not possible. Treat like a channel closed
+                (state, true, None)
+            }
         }
     }
 
     async fn handle_message(
-        myself: ActorCell,
+        myself: ActorRef<THandler>,
         state: &TState,
         handler: Arc<THandler>,
         mut msg: BoxedMessage,
@@ -434,7 +428,7 @@ where
         handler.handle(myself, typed_msg, state).await
     }
 
-    async fn handle_signal(myself: ActorCell, signal: Signal) -> Option<String> {
+    async fn handle_signal(myself: ActorRef<THandler>, signal: Signal) -> Option<String> {
         match &signal {
             Signal::Kill => {
                 myself.terminate();
@@ -444,7 +438,7 @@ where
     }
 
     async fn handle_supervision_message(
-        myself: ActorCell,
+        myself: ActorRef<THandler>,
         state: &TState,
         handler: Arc<THandler>,
         message: SupervisionEvent,
@@ -452,7 +446,10 @@ where
         handler.handle_supervisor_evt(myself, message, state).await
     }
 
-    async fn do_pre_start(myself: ActorCell, handler: Arc<THandler>) -> Result<TState, SpawnErr> {
+    async fn do_pre_start(
+        myself: ActorRef<THandler>,
+        handler: Arc<THandler>,
+    ) -> Result<TState, SpawnErr> {
         let start_result =
             handle_panickable(tokio::spawn(async move { handler.pre_start(myself).await })).await;
         match start_result {
@@ -469,7 +466,7 @@ where
     }
 
     async fn do_post_start(
-        myself: ActorCell,
+        myself: ActorRef<THandler>,
         handler: Arc<THandler>,
         state: TState,
     ) -> Result<TState, ActorErr> {
@@ -488,7 +485,7 @@ where
     }
 
     async fn do_post_stop(
-        myself: ActorCell,
+        myself: ActorRef<THandler>,
         handler: Arc<THandler>,
         state: TState,
     ) -> Result<TState, ActorErr> {

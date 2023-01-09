@@ -9,21 +9,20 @@
 //! the internal properties, ports, states, etc. [ActorCell] is the basic primitive
 //! for references to a given actor and its communication channels
 
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
-
-use tokio::sync::mpsc;
-use tokio::time::Duration;
 
 use super::errors::MessagingErr;
 use super::messages::{BoxedMessage, Signal, StopMessage};
-use super::supervision::SupervisionTree;
+
 use super::SupervisionEvent;
-use crate::port::{
-    BoundedInputPort, BoundedInputPortReceiver, InputPort, InputPortReceiver, RpcReplyPort,
-};
-use crate::rpc::{self, CallResult};
-use crate::{ActorHandler, ActorId, ActorName, Message, SpawnErr};
+use crate::port::{BoundedInputPortReceiver, InputPortReceiver};
+use crate::{ActorHandler, ActorId, ActorName, SpawnErr};
+
+pub mod actor_ref;
+pub use actor_ref::ActorRef;
+
+mod actor_properties;
+use actor_properties::ActorProperties;
 
 /// [ActorStatus] represents the status of an actor
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
@@ -132,83 +131,6 @@ impl ActorPortSet {
     }
 }
 
-/// The inner-properties of an Actor
-struct ActorProperties {
-    id: ActorId,
-    name: Option<ActorName>,
-    status: Arc<AtomicU8>,
-    signal: BoundedInputPort<Signal>,
-    stop: BoundedInputPort<StopMessage>,
-    supervision: InputPort<SupervisionEvent>,
-    message: InputPort<BoxedMessage>,
-    tree: SupervisionTree,
-}
-
-impl ActorProperties {
-    pub fn new(
-        name: Option<ActorName>,
-    ) -> (
-        Self,
-        BoundedInputPortReceiver<Signal>,
-        BoundedInputPortReceiver<StopMessage>,
-        InputPortReceiver<SupervisionEvent>,
-        InputPortReceiver<BoxedMessage>,
-    ) {
-        let (tx_signal, rx_signal) = mpsc::channel(2);
-        let (tx_stop, rx_stop) = mpsc::channel(2);
-        let (tx_supervision, rx_supervision) = mpsc::unbounded_channel();
-        let (tx_message, rx_message) = mpsc::unbounded_channel();
-        (
-            Self {
-                id: crate::ACTOR_ID_ALLOCATOR.fetch_add(1u64, Ordering::Relaxed),
-                name,
-                status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
-                signal: tx_signal,
-                stop: tx_stop,
-                supervision: tx_supervision,
-                message: tx_message,
-                tree: SupervisionTree::default(),
-            },
-            rx_signal,
-            rx_stop,
-            rx_supervision,
-            rx_message,
-        )
-    }
-
-    pub fn get_status(&self) -> ActorStatus {
-        match self.status.load(Ordering::Relaxed) {
-            0u8 => ActorStatus::Unstarted,
-            1u8 => ActorStatus::Starting,
-            2u8 => ActorStatus::Running,
-            3u8 => ActorStatus::Upgrading,
-            4u8 => ActorStatus::Stopping,
-            _ => ActorStatus::Stopped,
-        }
-    }
-
-    pub fn set_status(&self, status: ActorStatus) {
-        self.status.store(status as u8, Ordering::Relaxed);
-    }
-
-    pub fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr> {
-        self.signal.try_send(signal).map_err(|e| e.into())
-    }
-
-    pub fn send_supervisor_evt(&self, message: SupervisionEvent) -> Result<(), MessagingErr> {
-        self.supervision.send(message).map_err(|e| e.into())
-    }
-
-    pub fn send_message(&self, message: BoxedMessage) -> Result<(), MessagingErr> {
-        self.message.send(message).map_err(|e| e.into())
-    }
-
-    pub fn send_stop(&self, reason: Option<String>) -> Result<(), MessagingErr> {
-        let msg = reason.map(StopMessage::Reason).unwrap_or(StopMessage::Stop);
-        self.stop.try_send(msg).map_err(|e| e.into())
-    }
-}
-
 /// A handy-dandy reference to and actor and their inner properties
 /// which can be cloned and passed around
 #[derive(Clone)]
@@ -246,8 +168,11 @@ impl ActorCell {
     /// * `name` - Optional name for the actor
     ///
     /// Returns a tuple [(ActorCell, ActorPortSet)] to bootstrap the [Actor]
-    pub(crate) fn new(name: Option<ActorName>) -> Result<(Self, ActorPortSet), SpawnErr> {
-        let (props, rx1, rx2, rx3, rx4) = ActorProperties::new(name);
+    pub(crate) fn new<TActor>(name: Option<ActorName>) -> Result<(Self, ActorPortSet), SpawnErr>
+    where
+        TActor: ActorHandler,
+    {
+        let (props, rx1, rx2, rx3, rx4) = ActorProperties::new::<TActor>(name);
         let cell = Self {
             inner: Arc::new(props),
         };
@@ -358,7 +283,7 @@ impl ActorCell {
     where
         TActor: ActorHandler,
     {
-        self.inner.send_message(BoxedMessage::new(message))
+        self.inner.send_message::<TActor>(message)
     }
 
     /// Notify the supervisors that a supervision event occurred
@@ -371,65 +296,9 @@ impl ActorCell {
         self.inner.tree.notify_supervisors::<TActor>(evt)
     }
 
-    /// Alias of [rpc::cast]
-    pub fn cast<TActor>(&self, msg: TActor::Msg) -> Result<(), MessagingErr>
-    where
-        TActor: ActorHandler,
-    {
-        rpc::cast::<TActor>(self, msg)
-    }
-
-    /// Alias of [rpc::call]
-    pub async fn call<TActor, TMsg, TReply, TMsgBuilder>(
-        &self,
-        msg_builder: TMsgBuilder,
-        timeout_option: Option<Duration>,
-    ) -> Result<CallResult<TReply>, MessagingErr>
-    where
-        TActor: ActorHandler<Msg = TMsg>,
-        TMsg: Message,
-        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMsg,
-    {
-        rpc::call::<TActor, TReply, TMsgBuilder>(self, msg_builder, timeout_option).await
-    }
-
-    /// Alias of [rpc::call_and_forward]
-    pub fn call_and_forward<
-        TActor,
-        TForwardActor,
-        TMsg,
-        TReply,
-        TMsgBuilder,
-        FwdMapFn,
-        TForwardMessage,
-    >(
-        &self,
-        msg_builder: TMsgBuilder,
-        response_forward: ActorCell,
-        forward_mapping: FwdMapFn,
-        timeout_option: Option<Duration>,
-    ) -> Result<tokio::task::JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
-    where
-        TActor: ActorHandler<Msg = TMsg>,
-        TMsg: Message,
-        TReply: Message,
-        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMsg,
-        TForwardActor: ActorHandler<Msg = TForwardMessage>,
-        FwdMapFn: FnOnce(TReply) -> TForwardMessage + Send + 'static,
-        TForwardMessage: Message,
-    {
-        rpc::call_and_forward::<TActor, TForwardActor, TReply, TMsgBuilder, FwdMapFn>(
-            self,
-            msg_builder,
-            response_forward,
-            forward_mapping,
-            timeout_option,
-        )
-    }
-
     /// Test utility to retrieve a clone of the underlying supervision tree
     #[cfg(test)]
-    pub(crate) fn get_tree(&self) -> SupervisionTree {
+    pub(crate) fn get_tree(&self) -> super::supervision::SupervisionTree {
         self.inner.tree.clone()
     }
 }

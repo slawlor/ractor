@@ -87,6 +87,11 @@ pub enum MessagingErr {
     /// If you're sending to an [crate::ActorCell] then that means the actor has died
     /// (failure or not).
     ChannelClosed,
+
+    /// Tried to send a message to an actor with an invalid actor type defined.
+    /// This happens if you have an [crate::ActorCell] which has the type id of its
+    /// handler and you try to use an alternate handler to send a message
+    InvalidActorType,
 }
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for MessagingErr {
@@ -118,6 +123,9 @@ impl Display for MessagingErr {
         match self {
             Self::ChannelClosed => {
                 write!(f, "Messaging failed because channel is closed")
+            }
+            Self::InvalidActorType => {
+                write!(f, "Messaging failed due to the provided actor type not matching the actor's properties")
             }
         }
     }

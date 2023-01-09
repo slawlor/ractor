@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Sean Lawlor <seanlawlor@fb.com>"]
 description = "A actor framework for Rust"
 license = "MIT"

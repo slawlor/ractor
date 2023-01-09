@@ -2,5 +2,5 @@
 
 members = [
     "ractor",
-    "ractor-repl"
+    "ractor-playground"
 ]

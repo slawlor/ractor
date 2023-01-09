@@ -11,7 +11,7 @@
 //! cargo run --example supervisor
 //! ```
 
-use ractor::{rpc, Actor, ActorCell, ActorHandler, RpcReplyPort, SupervisionEvent};
+use ractor::{Actor, ActorHandler, ActorRef, RpcReplyPort, SupervisionEvent};
 
 use tokio::time::Duration;
 
@@ -22,33 +22,33 @@ async fn main() {
     let (root, handle) = Actor::spawn(Some("root"), RootActor)
         .await
         .expect("Failed to start root actor");
-    let mid_level = rpc::call::<RootActor, _, _>(
-        &root,
-        RootActorMessage::GetMidLevel,
-        Some(Duration::from_millis(100)),
-    )
-    .await
-    .expect("Failed to send message to root actor")
-    .expect("Failed to get mid level actor");
+    let mid_level = root
+        .call(
+            RootActorMessage::GetMidLevel,
+            Some(Duration::from_millis(100)),
+        )
+        .await
+        .expect("Failed to send message to root actor")
+        .expect("Failed to get mid level actor");
 
-    let leaf = rpc::call::<MidLevelActor, _, _>(
-        &mid_level,
-        MidLevelActorMessage::GetLeaf,
-        Some(Duration::from_millis(100)),
-    )
-    .await
-    .expect("Failed to send message to mid-level actor")
-    .expect("Failed to get leaf actor");
+    let leaf = mid_level
+        .call(
+            MidLevelActorMessage::GetLeaf,
+            Some(Duration::from_millis(100)),
+        )
+        .await
+        .expect("Failed to send message to mid-level actor")
+        .expect("Failed to get leaf actor");
 
     // send some no-op's to the leaf
     for _ in 1..10 {
-        rpc::cast::<LeafActor>(&leaf, LeafActorMessage::NoOp)
+        leaf.cast(LeafActorMessage::NoOp)
             .expect("Failed to send message to leaf actor");
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
     // send the "Boom" message and follow the supervision flow
-    rpc::cast::<LeafActor>(&leaf, LeafActorMessage::Boom)
+    leaf.cast(LeafActorMessage::Boom)
         .expect("Failed to send message to leaf actor");
 
     handle.await.expect("Failed waiting for root actor to die");
@@ -69,7 +69,7 @@ enum LeafActorMessage {
 impl ActorHandler for LeafActor {
     type Msg = LeafActorMessage;
     type State = LeafActorState;
-    async fn pre_start(&self, _myself: ActorCell) -> Self::State {
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
         LeafActorState {}
     }
 
@@ -83,7 +83,7 @@ impl ActorHandler for LeafActor {
 
     async fn handle(
         &self,
-        _myself: ActorCell,
+        _myself: ActorRef<Self>,
         message: Self::Msg,
         _state: &Self::State,
     ) -> Option<Self::State> {
@@ -113,11 +113,11 @@ impl ActorHandler for LeafActor {
 struct MidLevelActor;
 
 struct MidLevelActorState {
-    leaf_actor: ActorCell,
+    leaf_actor: ActorRef<LeafActor>,
 }
 
 enum MidLevelActorMessage {
-    GetLeaf(RpcReplyPort<ActorCell>),
+    GetLeaf(RpcReplyPort<ActorRef<LeafActor>>),
 }
 
 #[async_trait::async_trait]
@@ -125,8 +125,8 @@ impl ActorHandler for MidLevelActor {
     type Msg = MidLevelActorMessage;
     type State = MidLevelActorState;
 
-    async fn pre_start(&self, myself: ActorCell) -> Self::State {
-        let (leaf_actor, _) = Actor::spawn_linked(Some("leaf"), LeafActor, myself)
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+        let (leaf_actor, _) = Actor::spawn_linked(Some("leaf"), LeafActor, myself.into())
             .await
             .expect("Failed to start leaf actor");
         MidLevelActorState { leaf_actor }
@@ -142,7 +142,7 @@ impl ActorHandler for MidLevelActor {
 
     async fn handle(
         &self,
-        _myself: ActorCell,
+        _myself: ActorRef<Self>,
         message: Self::Msg,
         state: &Self::State,
     ) -> Option<Self::State> {
@@ -160,7 +160,7 @@ impl ActorHandler for MidLevelActor {
 
     async fn handle_supervisor_evt(
         &self,
-        _myself: ActorCell,
+        _myself: ActorRef<Self>,
         message: SupervisionEvent,
         state: &Self::State,
     ) -> Option<Self::State> {
@@ -191,11 +191,11 @@ impl ActorHandler for MidLevelActor {
 struct RootActor;
 
 struct RootActorState {
-    mid_level_actor: ActorCell,
+    mid_level_actor: ActorRef<MidLevelActor>,
 }
 
 enum RootActorMessage {
-    GetMidLevel(RpcReplyPort<ActorCell>),
+    GetMidLevel(RpcReplyPort<ActorRef<MidLevelActor>>),
 }
 
 #[async_trait::async_trait]
@@ -203,11 +203,12 @@ impl ActorHandler for RootActor {
     type Msg = RootActorMessage;
     type State = RootActorState;
 
-    async fn pre_start(&self, myself: ActorCell) -> Self::State {
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
         println!("RootActor: Started {:?}", myself);
-        let (mid_level_actor, _) = Actor::spawn_linked(Some("mid-level"), MidLevelActor, myself)
-            .await
-            .expect("Failed to spawn mid-level actor");
+        let (mid_level_actor, _) =
+            Actor::spawn_linked(Some("mid-level"), MidLevelActor, myself.into())
+                .await
+                .expect("Failed to spawn mid-level actor");
         RootActorState { mid_level_actor }
     }
 
@@ -221,7 +222,7 @@ impl ActorHandler for RootActor {
 
     async fn handle(
         &self,
-        _myself: ActorCell,
+        _myself: ActorRef<Self>,
         message: Self::Msg,
         state: &Self::State,
     ) -> Option<Self::State> {
@@ -239,7 +240,7 @@ impl ActorHandler for RootActor {
 
     async fn handle_supervisor_evt(
         &self,
-        myself: ActorCell,
+        myself: ActorRef<Self>,
         message: SupervisionEvent,
         state: &Self::State,
     ) -> Option<Self::State> {
