@@ -107,9 +107,9 @@ where
 
     /// Try and retrieve a strongly-typed actor from the registry.
     ///
-    /// Alias of [crate::registry::try_get]
-    pub fn try_get_from_registry(name: ActorName) -> Option<ActorRef<TActor>> {
-        if let Some(actor) = crate::registry::try_get(name) {
+    /// Alias of [crate::registry::where_is]
+    pub fn where_is(name: ActorName) -> Option<ActorRef<TActor>> {
+        if let Some(actor) = crate::registry::where_is(name) {
             // check the type id when pulling from the registry
             if actor.inner.type_id == TypeId::of::<TActor>() {
                 Some(actor.into())

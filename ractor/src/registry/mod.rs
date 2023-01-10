@@ -13,7 +13,7 @@
 //! automatically unenrolled from the registry upon being dropped, therefore freeing
 //! the name for subsequent registration.
 //!
-//! You can then retrieve actors by name with [try_get]. Note: this
+//! You can then retrieve actors by name with [where_is]. Note: this
 //! function only returns the [ActorCell] reference to the actor, it
 //! additionally requires knowledge of the [crate::ActorHandler] in order
 //! to send messages to it (since you need to know the message type)
@@ -24,7 +24,7 @@
 //!
 //! ```rust
 //! async fn test() {
-//!     let maybe_actor = ractor::registry::try_get("my_actor");
+//!     let maybe_actor = ractor::registry::where_is("my_actor");
 //!     if let Some(actor) = maybe_actor {
 //!         // send a message, or interact with the actor
 //!         // but you'll need to know the actor's strong type
@@ -58,7 +58,7 @@ fn get_actor_registry<'a>() -> &'a Arc<DashMap<ActorName, ActorCell>> {
 }
 
 /// Put an actor into the registry
-pub(crate) fn enroll(name: ActorName, actor: ActorCell) -> Result<(), ActorRegistryErr> {
+pub(crate) fn register(name: ActorName, actor: ActorCell) -> Result<(), ActorRegistryErr> {
     match get_actor_registry().entry(name) {
         Occupied(_) => Err(ActorRegistryErr::AlreadyRegistered(name)),
         Vacant(vacancy) => {
@@ -69,7 +69,7 @@ pub(crate) fn enroll(name: ActorName, actor: ActorCell) -> Result<(), ActorRegis
 }
 
 /// Remove an actor from the registry given it's actor name
-pub(crate) fn unenroll(name: ActorName) {
+pub(crate) fn unregister(name: ActorName) {
     if let Some(reg) = ACTOR_REGISTRY.get() {
         let _ = reg.remove(&name);
     }
@@ -81,7 +81,16 @@ pub(crate) fn unenroll(name: ActorName) {
 ///
 /// Returns: Some(actor) on successful identification of an actor, None if
 /// actor not registered
-pub fn try_get(name: ActorName) -> Option<ActorCell> {
+pub fn where_is(name: ActorName) -> Option<ActorCell> {
     let reg = get_actor_registry();
     reg.get(&name).map(|v| v.value().clone())
+}
+
+/// Returns a list of names that have been registered
+///
+/// Returns: A [Vec<&'str>] of actor names which are registered
+/// currently
+pub fn registered() -> Vec<ActorName> {
+    let reg = get_actor_registry();
+    reg.iter().map(|kvp| *kvp.key()).collect::<Vec<_>>()
 }
