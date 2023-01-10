@@ -89,3 +89,20 @@ jobs:
         with:
           command: doc
           args: --lib -r
+
+  benches:
+    name: benches
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Run benches
+        uses: actions-rs/cargo@v1
+        with:
+          command: bench
+          

@@ -11,3 +11,8 @@ Cargo.lock
 
 # Remove all target compilation folders from all sub-folders as well
 **/target/
+
+# Remove code-coverage generated files from git
+debug/
+coverage/
+**/*.profraw

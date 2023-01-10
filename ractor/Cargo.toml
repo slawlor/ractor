@@ -20,5 +20,11 @@ once_cell = "1"
 tokio = { version = "1.23", features = ["rt", "time", "sync", "macros"]}
 
 [dev-dependencies]
+criterion = "0.3"
 function_name = "0.3"
 tokio = { version = "1.23", features = ["rt", "time", "sync", "macros", "rt-multi-thread"] }
+
+[[bench]]
+name = "actor"
+harness = false
+required-features = []

@@ -226,23 +226,26 @@ impl ActorCell {
         }
 
         // notify children they should die. They will unlink themselves from the supervisor
-        self.inner.tree.terminate_children();
+        self.inner.tree.terminate_all_children();
     }
 
-    /// Link this [super::Actor] to the supervisor
+    /// Link this [super::Actor] to the provided supervisor
     ///
-    /// * `supervisor` - The supervisor to link this [super::Actor] to
+    /// * `supervisor` - The child to link this [super::Actor] to
     pub fn link(&self, supervisor: ActorCell) {
-        supervisor.inner.tree.insert_parent(self.clone());
-        self.inner.tree.insert_child(supervisor);
+        supervisor.inner.tree.insert_child(self.clone());
+        self.inner.tree.set_supervisor(supervisor);
     }
 
-    /// Unlink this [super::Actor] from the supervisor
+    /// Unlink this [super::Actor] from the supervisor if it's
+    /// currently linked (if self's supervisor is `supervisor`)
     ///
-    /// * `supervisor` - The supervisor to unlink this [super::Actor] from
+    /// * `supervisor` - The child to unlink this [super::Actor] from
     pub fn unlink(&self, supervisor: ActorCell) {
-        supervisor.inner.tree.remove_parent(self.clone());
-        self.inner.tree.remove_child(supervisor);
+        if self.inner.tree.is_child_of(supervisor.get_id()) {
+            supervisor.inner.tree.remove_child(self.get_id());
+            self.inner.tree.clear_supervisor();
+        }
     }
 
     /// Kill this [super::Actor] forcefully (terminates async work)
@@ -289,11 +292,11 @@ impl ActorCell {
     /// Notify the supervisors that a supervision event occurred
     ///
     /// * `evt` - The event to send to this [super::Actor]'s supervisors
-    pub fn notify_supervisors<TActor>(&self, evt: SupervisionEvent)
+    pub fn notify_supervisor<TActor>(&self, evt: SupervisionEvent)
     where
         TActor: ActorHandler,
     {
-        self.inner.tree.notify_supervisors::<TActor>(evt)
+        self.inner.tree.notify_supervisor::<TActor>(evt)
     }
 
     // ================== Test Utilities ================== //

@@ -11,7 +11,6 @@
 
 use std::any::Any;
 use std::fmt::Debug;
-use std::sync::Arc;
 
 use crate::{Message, State};
 
@@ -31,7 +30,7 @@ impl BoxedMessage {
     /// Create a new [BoxedMessage] from a strongly-typed message
     pub fn new<T>(msg: T) -> Self
     where
-        T: Any + Message,
+        T: Message,
     {
         Self {
             msg: Some(Box::new(msg)),
@@ -42,7 +41,7 @@ impl BoxedMessage {
     /// the boxed message
     pub fn take<T>(&mut self) -> Result<T, BoxedDowncastErr>
     where
-        T: Any + Message,
+        T: Message,
     {
         match self.msg.take() {
             Some(m) => {
@@ -57,54 +56,41 @@ impl BoxedMessage {
     }
 }
 
-/// A "boxed" state denoting a strong-type state
+/// A "boxed" message denoting a strong-type message
 /// but generic so it can be passed around without type
-/// constraints.
-///
-/// It is a shared [Arc] to the last [crate::ActorHandler::State]
-/// that the actor reported. This means, that the state shouldn't
-/// be mutated once the actor is dead, it should be generally
-/// immutable since a shared [Arc] will be sent to every supervisor
+/// constraints
 pub struct BoxedState {
-    /// The state value
-    pub state: Box<dyn Any + Send + Sync + 'static>,
-}
-
-impl Debug for BoxedState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BoxedState")
-    }
+    /// The message value
+    pub msg: Option<Box<dyn Any + Send>>,
 }
 
 impl BoxedState {
-    /// Create a new [BoxedState] from a strongly-typed state
+    /// Create a new [BoxedState] from a strongly-typed message
     pub fn new<T>(msg: T) -> Self
     where
         T: State,
     {
         Self {
-            state: Box::new(Arc::new(msg)),
+            msg: Some(Box::new(msg)),
         }
     }
 
-    /// Try and take the resulting type via cloning, such that we don't
-    /// consume the value
-    pub fn take<T>(&self) -> Result<Arc<T>, BoxedDowncastErr>
+    /// Try and take the resulting message as a specific type, consumes
+    /// the boxed message
+    pub fn take<T>(&mut self) -> Result<T, BoxedDowncastErr>
     where
         T: State,
     {
-        let state_ref = &self.state;
-        if state_ref.is::<Arc<T>>() {
-            Ok(state_ref.downcast_ref::<Arc<T>>().cloned().unwrap())
-        } else {
-            Err(BoxedDowncastErr)
+        match self.msg.take() {
+            Some(m) => {
+                if m.is::<T>() {
+                    Ok(*m.downcast::<T>().unwrap())
+                } else {
+                    Err(BoxedDowncastErr)
+                }
+            }
+            None => Err(BoxedDowncastErr),
         }
-    }
-}
-
-impl Debug for BoxedMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("BoxedMessage")
     }
 }
 
@@ -176,37 +162,6 @@ impl std::fmt::Display for SupervisionEvent {
             SupervisionEvent::ProcessGroupChanged(change) => {
                 write!(f, "Process group {} changed", change.get_group())
             }
-        }
-    }
-}
-
-impl SupervisionEvent {
-    /// A custom "clone" for [SupervisionEvent]s, because they hold a handle to a [BoxedState]
-    /// which can't directly implement the clone trait, therefore the [SupervisionEvent]
-    /// can't implement [Clone]. This requires that you give the intended strongly typed [State]
-    /// which will downcast, clone the underlying type, and create a new boxed state for you
-    pub(crate) fn duplicate<TState>(&self) -> Result<Self, BoxedDowncastErr>
-    where
-        TState: State,
-    {
-        match self {
-            Self::ActorStarted(actor) => Ok(Self::ActorStarted(actor.clone())),
-            Self::ActorTerminated(actor, maybe_state, maybe_exit_reason) => {
-                let cloned_maybe_state = match maybe_state {
-                    Some(state) => Some(state.take::<TState>()?),
-                    _ => None,
-                }
-                .map(BoxedState::new);
-                Ok(Self::ActorTerminated(
-                    actor.clone(),
-                    cloned_maybe_state,
-                    maybe_exit_reason.clone(),
-                ))
-            }
-            Self::ActorPanicked(actor, message) => {
-                Ok(Self::ActorPanicked(actor.clone(), message.clone()))
-            }
-            Self::ProcessGroupChanged(change) => Ok(Self::ProcessGroupChanged(change.clone())),
         }
     }
 }
