@@ -1,6 +1,5 @@
 [package]
 name = "ractor-playground"
-default-run = "ractor-playground"
 version = "0.0.0"
 authors = ["Sean Lawlor <seanlawlor@fb.com>"]
 description = "A actor framework for Rust - REPL"
