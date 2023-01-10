@@ -1,5 +1,7 @@
 # ractor
 
+*Pronounced **R**-aktor*
+
 A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.erlang.org/doc/man/gen_server.html), with the speed + performance of Rust!
 
 [<img alt="github" src="https://img.shields.io/badge/github-slawlor/ractor-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/slawlor/ractor)
@@ -29,6 +31,8 @@ We currently have full support for
 2. Actor supervision tree
 3. Remote procedure calls to actors
 4. Timers
+5. Named actor registry (`ractor::registry`) from [Erlang's `Registered processes`](https://www.erlang.org/doc/reference_manual/processes.html)
+6. Process groups (`ractor::pg`) from [Erlang's `pg` module](https://www.erlang.org/doc/man/pg.html)
 
 
 On our roadmap is to add more of the Erlang functionality including potentially a distributed actor cluster.
@@ -39,7 +43,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies
 
 ```toml
 [dependencies]
-ractor = "0.1"
+ractor = "0.3"
 ```
 
 ## Working with Actors
@@ -104,16 +108,15 @@ impl ActorHandler for PingPong {
         &self,
         myself: ActorCell,
         message: Self::Msg,
-        state: &Self::State,
-    ) -> Option<Self::State> {
+        state: &mut Self::State,
+    ){
         if *state < 10u8 {
             message.print();
             self.send_message(myself, message.next()).unwrap();
-            Some(*state + 1)
+            *state += 1;
         } else {
             myself.stop(None);
             // don't send another message, rather stop the agent after 10 iterations
-            None
         }
     }
 }

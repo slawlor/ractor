@@ -26,7 +26,7 @@ async fn test_basic_registation() {
         .await
         .expect("Actor failed to start");
 
-    assert!(crate::registry::try_get("my_actor").is_some());
+    assert!(crate::registry::where_is("my_actor").is_some());
 
     actor.stop(None);
     handle.await.expect("Failed to clean stop the actor");
@@ -49,7 +49,7 @@ async fn test_duplicate_registration() {
         .await
         .expect("Actor failed to start");
 
-    assert!(crate::registry::try_get("my_second_actor").is_some());
+    assert!(crate::registry::where_is("my_second_actor").is_some());
 
     let second_actor = Actor::spawn(Some("my_second_actor"), EmptyActor).await;
     // fails to spawn the second actor due to name err
@@ -59,7 +59,7 @@ async fn test_duplicate_registration() {
     ));
 
     // make sure the first actor is still registered
-    assert!(crate::registry::try_get("my_second_actor").is_some());
+    assert!(crate::registry::where_is("my_second_actor").is_some());
 
     actor.stop(None);
     handle.await.expect("Failed to clean stop the actor");
@@ -82,7 +82,7 @@ async fn test_actor_registry_unenrollment() {
         .await
         .expect("Actor failed to start");
 
-    assert!(crate::registry::try_get("unenrollment").is_some());
+    assert!(crate::registry::where_is("unenrollment").is_some());
 
     // stop the actor and wait for its death
     actor.stop(None);
@@ -95,5 +95,5 @@ async fn test_actor_registry_unenrollment() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // the actor was automatically removed
-    assert!(crate::registry::try_get("unenrollment").is_none());
+    assert!(crate::registry::where_is("unenrollment").is_none());
 }

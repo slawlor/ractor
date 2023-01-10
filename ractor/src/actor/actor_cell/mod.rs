@@ -163,7 +163,7 @@ impl ActorCell {
             inner: Arc::new(props),
         };
         if let Some(r_name) = name {
-            crate::registry::enroll(r_name, cell.clone())?;
+            crate::registry::register(r_name, cell.clone())?;
         }
 
         Ok((
@@ -205,7 +205,7 @@ impl ActorCell {
         if status == ActorStatus::Stopped || status == ActorStatus::Stopping {
             // If it's enrolled in the registry, remove it
             if let Some(name) = self.get_name() {
-                crate::registry::unenroll(name);
+                crate::registry::unregister(name);
             }
             // Leave all + stop monitoring pg groups (if any)
             crate::pg::demonitor_all(self.get_id());
