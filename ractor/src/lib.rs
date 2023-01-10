@@ -151,6 +151,9 @@ pub mod registry;
 pub mod rpc;
 pub mod time;
 
+#[cfg(test)]
+use criterion as _;
+
 // WIP
 // #[cfg(feature = "remote")]
 // pub mod distributed;
@@ -177,13 +180,13 @@ pub use port::{InputPort, OutputMessage, OutputPort, RpcReplyPort};
 ///     PrintName,
 /// }
 /// ```
-pub trait Message: Send + 'static {}
-impl<T: Send + 'static> Message for T {}
+pub trait Message: Any + Send + 'static {}
+impl<T: Any + Send + 'static> Message for T {}
 
 /// Represents the state of an actor. Must be safe
 /// to send between threads
-pub trait State: Any + Sync + Send + 'static {}
-impl<T: Any + Sync + Send + 'static> State for T {}
+pub trait State: Message {}
+impl<T: Message> State for T {}
 
 /// Error types which can result from Ractor processes
 #[derive(Debug)]

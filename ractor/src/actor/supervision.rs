@@ -15,6 +15,11 @@
 //! which will be expanded upon as the library develops. Next in line is likely supervision strategies
 //! for automatic restart routines.
 
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
+
 use dashmap::DashMap;
 
 use super::{actor_cell::ActorCell, messages::SupervisionEvent};
@@ -23,20 +28,21 @@ use crate::{ActorHandler, ActorId};
 /// A supervision tree
 #[derive(Default)]
 pub struct SupervisionTree {
-    children: DashMap<ActorId, ActorCell>,
-    parents: DashMap<ActorId, ActorCell>,
+    children: DashMap<ActorId, (u64, ActorCell)>,
+    supervisor: Arc<RwLock<Option<ActorCell>>>,
+    start_order: AtomicU64,
 }
 
 impl SupervisionTree {
     /// Push a child into the tere
     pub fn insert_child(&self, child: ActorCell) {
-        self.children.insert(child.get_id(), child);
+        let start_order = self.start_order.fetch_add(1, Ordering::Relaxed);
+        self.children.insert(child.get_id(), (start_order, child));
     }
 
     /// Remove a specific actor from the supervision tree (e.g. actor died)
-    pub fn remove_child(&self, child: ActorCell) {
-        let id = child.get_id();
-        match self.children.entry(id) {
+    pub fn remove_child(&self, child: ActorId) {
+        match self.children.entry(child) {
             dashmap::mapref::entry::Entry::Occupied(item) => {
                 item.remove();
             }
@@ -45,56 +51,78 @@ impl SupervisionTree {
     }
 
     /// Push a parent into the tere
-    pub fn insert_parent(&self, parent: ActorCell) {
-        self.parents.insert(parent.get_id(), parent);
+    pub fn set_supervisor(&self, parent: ActorCell) {
+        *(self.supervisor.write().unwrap()) = Some(parent);
     }
 
     /// Remove a specific actor from the supervision tree (e.g. actor died)
-    pub fn remove_parent(&self, parent: ActorCell) {
-        let id = parent.get_id();
-        match self.parents.entry(id) {
-            dashmap::mapref::entry::Entry::Occupied(item) => {
-                item.remove();
-            }
-            dashmap::mapref::entry::Entry::Vacant(_) => {}
-        }
+    pub fn clear_supervisor(&self) {
+        *(self.supervisor.write().unwrap()) = None;
     }
 
     /// Terminate all your supervised children
-    pub fn terminate_children(&self) {
+    pub fn terminate_all_children(&self) {
         for kvp in self.children.iter() {
-            kvp.value().terminate();
+            kvp.value().1.terminate();
         }
     }
 
-    /// Determine if the specified actor is a member of this supervision tree
-    pub fn is_supervisor_of(&self, id: ActorId) -> bool {
-        self.children.contains_key(&id)
+    /// Terminate the supervised children after a given actor (including the specified actor).
+    /// This is necessary to support [Erlang's supervision model](https://www.erlang.org/doc/design_principles/sup_princ.html#flags),
+    /// specifically the `rest_for_one` strategy
+    ///
+    /// * `id` - The id of the actor to terminate + all those that follow
+    pub fn terminate_children_after(&self, id: ActorId) {
+        let mut reference_point = u64::MAX;
+        let mut id_map = std::collections::HashMap::new();
+
+        // keep the lock inside this scope on the map
+        {
+            for item in self.children.iter_mut() {
+                id_map.insert(item.value().0, *item.key());
+                if item.value().1.get_id() == id {
+                    reference_point = item.value().0;
+                    break;
+                }
+            }
+        }
+
+        // if there was a reference point, terminate children from that point on
+        if reference_point < u64::MAX {
+            for child in self.children.iter() {
+                child.1.terminate();
+            }
+        }
     }
 
     /// Determine if the specified actor is a parent of this actor
     pub fn is_child_of(&self, id: ActorId) -> bool {
-        self.parents.contains_key(&id)
+        if let Some(parent) = &*(self.supervisor.read().unwrap()) {
+            parent.get_id() == id
+        } else {
+            false
+        }
     }
 
     /// Send a notification to all supervisors
-    pub fn notify_supervisors<TActor>(&self, evt: SupervisionEvent)
+    pub fn notify_supervisor<TActor>(&self, evt: SupervisionEvent)
     where
         TActor: ActorHandler,
     {
-        for kvp in self.parents.iter() {
-            let evt_clone = evt.duplicate::<TActor::State>().unwrap();
-            let _ = kvp.value().send_supervisor_evt(evt_clone);
+        if let Some(parent) = &*(self.supervisor.read().unwrap()) {
+            let _ = parent.send_supervisor_evt(evt);
         }
     }
 
     /// Retrieve the number of supervised children
+    #[cfg(test)]
     pub fn get_num_children(&self) -> usize {
         self.children.len()
     }
 
     /// Retrieve the number of supervised children
+    #[cfg(test)]
     pub fn get_num_parents(&self) -> usize {
-        self.parents.len()
+        usize::from(self.supervisor.read().unwrap().is_some())
     }
 }

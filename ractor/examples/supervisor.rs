@@ -58,6 +58,7 @@ async fn main() {
 
 struct LeafActor;
 
+#[derive(Clone)]
 struct LeafActorState {}
 
 enum LeafActorMessage {
@@ -106,6 +107,7 @@ impl ActorHandler for LeafActor {
 
 struct MidLevelActor;
 
+#[derive(Clone)]
 struct MidLevelActorState {
     leaf_actor: ActorRef<LeafActor>,
 }
@@ -177,6 +179,7 @@ impl ActorHandler for MidLevelActor {
 
 struct RootActor;
 
+#[derive(Clone)]
 struct RootActorState {
     mid_level_actor: ActorRef<MidLevelActor>,
 }

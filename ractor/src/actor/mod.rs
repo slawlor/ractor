@@ -208,7 +208,7 @@ where
 
         // setup supervision
         if let Some(sup) = &supervisor {
-            sup.link(self.base.clone().into());
+            self.base.link(sup.clone());
         }
 
         // run the processing loop, backgrounding the work
@@ -244,14 +244,14 @@ where
             myself.terminate();
 
             // notify supervisors of the actor's death
-            myself.notify_supervisors(evt);
+            myself.notify_supervisor(evt);
 
             // set status to stopped
             myself.set_status(ActorStatus::Stopped);
 
             // unlink superisors
             if let Some(sup) = supervisor {
-                sup.unlink(myself.clone().into());
+                myself.unlink(sup);
             }
         });
 
@@ -268,7 +268,7 @@ where
         Self::do_post_start(myself.clone(), handler.clone(), state).await?;
 
         myself.set_status(ActorStatus::Running);
-        myself.notify_supervisors(SupervisionEvent::ActorStarted(myself.clone().into()));
+        myself.notify_supervisor(SupervisionEvent::ActorStarted(myself.clone().into()));
 
         let myself_clone = myself.clone();
         let handler_clone = handler.clone();

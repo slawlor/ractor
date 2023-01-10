@@ -152,7 +152,8 @@ async fn test_supervision_panic_in_handle() {
     // trigger the child failure
     child_ref.send_message(()).expect("Failed to send message");
 
-    let (_, _) = tokio::join!(s_handle, c_handle);
+    let _ = s_handle.await;
+    let _ = c_handle.await;
 
     assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
 
@@ -171,9 +172,9 @@ async fn test_supervision_panic_in_post_stop() {
     impl ActorHandler for Child {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, this_actor: ActorRef<Self>) -> Self::State {
+        async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
             // trigger stop, which starts shutdown
-            this_actor.stop(None);
+            myself.stop(None);
         }
         async fn post_stop(&self, _this_actor: ActorRef<Self>, _state: &mut Self::State) {
             panic!("Boom");
@@ -185,14 +186,6 @@ async fn test_supervision_panic_in_post_stop() {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
-        async fn handle(
-            &self,
-            _this_actor: ActorRef<Self>,
-            _message: Self::Msg,
-            _state: &mut Self::State,
-        ) {
-        }
-
         async fn handle_supervisor_evt(
             &self,
             this_actor: ActorRef<Self>,
@@ -216,13 +209,12 @@ async fn test_supervision_panic_in_post_stop() {
         .await
         .expect("Supervisor panicked on startup");
 
-    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
-
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_cell)
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref.clone().into())
         .await
         .expect("Child panicked on startup");
 
-    let (_, _) = tokio::join!(s_handle, c_handle);
+    let _ = s_handle.await;
+    let _ = c_handle.await;
 
     assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
 
@@ -403,3 +395,6 @@ async fn test_killing_a_supervisor_terminates_children() {
 
     c_handle.await.expect("Failed to wait for child to die");
 }
+
+// TODO: Still to be tested
+// 1. terminate_children_after()

@@ -97,8 +97,8 @@ where
     /// Notify the supervisors that a supervision event occurred
     ///
     /// * `evt` - The event to send to this [crate::Actor]'s supervisors
-    pub fn notify_supervisors(&self, evt: SupervisionEvent) {
-        self.inner.notify_supervisors::<TActor>(evt)
+    pub fn notify_supervisor(&self, evt: SupervisionEvent) {
+        self.inner.notify_supervisor::<TActor>(evt)
     }
 
     // ========================== General Actor Operation Aliases ========================== //
