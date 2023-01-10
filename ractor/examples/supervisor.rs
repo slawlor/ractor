@@ -81,12 +81,7 @@ impl ActorHandler for LeafActor {
     //     state
     // }
 
-    async fn handle(
-        &self,
-        _myself: ActorRef<Self>,
-        message: Self::Msg,
-        _state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
         match message {
             Self::Msg::Boom => {
                 panic!("LeafActor: Oh crap!");
@@ -95,7 +90,6 @@ impl ActorHandler for LeafActor {
                 println!("LeafActor: No-op!");
             }
         }
-        None
     }
 
     // async fn handle_supervisor_evt(
@@ -140,12 +134,7 @@ impl ActorHandler for MidLevelActor {
     //     state
     // }
 
-    async fn handle(
-        &self,
-        _myself: ActorRef<Self>,
-        message: Self::Msg,
-        state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
         match message {
             MidLevelActorMessage::GetLeaf(reply) => {
                 if !reply.is_closed() {
@@ -155,15 +144,14 @@ impl ActorHandler for MidLevelActor {
                 }
             }
         }
-        None
     }
 
     async fn handle_supervisor_evt(
         &self,
         _myself: ActorRef<Self>,
         message: SupervisionEvent,
-        state: &Self::State,
-    ) -> Option<Self::State> {
+        state: &mut Self::State,
+    ) {
         match message {
             SupervisionEvent::ActorPanicked(dead_actor, panic_msg)
                 if dead_actor.get_id() == state.leaf_actor.get_id() =>
@@ -182,7 +170,6 @@ impl ActorHandler for MidLevelActor {
                 println!("MidLevelActor: recieved supervisor event '{}'", other);
             }
         }
-        None
     }
 }
 
@@ -220,12 +207,7 @@ impl ActorHandler for RootActor {
     //     state
     // }
 
-    async fn handle(
-        &self,
-        _myself: ActorRef<Self>,
-        message: Self::Msg,
-        state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
         match message {
             RootActorMessage::GetMidLevel(reply) => {
                 if !reply.is_closed() {
@@ -235,15 +217,14 @@ impl ActorHandler for RootActor {
                 }
             }
         }
-        None
     }
 
     async fn handle_supervisor_evt(
         &self,
         myself: ActorRef<Self>,
         message: SupervisionEvent,
-        state: &Self::State,
-    ) -> Option<Self::State> {
+        state: &mut Self::State,
+    ) {
         match message {
             SupervisionEvent::ActorPanicked(dead_actor, panic_msg)
                 if dead_actor.get_id() == state.mid_level_actor.get_id() =>
@@ -257,6 +238,5 @@ impl ActorHandler for RootActor {
                 println!("RootActor: recieved supervisor event '{}'", other);
             }
         }
-        None
     }
 }

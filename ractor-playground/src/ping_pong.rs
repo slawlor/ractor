@@ -45,36 +45,24 @@ impl ActorHandler for PingPong {
         0u8
     }
 
-    async fn post_start(
-        &self,
-        _this_actor: ActorRef<Self>,
-        _state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn post_start(&self, _this_actor: ActorRef<Self>, _state: &mut Self::State) {
         println!("post_start called");
-        None
     }
 
     /// Invoked after an actor has been stopped.
-    async fn post_stop(&self, _this_actor: ActorRef<Self>, _state: Self::State) -> Self::State {
+    async fn post_stop(&self, _this_actor: ActorRef<Self>, _state: &mut Self::State) {
         println!("post_stop called");
-        _state
     }
 
-    async fn handle(
-        &self,
-        myself: ActorRef<Self>,
-        message: Self::Msg,
-        state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
         if *state < 10u8 {
             message.print();
             myself.send_message(message.next()).unwrap();
-            Some(*state + 1)
+            *state += 1;
         } else {
             println!();
             myself.stop(None);
             // don't send another message, rather stop the agent after 10 iterations
-            None
         }
     }
 }

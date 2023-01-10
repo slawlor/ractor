@@ -148,26 +148,12 @@ impl std::fmt::Debug for ActorCell {
     }
 }
 
-impl Drop for ActorCell {
-    fn drop(&mut self) {
-        if let (Some(name), pid) = (self.get_name(), self.get_id()) {
-            let count = Arc::strong_count(&self.inner);
-            if count <= 2 && crate::registry::is_enrolled(name, pid) {
-                // there's 2 references left
-                // 1. This reference which is being dropped and
-                // 2. The reference in the registry so drop it from there which will complete the teardown of this actor
-                crate::registry::unenroll(name);
-            }
-        }
-    }
-}
-
 impl ActorCell {
     /// Construct a new [ActorCell] pointing to an [super::Actor] and return the message reception channels as a [ActorPortSet]
     ///
     /// * `name` - Optional name for the actor
     ///
-    /// Returns a tuple [(ActorCell, ActorPortSet)] to bootstrap the [Actor]
+    /// Returns a tuple [(ActorCell, ActorPortSet)] to bootstrap the [crate::Actor]
     pub(crate) fn new<TActor>(name: Option<ActorName>) -> Result<(Self, ActorPortSet), SpawnErr>
     where
         TActor: ActorHandler,
@@ -208,10 +194,24 @@ impl ActorCell {
         self.inner.get_status()
     }
 
-    /// Set the status of the [super::Actor]
+    /// Set the status of the [super::Actor]. If the status is set to
+    /// [ActorStatus::Stopping] or [ActorStatus::Stopped] the actor
+    /// will also be unenrolled from both the named registry ([crate::registry])
+    /// and the PG groups ([crate::pg]) if it's enrolled in any
     ///
     /// * `status` - The [ActorStatus] to set
     pub(crate) fn set_status(&self, status: ActorStatus) {
+        // The actor is shut down
+        if status == ActorStatus::Stopped || status == ActorStatus::Stopping {
+            // If it's enrolled in the registry, remove it
+            if let Some(name) = self.get_name() {
+                crate::registry::unenroll(name);
+            }
+            // Leave all + stop monitoring pg groups (if any)
+            crate::pg::demonitor_all(self.get_id());
+            crate::pg::leave_all(self.get_id());
+        }
+
         self.inner.set_status(status)
     }
 
@@ -296,9 +296,15 @@ impl ActorCell {
         self.inner.tree.notify_supervisors::<TActor>(evt)
     }
 
-    /// Test utility to retrieve a clone of the underlying supervision tree
+    // ================== Test Utilities ================== //
+
     #[cfg(test)]
-    pub(crate) fn get_tree(&self) -> super::supervision::SupervisionTree {
-        self.inner.tree.clone()
+    pub(crate) fn get_num_children(&self) -> usize {
+        self.inner.tree.get_num_children()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_num_parents(&self) -> usize {
+        self.inner.tree.get_num_parents()
     }
 }

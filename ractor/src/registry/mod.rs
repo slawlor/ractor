@@ -23,19 +23,22 @@
 //! ## Example
 //!
 //! ```rust
-//! let maybe_actor = ractor::registry::try_get("my_actor");
-//! if let Some(actor) = maybe_actor {
-//!     // send a message, or interact with the actor
-//!     // but you'll need to know the actor's strong type
+//! async fn test() {
+//!     let maybe_actor = ractor::registry::try_get("my_actor");
+//!     if let Some(actor) = maybe_actor {
+//!         // send a message, or interact with the actor
+//!         // but you'll need to know the actor's strong type
+//!     }
 //! }
 //! ```
 
 use std::sync::Arc;
 
-use dashmap::{mapref::entry::Entry, DashMap};
+use dashmap::mapref::entry::Entry::{Occupied, Vacant};
+use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
-use crate::{ActorCell, ActorId, ActorName};
+use crate::{ActorCell, ActorName};
 
 #[cfg(test)]
 mod tests;
@@ -50,42 +53,25 @@ pub enum ActorRegistryErr {
 static ACTOR_REGISTRY: OnceCell<Arc<DashMap<ActorName, ActorCell>>> = OnceCell::new();
 
 /// Retrieve the named actor registry handle
-fn get_actor_registry() -> Arc<DashMap<ActorName, ActorCell>> {
-    let reg = ACTOR_REGISTRY.get_or_init(|| Arc::new(DashMap::new()));
-    reg.clone()
+fn get_actor_registry<'a>() -> &'a Arc<DashMap<ActorName, ActorCell>> {
+    ACTOR_REGISTRY.get_or_init(|| Arc::new(DashMap::new()))
 }
 
 /// Put an actor into the registry
 pub(crate) fn enroll(name: ActorName, actor: ActorCell) -> Result<(), ActorRegistryErr> {
-    let reg = get_actor_registry();
-    let entry = reg.entry(name);
-
-    match entry {
-        Entry::Occupied(_) => Err(ActorRegistryErr::AlreadyRegistered(name)),
-        Entry::Vacant(vacancy) => {
+    match get_actor_registry().entry(name) {
+        Occupied(_) => Err(ActorRegistryErr::AlreadyRegistered(name)),
+        Vacant(vacancy) => {
             vacancy.insert(actor);
             Ok(())
         }
     }
 }
 
-/// Check if an actor name is enrolled in the registry
-///
-/// * `name` - The actor's name
-/// * `pid` - the ID of the actor in question
-pub(crate) fn is_enrolled(name: ActorName, pid: ActorId) -> bool {
-    match get_actor_registry().entry(name) {
-        Entry::Occupied(actor) => actor.get().get_id() == pid,
-        _ => false,
-    }
-}
-
 /// Remove an actor from the registry given it's actor name
 pub(crate) fn unenroll(name: ActorName) {
-    let reg = get_actor_registry();
-    let entry = reg.entry(name);
-    if let Entry::Occupied(actor) = entry {
-        let _ = actor.remove();
+    if let Some(reg) = ACTOR_REGISTRY.get() {
+        let _ = reg.remove(&name);
     }
 }
 
@@ -97,5 +83,5 @@ pub(crate) fn unenroll(name: ActorName) {
 /// actor not registered
 pub fn try_get(name: ActorName) -> Option<ActorCell> {
     let reg = get_actor_registry();
-    reg.get(&name).map(|item| item.value().clone())
+    reg.get(&name).map(|v| v.value().clone())
 }

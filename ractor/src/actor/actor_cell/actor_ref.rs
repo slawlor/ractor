@@ -8,7 +8,7 @@
 use std::any::TypeId;
 use std::marker::PhantomData;
 
-use crate::{ActorHandler, ActorId, ActorName, ActorStatus, MessagingErr, SupervisionEvent};
+use crate::{ActorHandler, ActorName, MessagingErr, SupervisionEvent};
 
 use super::ActorCell;
 
@@ -85,61 +85,6 @@ where
         self.inner.clone()
     }
 
-    /// Retrieve the [crate::Actor]'s unique identifier [ActorId]
-    pub fn get_id(&self) -> ActorId {
-        self.inner.get_id()
-    }
-
-    /// Retrieve the [crate::Actor]'s name
-    pub fn get_name(&self) -> Option<ActorName> {
-        self.inner.get_name()
-    }
-
-    /// Retrieve the current status of an [crate::Actor]
-    ///
-    /// Returns the [crate::Actor]'s current [ActorStatus]
-    pub fn get_status(&self) -> ActorStatus {
-        self.inner.get_status()
-    }
-
-    /// Set the status of the [crate::Actor]
-    ///
-    /// * `status` - The [ActorStatus] to set
-    pub(crate) fn set_status(&self, status: ActorStatus) {
-        self.inner.set_status(status)
-    }
-
-    /// Terminate this [crate::Actor] and all it's children
-    pub(crate) fn terminate(&self) {
-        self.inner.terminate();
-    }
-
-    /// Link this [crate::Actor] to the supervisor
-    ///
-    /// * `supervisor` - The supervisor to link this [crate::Actor] to
-    pub fn link(&self, supervisor: ActorCell) {
-        self.inner.link(supervisor);
-    }
-
-    /// Unlink this [crate::Actor] from the supervisor
-    ///
-    /// * `supervisor` - The supervisor to unlink this [crate::Actor] from
-    pub fn unlink(&self, supervisor: ActorCell) {
-        self.inner.unlink(supervisor)
-    }
-
-    /// Kill this [crate::Actor] forcefully (terminates async work)
-    pub fn kill(&self) {
-        self.inner.kill();
-    }
-
-    /// Stop this [crate::Actor] gracefully (stopping message processing)
-    ///
-    /// * `reason` - An optional static string reason why the stop is occurring
-    pub fn stop(&self, reason: Option<String>) {
-        self.inner.stop(reason);
-    }
-
     /// Send a strongly-typed message, constructing the boxed message on the fly
     ///
     /// * `message` - The message to send
@@ -147,19 +92,6 @@ where
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
     pub fn send_message(&self, message: TActor::Msg) -> Result<(), MessagingErr> {
         self.inner.send_message::<TActor>(message)
-    }
-
-    /// Send a supervisor event to the supervisory port
-    ///
-    /// * `message` - The [SupervisionEvent] to send to the supervisory port
-    ///
-    /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    #[cfg(test)]
-    pub(crate) fn send_supervisor_evt(
-        &self,
-        message: SupervisionEvent,
-    ) -> Result<(), MessagingErr> {
-        self.inner.send_supervisor_evt(message)
     }
 
     /// Notify the supervisors that a supervision event occurred

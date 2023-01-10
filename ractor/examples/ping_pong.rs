@@ -53,20 +53,14 @@ impl ActorHandler for PingPong {
         0u8
     }
 
-    async fn handle(
-        &self,
-        myself: ActorRef<Self>,
-        message: Self::Msg,
-        state: &Self::State,
-    ) -> Option<Self::State> {
+    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
         if *state < 10u8 {
             message.print();
             myself.send_message(message.next()).unwrap();
-            Some(*state + 1)
+            *state += 1;
         } else {
             println!();
             myself.stop(None);
-            None
         }
     }
 }
