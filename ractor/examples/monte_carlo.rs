@@ -58,10 +58,13 @@ impl GameState {
 }
 
 struct Game;
+struct GameMessage(ActorRef<GameManager>);
+#[cfg(feature = "cluster")]
+impl ractor::Message for GameMessage {}
 
 #[async_trait::async_trait]
 impl Actor for Game {
-    type Msg = ActorRef<GameManager>;
+    type Msg = GameMessage;
 
     type State = GameState;
 
@@ -82,7 +85,7 @@ impl Actor for Game {
             // Now that the game is finished, the results of the game need to be reported
             // to the `GameManager`.
             cast!(
-                message,
+                message.0,
                 GameManagerMessage {
                     id: myself.get_id(),
                     results: state.results_vec.clone(),
@@ -105,6 +108,8 @@ struct GameManagerMessage {
     id: ActorId,
     results: Vec<i64>,
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for GameManagerMessage {}
 
 struct GameManagerState {
     /// The number of games that have been played so far.
@@ -145,7 +150,7 @@ impl Actor for GameManager {
             let (actor, _) = Actor::spawn_linked(None, Game, myself.clone().into())
                 .await
                 .expect("Failed to start game");
-            cast!(actor, myself.clone()).expect("Failed to send message");
+            cast!(actor, GameMessage(myself.clone())).expect("Failed to send message");
         }
 
         GameManagerState::new(self.num_games)

@@ -1,0 +1,701 @@
+// Copyright (c) Sean Lawlor
+//
+// This source code is licensed under both the MIT license found in the
+// LICENSE-MIT file in the root directory of this source tree.
+
+//! A [NodeSession] is an individual connection between a specific pair of
+//!  `node()`s and all of its authentication and communication for that
+//! pairing
+
+use std::collections::HashMap;
+use std::convert::TryInto;
+use std::net::SocketAddr;
+
+use ractor::message::SerializedMessage;
+use ractor::rpc::CallResult;
+use ractor::{Actor, ActorId, ActorRef, SupervisionEvent};
+use rand::Rng;
+use tokio::time::Duration;
+
+use super::{auth, NodeServer};
+use crate::net::session::SessionMessage;
+use crate::protocol::auth as auth_protocol;
+use crate::protocol::control as control_protocol;
+use crate::protocol::node as node_protocol;
+use crate::remote_actor::RemoteActor;
+
+const MIN_PING_LATENCY_MS: u64 = 1000;
+const MAX_PING_LATENCY_MS: u64 = 5000;
+
+enum AuthenticationState {
+    AsClient(auth::ClientAuthenticationProcess),
+    AsServer(auth::ServerAuthenticationProcess),
+}
+
+impl AuthenticationState {
+    fn is_ok(&self) -> bool {
+        match self {
+            Self::AsClient(c) => matches!(c, auth::ClientAuthenticationProcess::Ok),
+            Self::AsServer(s) => matches!(s, auth::ServerAuthenticationProcess::Ok(_)),
+        }
+    }
+
+    fn is_close(&self) -> bool {
+        match self {
+            Self::AsClient(c) => matches!(c, auth::ClientAuthenticationProcess::Close),
+            Self::AsServer(s) => matches!(s, auth::ServerAuthenticationProcess::Close),
+        }
+    }
+}
+
+/// Represents a session with a specific node
+pub struct NodeSession {
+    node_id: u64,
+    is_server: bool,
+    cookie: String,
+    node_server: ActorRef<NodeServer>,
+    node_name: auth_protocol::NameMessage,
+}
+
+impl NodeSession {
+    /// Construct a new [NodeSession] with the supplied
+    /// arguments
+    pub fn new(
+        node_id: u64,
+        is_server: bool,
+        cookie: String,
+        node_server: ActorRef<NodeServer>,
+        node_name: auth_protocol::NameMessage,
+    ) -> Self {
+        Self {
+            node_id,
+            is_server,
+            cookie,
+            node_server,
+            node_name,
+        }
+    }
+}
+
+impl NodeSession {
+    async fn handle_auth(
+        &self,
+        state: &mut NodeSessionState,
+        message: auth_protocol::AuthenticationMessage,
+        myself: ActorRef<Self>,
+    ) {
+        if state.auth.is_ok() {
+            // nothing to do, we're already authenticated
+            return;
+        }
+        if state.auth.is_close() {
+            log::info!(
+                "Node Session {} is shutting down due to authentication failure",
+                self.node_id
+            );
+            // we need to shutdown, the session needs to be terminated
+            myself.stop(Some("auth_fail".to_string()));
+            if let Some(tcp) = &state.tcp {
+                tcp.stop(Some("auth_fail".to_string()));
+            }
+        }
+
+        match &state.auth {
+            AuthenticationState::AsClient(client_auth) => {
+                let mut next = client_auth.next(message, &self.cookie);
+                match &next {
+                    auth::ClientAuthenticationProcess::WaitingForServerChallenge(server_status) => {
+                        match server_status.status() {
+                            auth_protocol::server_status::Status::Ok => {
+                                // this handshake will continue
+                            }
+                            auth_protocol::server_status::Status::OkSimultaneous => {
+                                // this handshake will continue, but there is another handshake underway
+                                // that will be shut down (i.e. this was a server connection and we're currently trying
+                                // a client connection)
+                            }
+                            auth_protocol::server_status::Status::NotOk => {
+                                // The handshake will not continue, as there's already another client handshake underway
+                                // which itself initiated (Simultaneous connect where the other connection's name is > this node
+                                // name)
+                                next = auth::ClientAuthenticationProcess::Close;
+                            }
+                            auth_protocol::server_status::Status::NotAllowed => {
+                                // unspecified auth reason
+                                next = auth::ClientAuthenticationProcess::Close;
+                            }
+                            auth_protocol::server_status::Status::Alive => {
+                                // A connection to the node is already alive, which means either the
+                                // node is confused in its connection state or the previous TCP connection is
+                                // breaking down. Send ClientStatus
+                                // TODO: check the status properly
+                                state.tcp_send_auth(auth_protocol::AuthenticationMessage {
+                                    msg: Some(
+                                        auth_protocol::authentication_message::Msg::ClientStatus(
+                                            auth_protocol::ClientStatus { status: true },
+                                        ),
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                    auth::ClientAuthenticationProcess::WaitingForServerChallengeAck(
+                        server_challenge_value,
+                        reply_to_server,
+                        our_challenge,
+                        _expected_digest,
+                    ) => {
+                        // record the name
+                        state.name = Some(auth_protocol::NameMessage {
+                            name: server_challenge_value.name.clone(),
+                            flags: server_challenge_value.flags.clone(),
+                        });
+                        // tell the node server that we now know this peer's name information
+                        let _ =
+                            self.node_server
+                                .cast(super::SessionManagerMessage::UpdateSession {
+                                    actor_id: myself.get_id(),
+                                    name: self.node_name.clone(),
+                                });
+                        // send the client challenge to the server
+                        let reply = auth_protocol::AuthenticationMessage {
+                            msg: Some(auth_protocol::authentication_message::Msg::ClientChallenge(
+                                auth_protocol::ChallengeReply {
+                                    digest: reply_to_server.to_vec(),
+                                    challenge: *our_challenge,
+                                },
+                            )),
+                        };
+                        state.tcp_send_auth(reply);
+                    }
+                    _ => {
+                        // no message to send
+                    }
+                }
+
+                if let auth::ClientAuthenticationProcess::Close = &next {
+                    log::info!(
+                        "Node Session {} is shutting down due to authentication failure",
+                        self.node_id
+                    );
+                    myself.stop(Some("auth_fail".to_string()));
+                }
+                if let auth::ClientAuthenticationProcess::Ok = &next {
+                    log::info!("Node Session {} is authenticated", self.node_id);
+                }
+                log::debug!("Next client auth state: {:?}", next);
+                state.auth = AuthenticationState::AsClient(next);
+            }
+            AuthenticationState::AsServer(server_auth) => {
+                let mut next = server_auth.next(message, &self.cookie);
+
+                match &next {
+                    auth::ServerAuthenticationProcess::HavePeerName(peer_name) => {
+                        // store the peer node's name in the session state
+                        state.name = Some(peer_name.clone());
+
+                        // send the status message, followed by the server's challenge
+                        let server_status_result = self
+                            .node_server
+                            .call(
+                                |tx| super::SessionManagerMessage::CheckSession {
+                                    peer_name: peer_name.clone(),
+                                    reply: tx,
+                                },
+                                Some(Duration::from_millis(500)),
+                            )
+                            .await;
+                        match server_status_result {
+                            Err(_) | Ok(CallResult::Timeout) | Ok(CallResult::SenderError) => {
+                                next = auth::ServerAuthenticationProcess::Close;
+                            }
+                            Ok(CallResult::Success(reply)) => {
+                                let server_status: auth_protocol::server_status::Status =
+                                    reply.into();
+                                // Send the server's status message
+                                let status_msg = auth_protocol::AuthenticationMessage {
+                                    msg: Some(
+                                        auth_protocol::authentication_message::Msg::ServerStatus(
+                                            auth_protocol::ServerStatus {
+                                                status: server_status.into(),
+                                            },
+                                        ),
+                                    ),
+                                };
+                                state.tcp_send_auth(status_msg);
+
+                                match server_status {
+                                    auth_protocol::server_status::Status::Ok
+                                    | auth_protocol::server_status::Status::OkSimultaneous => {
+                                        // Good to proceed, start a challenge
+                                        next = next.start_challenge(&self.cookie);
+                                        if let auth::ServerAuthenticationProcess::WaitingOnClientChallengeReply(
+                                            challenge,
+                                            _digest,
+                                        ) = &next
+                                        {
+                                            let challenge_msg = auth_protocol::AuthenticationMessage {
+                                                msg: Some(
+                                                    auth_protocol::authentication_message::Msg::ServerChallenge(
+                                                        auth_protocol::Challenge {
+                                                            name: self.node_name.name.clone(),
+                                                            flags: self.node_name.flags.clone(),
+                                                            challenge: *challenge,
+                                                        },
+                                                    ),
+                                                ),
+                                            };
+                                            state.tcp_send_auth(challenge_msg);
+                                        }
+                                    }
+                                    auth_protocol::server_status::Status::NotOk
+                                    | auth_protocol::server_status::Status::NotAllowed => {
+                                        next = auth::ServerAuthenticationProcess::Close;
+                                    }
+                                    auth_protocol::server_status::Status::Alive => {
+                                        // we sent the `Alive` status, so we're waiting on the client to confirm their status
+                                        // before continuing
+                                        next = auth::ServerAuthenticationProcess::WaitingOnClientStatus;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    auth::ServerAuthenticationProcess::Ok(digest) => {
+                        let client_challenge_reply = auth_protocol::AuthenticationMessage {
+                            msg: Some(auth_protocol::authentication_message::Msg::ServerAck(
+                                auth_protocol::ChallengeAck {
+                                    digest: digest.to_vec(),
+                                },
+                            )),
+                        };
+                        state.tcp_send_auth(client_challenge_reply);
+                    }
+                    _ => {
+                        // no message to send
+                    }
+                }
+
+                if let auth::ServerAuthenticationProcess::Close = &next {
+                    log::info!(
+                        "Node Session {} is shutting down due to authentication failure",
+                        self.node_id
+                    );
+                    myself.stop(Some("auth_fail".to_string()));
+                }
+                if let auth::ServerAuthenticationProcess::Ok(_) = &next {
+                    log::info!("Node Session {} is authenticated", self.node_id);
+                }
+                log::debug!("Next server auth state: {:?}", next);
+                state.auth = AuthenticationState::AsServer(next);
+            }
+        }
+    }
+
+    fn handle_node(
+        &self,
+        state: &mut NodeSessionState,
+        message: node_protocol::NodeMessage,
+        myself: ActorRef<Self>,
+    ) {
+        if let Some(msg) = message.msg {
+            match msg {
+                node_protocol::node_message::Msg::Cast(cast_args) => {
+                    if let Some(actor) = ractor::registry::get_pid(ActorId::Local(cast_args.to)) {
+                        let _ = actor.send_serialized(SerializedMessage::Cast(cast_args.what));
+                    }
+                }
+                node_protocol::node_message::Msg::Call(call_args) => {
+                    let to = call_args.to;
+                    let tag = call_args.tag;
+                    if let Some(actor) = ractor::registry::get_pid(ActorId::Local(call_args.to)) {
+                        let (tx, rx) = ractor::concurrency::oneshot();
+
+                        // send off the transmission in the serialized format, letting the message's own deserialization handle
+                        // the conversion
+                        let maybe_timeout = call_args.timeout_ms.map(Duration::from_millis);
+                        if let Some(timeout) = maybe_timeout {
+                            let _ = actor.send_serialized(SerializedMessage::Call(
+                                call_args.what,
+                                (tx, timeout).into(),
+                            ));
+                        } else {
+                            let _ = actor.send_serialized(SerializedMessage::Call(
+                                call_args.what,
+                                tx.into(),
+                            ));
+                        }
+
+                        // kick off a background task to reply to the channel request, threading the tag and who to reply to
+                        let _ = ractor::concurrency::spawn(async move {
+                            if let Some(timeout) = maybe_timeout {
+                                if let Ok(Ok(result)) =
+                                    ractor::concurrency::timeout(timeout, rx).await
+                                {
+                                    let reply = node_protocol::node_message::Msg::Reply(
+                                        node_protocol::CallReply {
+                                            tag,
+                                            to,
+                                            what: result,
+                                        },
+                                    );
+                                    let _ = ractor::cast!(
+                                        myself,
+                                        super::SessionMessage::SendMessage(
+                                            node_protocol::NodeMessage { msg: Some(reply) }
+                                        )
+                                    );
+                                }
+                            } else if let Ok(result) = rx.await {
+                                let reply = node_protocol::node_message::Msg::Reply(
+                                    node_protocol::CallReply {
+                                        tag,
+                                        to,
+                                        what: result,
+                                    },
+                                );
+                                let _ = ractor::cast!(
+                                    myself,
+                                    super::SessionMessage::SendMessage(
+                                        node_protocol::NodeMessage { msg: Some(reply) }
+                                    )
+                                );
+                            }
+                        });
+                    }
+                }
+                node_protocol::node_message::Msg::Reply(call_reply_args) => {
+                    if let Some(actor) = state.remote_actors.get(&call_reply_args.to) {
+                        let _ = actor.send_serialized(SerializedMessage::CallReply(
+                            call_reply_args.tag,
+                            call_reply_args.what,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    async fn handle_control(
+        &self,
+        state: &mut NodeSessionState,
+        message: control_protocol::ControlMessage,
+        myself: ActorRef<Self>,
+    ) {
+        if let Some(msg) = message.msg {
+            match msg {
+                control_protocol::control_message::Msg::Spawn(spawn_actor) => {
+                    let actor = crate::remote_actor::RemoteActor {
+                        session: myself.clone(),
+                    };
+
+                    match actor
+                        .spawn_linked(
+                            spawn_actor.name,
+                            spawn_actor.id,
+                            self.node_id,
+                            myself.get_cell(),
+                        )
+                        .await
+                    {
+                        Ok((actor, _)) => {
+                            state.remote_actors.insert(spawn_actor.id, actor);
+                        }
+                        Err(spawn_err) => {
+                            log::error!("Failed to spawn remote actor with {}", spawn_err);
+                        }
+                    }
+                }
+                control_protocol::control_message::Msg::Terminate(termination) => {
+                    if let Some(actor) = state.remote_actors.remove(&termination.id) {
+                        actor.stop(Some(format!("Remote: {:?}", termination)));
+                        if termination.is_panic {
+                            log::info!(
+                                "Remote actor {} panicked with {:?}",
+                                actor.get_id(),
+                                termination.panic_reason
+                            );
+                        } else {
+                            log::debug!(
+                                "Remote actor {} exited with {:?}",
+                                actor.get_id(),
+                                termination.panic_reason
+                            );
+                        }
+                    }
+                }
+                control_protocol::control_message::Msg::Ping(ping) => {
+                    state.tcp_send_control(control_protocol::ControlMessage {
+                        msg: Some(control_protocol::control_message::Msg::Pong(
+                            control_protocol::Pong {
+                                timestamp: ping.timestamp,
+                            },
+                        )),
+                    });
+                }
+                control_protocol::control_message::Msg::Pong(pong) => {
+                    let ts: std::time::SystemTime = pong
+                        .timestamp
+                        .expect("Timestamp missing in Pong")
+                        .try_into()
+                        .expect("Failed to convert Pong(Timestamp) to SystemTime");
+                    let delta_ms = std::time::SystemTime::now()
+                        .duration_since(ts)
+                        .expect("Time went backwards")
+                        .as_millis();
+                    log::debug!("Ping -> Pong took {}ms", delta_ms);
+                    if delta_ms > 50 {
+                        let default = || {
+                            SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0)
+                        };
+                        log::warn!(
+                            "Super long ping detected {} - {} ({}ms)",
+                            state.local_addr.unwrap_or_else(default),
+                            state.peer_addr.unwrap_or_else(default),
+                            delta_ms
+                        );
+                    }
+                    // schedule next ping
+                    state.schedule_tcp_ping();
+                }
+            }
+        }
+    }
+
+    /// Called once the session is authenticated
+    fn after_authenticated(&self, state: &mut NodeSessionState) {
+        log::info!(
+            "Session authenticated on NodeSession {} - ({:?})",
+            self.node_id,
+            state.peer_addr
+        );
+
+        // startup the ping sending operation
+        state.schedule_tcp_ping();
+
+        // TODO: startup control message processing and additionally subscribe to process
+        // group changes
+    }
+}
+
+/// The state of the node session
+pub struct NodeSessionState {
+    tcp: Option<ActorRef<crate::net::session::Session>>,
+    peer_addr: Option<SocketAddr>,
+    local_addr: Option<SocketAddr>,
+    name: Option<auth_protocol::NameMessage>,
+    auth: AuthenticationState,
+    remote_actors: HashMap<u64, ActorRef<RemoteActor>>,
+}
+
+impl NodeSessionState {
+    fn is_tcp_actor(&self, actor: ActorId) -> bool {
+        self.tcp
+            .as_ref()
+            .map(|t| t.get_id() == actor)
+            .unwrap_or(false)
+    }
+
+    fn tcp_send_auth(&self, msg: auth_protocol::AuthenticationMessage) {
+        if let Some(tcp) = &self.tcp {
+            let net_msg = crate::protocol::NetworkMessage {
+                message: Some(crate::protocol::meta::network_message::Message::Auth(msg)),
+            };
+            let _ = ractor::cast!(tcp, SessionMessage::Send(net_msg));
+        }
+    }
+
+    fn tcp_send_node(&self, msg: node_protocol::NodeMessage) {
+        if let Some(tcp) = &self.tcp {
+            let net_msg = crate::protocol::NetworkMessage {
+                message: Some(crate::protocol::meta::network_message::Message::Node(msg)),
+            };
+            let _ = ractor::cast!(tcp, SessionMessage::Send(net_msg));
+        }
+    }
+
+    fn tcp_send_control(&self, msg: control_protocol::ControlMessage) {
+        if let Some(tcp) = &self.tcp {
+            let net_msg = crate::protocol::NetworkMessage {
+                message: Some(crate::protocol::meta::network_message::Message::Control(
+                    msg,
+                )),
+            };
+            let _ = ractor::cast!(tcp, SessionMessage::Send(net_msg));
+        }
+    }
+
+    fn schedule_tcp_ping(&self) {
+        if let Some(tcp) = &self.tcp {
+            let _ = tcp.send_after(Self::get_send_delay(), || {
+                let ping = control_protocol::ControlMessage {
+                    msg: Some(control_protocol::control_message::Msg::Ping(
+                        control_protocol::Ping {
+                            timestamp: Some(prost_types::Timestamp::from(
+                                std::time::SystemTime::now(),
+                            )),
+                        },
+                    )),
+                };
+                let net_msg = crate::protocol::NetworkMessage {
+                    message: Some(crate::protocol::meta::network_message::Message::Control(
+                        ping,
+                    )),
+                };
+                SessionMessage::Send(net_msg)
+            });
+        }
+    }
+
+    fn get_send_delay() -> Duration {
+        Duration::from_millis(
+            rand::thread_rng().gen_range(MIN_PING_LATENCY_MS..MAX_PING_LATENCY_MS),
+        )
+    }
+}
+
+#[async_trait::async_trait]
+impl Actor for NodeSession {
+    type Msg = super::SessionMessage;
+    type State = NodeSessionState;
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
+        Self::State {
+            tcp: None,
+            name: None,
+            auth: if self.is_server {
+                AuthenticationState::AsServer(auth::ServerAuthenticationProcess::init())
+            } else {
+                AuthenticationState::AsClient(auth::ClientAuthenticationProcess::init())
+            },
+            remote_actors: HashMap::new(),
+            peer_addr: None,
+            local_addr: None,
+        }
+    }
+
+    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+        match message {
+            super::SessionMessage::SetTcpStream(stream) if state.tcp.is_none() => {
+                let peer_addr = stream.peer_addr().expect("Failed to get peer address");
+                let my_addr = stream.local_addr().expect("Failed to get local address");
+                // startup the TCP socket handler for message write + reading
+                let actor = crate::net::session::Session::spawn_linked(
+                    myself.clone(),
+                    stream,
+                    peer_addr,
+                    my_addr,
+                    myself.get_cell(),
+                )
+                .await
+                .expect("Failed to spawn TCP session");
+
+                state.tcp = Some(actor);
+                state.peer_addr = Some(peer_addr);
+                state.local_addr = Some(my_addr);
+
+                // If a client-connection, startup the handshake
+                if !self.is_server {
+                    state.tcp_send_auth(auth_protocol::AuthenticationMessage {
+                        msg: Some(auth_protocol::authentication_message::Msg::Name(
+                            self.node_name.clone(),
+                        )),
+                    });
+                }
+            }
+            Self::Msg::MessageReceived(maybe_network_message) if state.tcp.is_some() => {
+                if let Some(network_message) = maybe_network_message.message {
+                    match network_message {
+                        crate::protocol::meta::network_message::Message::Auth(auth_message) => {
+                            let p_state = state.auth.is_ok();
+                            self.handle_auth(state, auth_message, myself).await;
+                            if !p_state && state.auth.is_ok() {
+                                self.after_authenticated(state);
+                            }
+                        }
+                        crate::protocol::meta::network_message::Message::Node(node_message) => {
+                            self.handle_node(state, node_message, myself);
+                        }
+                        crate::protocol::meta::network_message::Message::Control(
+                            control_message,
+                        ) => {
+                            self.handle_control(state, control_message, myself).await;
+                        }
+                    }
+                }
+            }
+            Self::Msg::SendMessage(node_message) if state.tcp.is_some() => {
+                state.tcp_send_node(node_message);
+            }
+            _ => {
+                // no-op, ignore
+            }
+        }
+    }
+
+    async fn handle_supervisor_evt(
+        &self,
+        myself: ActorRef<Self>,
+        message: SupervisionEvent,
+        state: &mut Self::State,
+    ) {
+        match message {
+            SupervisionEvent::ActorPanicked(actor, msg) => {
+                if state.is_tcp_actor(actor.get_id()) {
+                    log::error!(
+                        "Node session {:?}'s TCP session panicked with '{}'",
+                        state.name,
+                        msg
+                    );
+                    myself.stop(Some("tcp_session_err".to_string()));
+                } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().get_pid()) {
+                    log::warn!(
+                        "Node session {:?} had a remote actor ({}) panic with {}",
+                        state.name,
+                        actor.get_id(),
+                        msg
+                    );
+                    actor.kill();
+
+                    // NOTE: This is a legitimate panic of the `RemoteActor`, not the actor on the remote machine panicking (which
+                    // is handled by the remote actor's supervisor). Therefore we should re-spawn the actor
+                    let pid = actor.get_id().get_pid();
+                    let (remote_actor, _) = crate::remote_actor::RemoteActor {
+                        session: myself.clone(),
+                    }
+                    .spawn_linked(actor.get_name(), pid, self.node_id, myself.get_cell())
+                    .await
+                    .expect("Failed to spawn remote actor");
+                    state.remote_actors.insert(pid, remote_actor);
+                } else {
+                    log::error!("NodeSesion {:?} received an unknown child panic superivision message from {} - '{}'",
+                        state.name,
+                        actor.get_id(),
+                        msg
+                    );
+                }
+            }
+            SupervisionEvent::ActorTerminated(actor, _, maybe_reason) => {
+                if state.is_tcp_actor(actor.get_id()) {
+                    log::info!("NodeSession {:?} connection closed", state.name);
+                    myself.stop(Some("tcp_session_closed".to_string()));
+                } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().get_pid()) {
+                    log::debug!(
+                        "NodeSession {:?} received a child exit with reason '{:?}'",
+                        state.name,
+                        maybe_reason
+                    );
+                    actor.kill();
+                } else {
+                    log::info!("NodeSession {:?} received an unknown child actor exit event from {} - '{:?}'",
+                        state.name,
+                        actor.get_id(),
+                        maybe_reason,
+                    );
+                }
+            }
+            _ => {
+                //no-op
+            }
+        }
+    }
+}

@@ -1,0 +1,55 @@
+// Copyright (c) Sean Lawlor
+//
+// This source code is licensed under both the MIT license found in the
+// LICENSE-MIT file in the root directory of this source tree.
+
+// NOTE: We make heavy use of oneof syntax here in order to deal with a rust-like enum
+// type. You can see https://developers.google.com/protocol-buffers/docs/proto3#oneof for
+// the syntax and guide
+
+syntax = "proto3";
+
+package node;
+
+// Represents a cast to a remote actor
+message Cast {
+    // `to` is the intended actor
+    uint64 to = 1;
+    // `what` is the payload for the cast operation
+    bytes what = 2;
+}
+
+message Call {
+    // `to` is the intended actor
+    uint64 to = 1;
+    // `what` is the serialized arguments to the call
+    bytes what = 2;
+    // `tag` is a unique request tag which the RemoteActor applied in order
+    // to match requests back up to replies
+    uint64 tag = 3;
+    // `timeout_ms` is the timeout in milliseconds for the call to complete
+    optional uint64 timeout_ms = 4;
+}
+
+message CallReply {
+    // `to` is the intended RemoteActor
+    uint64 to = 1;
+    // `tag` is a unique request tag which the RemoteActor applied in order
+    // to match requests back up to replies
+    uint64 tag = 2;
+    // `what` is the payload for the call reply
+    bytes what = 3;
+}
+
+// An inter-node message for inter-actor communications
+message NodeMessage {
+    // The message payload
+    oneof msg {
+        // A cast to a remote actor
+        Cast cast = 1;
+        // A call to a remote actor
+        Call call = 2;
+        // A reply to a call from the remote actor
+        CallReply reply = 3;
+    }
+}

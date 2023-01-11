@@ -15,7 +15,12 @@ pub enum ActorId {
     Local(u64),
 
     /// A remote actor on another system (system, id)
-    Remote(u64, u64),
+    Remote {
+        /// The remote node id
+        node_id: u64,
+        /// The local id on the remote system
+        pid: u64,
+    },
 }
 
 impl ActorId {
@@ -25,13 +30,21 @@ impl ActorId {
     pub fn is_local(&self) -> bool {
         matches!(self, ActorId::Local(_))
     }
+
+    /// Retrieve the actor's PID
+    pub fn pid(&self) -> u64 {
+        match self {
+            ActorId::Local(pid) => *pid,
+            ActorId::Remote { pid, .. } => *pid,
+        }
+    }
 }
 
 impl Display for ActorId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ActorId::Local(id) => write!(f, "0.{}", id),
-            ActorId::Remote(system_id, id) => write!(f, "{}.{}", system_id, id),
+            ActorId::Remote { node_id, pid } => write!(f, "{}.{}", node_id, pid),
         }
     }
 }
@@ -39,7 +52,7 @@ impl Display for ActorId {
 /// The local id allocator for actors
 static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0u64);
 
-/// Retreiev a new local id
+/// Retrieve a new local id
 pub(crate) fn get_new_local_id() -> ActorId {
     ActorId::Local(ACTOR_ID_ALLOCATOR.fetch_add(1, std::sync::atomic::Ordering::AcqRel))
 }
@@ -49,7 +62,34 @@ impl ActorId {
     pub fn get_pid(&self) -> u64 {
         match self {
             ActorId::Local(pid) => *pid,
-            ActorId::Remote(_, pid) => *pid,
+            ActorId::Remote { pid, .. } => *pid,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_pid() {
+        let actor_id = ActorId::Local(123);
+        assert_eq!(123, actor_id.get_pid());
+        let actor_id = ActorId::Remote {
+            node_id: 1,
+            pid: 123,
+        };
+        assert_eq!(123, actor_id.get_pid());
+    }
+
+    #[test]
+    fn test_is_local() {
+        let actor_id = ActorId::Local(123);
+        assert!(actor_id.is_local());
+        let actor_id = ActorId::Remote {
+            node_id: 1,
+            pid: 123,
+        };
+        assert!(!actor_id.is_local());
     }
 }

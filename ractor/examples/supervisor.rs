@@ -19,7 +19,7 @@ use tokio::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    let (root, handle) = Actor::spawn(Some("root"), RootActor)
+    let (root, handle) = Actor::spawn(Some("root".to_string()), RootActor)
         .await
         .expect("Failed to start root actor");
     let mid_level = root
@@ -65,6 +65,8 @@ enum LeafActorMessage {
     Boom,
     NoOp,
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for LeafActorMessage {}
 
 #[async_trait::async_trait]
 impl Actor for LeafActor {
@@ -115,6 +117,8 @@ struct MidLevelActorState {
 enum MidLevelActorMessage {
     GetLeaf(RpcReplyPort<ActorRef<LeafActor>>),
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for MidLevelActorMessage {}
 
 #[async_trait::async_trait]
 impl Actor for MidLevelActor {
@@ -122,9 +126,10 @@ impl Actor for MidLevelActor {
     type State = MidLevelActorState;
 
     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
-        let (leaf_actor, _) = Actor::spawn_linked(Some("leaf"), LeafActor, myself.into())
-            .await
-            .expect("Failed to start leaf actor");
+        let (leaf_actor, _) =
+            Actor::spawn_linked(Some("leaf".to_string()), LeafActor, myself.into())
+                .await
+                .expect("Failed to start leaf actor");
         MidLevelActorState { leaf_actor }
     }
 
@@ -187,6 +192,8 @@ struct RootActorState {
 enum RootActorMessage {
     GetMidLevel(RpcReplyPort<ActorRef<MidLevelActor>>),
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for RootActorMessage {}
 
 #[async_trait::async_trait]
 impl Actor for RootActor {
@@ -196,7 +203,7 @@ impl Actor for RootActor {
     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
         println!("RootActor: Started {:?}", myself);
         let (mid_level_actor, _) =
-            Actor::spawn_linked(Some("mid-level"), MidLevelActor, myself.into())
+            Actor::spawn_linked(Some("mid-level".to_string()), MidLevelActor, myself.into())
                 .await
                 .expect("Failed to spawn mid-level actor");
         RootActorState { mid_level_actor }

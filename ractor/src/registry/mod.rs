@@ -5,8 +5,8 @@
 
 //! Represents an actor registry.
 //!
-//! It allows unique naming of actors via `'static &str` (not strings)
-//! so it works more like a Erlang `atom()`
+//! It allows unique naming of actors via `String`
+//! so it works more or less like an Erlang `atom()`
 //!
 //! Actors are automatically registered into the global registry, if they
 //! provide a name, upon construction.Actors are also
@@ -24,7 +24,7 @@
 //!
 //! ```rust
 //! async fn test() {
-//!     let maybe_actor = ractor::registry::where_is("my_actor");
+//!     let maybe_actor = ractor::registry::where_is("my_actor".to_string());
 //!     if let Some(actor) = maybe_actor {
 //!         // send a message, or interact with the actor
 //!         // but you'll need to know the actor's strong type
@@ -38,6 +38,8 @@ use dashmap::mapref::entry::Entry::{Occupied, Vacant};
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
+#[cfg(feature = "cluster")]
+use crate::ActorId;
 use crate::{ActorCell, ActorName};
 
 #[cfg(test)]
@@ -51,15 +53,21 @@ pub enum ActorRegistryErr {
 
 /// The name'd actor registry
 static ACTOR_REGISTRY: OnceCell<Arc<DashMap<ActorName, ActorCell>>> = OnceCell::new();
+#[cfg(feature = "cluster")]
+static PID_REGISTRY: OnceCell<Arc<DashMap<ActorId, ActorCell>>> = OnceCell::new();
 
 /// Retrieve the named actor registry handle
 fn get_actor_registry<'a>() -> &'a Arc<DashMap<ActorName, ActorCell>> {
     ACTOR_REGISTRY.get_or_init(|| Arc::new(DashMap::new()))
 }
+#[cfg(feature = "cluster")]
+fn get_pid_registry<'a>() -> &'a Arc<DashMap<ActorId, ActorCell>> {
+    PID_REGISTRY.get_or_init(|| Arc::new(DashMap::new()))
+}
 
 /// Put an actor into the registry
 pub(crate) fn register(name: ActorName, actor: ActorCell) -> Result<(), ActorRegistryErr> {
-    match get_actor_registry().entry(name) {
+    match get_actor_registry().entry(name.clone()) {
         Occupied(_) => Err(ActorRegistryErr::AlreadyRegistered(name)),
         Vacant(vacancy) => {
             vacancy.insert(actor);
@@ -67,11 +75,23 @@ pub(crate) fn register(name: ActorName, actor: ActorCell) -> Result<(), ActorReg
         }
     }
 }
+#[cfg(feature = "cluster")]
+pub(crate) fn register_pid(id: ActorId, actor: ActorCell) {
+    if id.is_local() {
+        get_pid_registry().insert(id, actor);
+    }
+}
 
 /// Remove an actor from the registry given it's actor name
 pub(crate) fn unregister(name: ActorName) {
     if let Some(reg) = ACTOR_REGISTRY.get() {
         let _ = reg.remove(&name);
+    }
+}
+#[cfg(feature = "cluster")]
+pub(crate) fn unregister_pid(id: ActorId) {
+    if id.is_local() {
+        let _ = get_pid_registry().remove(&id);
     }
 }
 
@@ -92,5 +112,19 @@ pub fn where_is(name: ActorName) -> Option<ActorCell> {
 /// currently
 pub fn registered() -> Vec<ActorName> {
     let reg = get_actor_registry();
-    reg.iter().map(|kvp| *kvp.key()).collect::<Vec<_>>()
+    reg.iter().map(|kvp| kvp.key().clone()).collect::<Vec<_>>()
+}
+
+/// Retrieve an actor from the global registery of all local actors
+///
+/// * `id` - The **local** id of the actor to retrieve
+///
+/// Returns [Some(_)] if the actor exists locally, [None] otherwise
+#[cfg(feature = "cluster")]
+pub fn get_pid(id: ActorId) -> Option<ActorCell> {
+    if id.is_local() {
+        get_pid_registry().get(&id).map(|v| v.value().clone())
+    } else {
+        None
+    }
 }

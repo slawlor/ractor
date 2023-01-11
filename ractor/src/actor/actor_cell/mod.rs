@@ -12,13 +12,16 @@
 use std::sync::Arc;
 
 use super::errors::MessagingErr;
-use super::messages::{BoxedMessage, Signal, StopMessage};
-
+use super::messages::{Signal, StopMessage};
 use super::SupervisionEvent;
 use crate::concurrency::{
     MpscReceiver as BoundedInputPortReceiver, MpscUnboundedReceiver as InputPortReceiver,
 };
-use crate::{Actor, ActorId, ActorName, SpawnErr};
+use crate::message::BoxedMessage;
+#[cfg(feature = "cluster")]
+use crate::message::SerializedMessage;
+use crate::ActorId;
+use crate::{Actor, ActorName, SpawnErr};
 
 pub mod actor_ref;
 pub use actor_ref::ActorRef;
@@ -52,17 +55,26 @@ pub const ACTIVE_STATES: [ActorStatus; 3] = [
 ];
 
 /// The collection of ports an actor needs to listen to
-pub(crate) struct ActorPortSet {
-    pub(crate) signal_rx: BoundedInputPortReceiver<Signal>,
-    pub(crate) stop_rx: BoundedInputPortReceiver<StopMessage>,
-    pub(crate) supervisor_rx: InputPortReceiver<SupervisionEvent>,
-    pub(crate) message_rx: InputPortReceiver<BoxedMessage>,
+pub struct ActorPortSet {
+    /// The inner signal port
+    pub signal_rx: BoundedInputPortReceiver<Signal>,
+    /// The inner stop port
+    pub stop_rx: BoundedInputPortReceiver<StopMessage>,
+    /// The inner supervisor port
+    pub supervisor_rx: InputPortReceiver<SupervisionEvent>,
+    /// The inner message port
+    pub message_rx: InputPortReceiver<BoxedMessage>,
 }
 
-pub(crate) enum ActorPortMessage {
+/// Messages that come in off an actor's port, with associated priority
+pub enum ActorPortMessage {
+    /// A signal message
     Signal(Signal),
+    /// A stop message
     Stop(StopMessage),
+    /// A supervision message
     Supervision(SupervisionEvent),
+    /// A regular message
     Message(BoxedMessage),
 }
 
@@ -148,14 +160,47 @@ impl ActorCell {
     where
         TActor: Actor,
     {
-        let (props, rx1, rx2, rx3, rx4) = ActorProperties::new::<TActor>(name);
+        let (props, rx1, rx2, rx3, rx4) = ActorProperties::new::<TActor>(name.clone());
+        let cell = Self {
+            inner: Arc::new(props),
+        };
+        #[cfg(feature = "cluster")]
+        crate::registry::register_pid(cell.get_id(), cell.clone());
+        if let Some(r_name) = name {
+            crate::registry::register(r_name, cell.clone())?;
+        }
+
+        Ok((
+            cell,
+            ActorPortSet {
+                signal_rx: rx1,
+                stop_rx: rx2,
+                supervisor_rx: rx3,
+                message_rx: rx4,
+            },
+        ))
+    }
+
+    /// Create a new remote actor, to be called from the `ractor-cluster` crate
+    #[cfg(feature = "cluster")]
+    pub(crate) fn new_remote<TActor>(
+        name: Option<ActorName>,
+        id: ActorId,
+    ) -> Result<(Self, ActorPortSet), SpawnErr>
+    where
+        TActor: Actor,
+    {
+        if id.is_local() {
+            panic!("Cannot create a new remote actor handler without the actor id being marked as a remote actor!");
+        }
+
+        let (props, rx1, rx2, rx3, rx4) = ActorProperties::new_remote::<TActor>(name.clone(), id);
         let cell = Self {
             inner: Arc::new(props),
         };
         if let Some(r_name) = name {
             crate::registry::register(r_name, cell.clone())?;
         }
-
         Ok((
             cell,
             ActorPortSet {
@@ -174,7 +219,7 @@ impl ActorCell {
 
     /// Retrieve the [super::Actor]'s name
     pub fn get_name(&self) -> Option<ActorName> {
-        self.inner.name
+        self.inner.name.clone()
     }
 
     /// Retrieve the current status of an [super::Actor]
@@ -193,6 +238,8 @@ impl ActorCell {
     pub(crate) fn set_status(&self, status: ActorStatus) {
         // The actor is shut down
         if status == ActorStatus::Stopped || status == ActorStatus::Stopping {
+            #[cfg(feature = "cluster")]
+            crate::registry::unregister_pid(self.get_id());
             // If it's enrolled in the registry, remove it
             if let Some(name) = self.get_name() {
                 crate::registry::unregister(name);
@@ -277,6 +324,16 @@ impl ActorCell {
         TActor: Actor,
     {
         self.inner.send_message::<TActor>(message)
+    }
+
+    /// Send a serialized binary message to the actor.
+    ///
+    /// * `message` - The message to send
+    ///
+    /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
+    #[cfg(feature = "cluster")]
+    pub fn send_serialized(&self, message: SerializedMessage) -> Result<(), MessagingErr> {
+        self.inner.send_serialized(message)
     }
 
     /// Notify the supervisors that a supervision event occurred

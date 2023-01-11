@@ -23,13 +23,15 @@ macro_rules! cast {
 /// constructing the message payload
 ///
 /// Returns [Ok(_)] with the result on successful RPC or [Err(crate::RactorErr)] on failure
-/// Example usage
-/// ```rust
+/// Example usage (without the `cluster` feature)
+/// ```no_run
 /// use ractor::{call, Actor, RpcReplyPort, ActorRef};
 /// struct TestActor;
 /// enum MessageFormat {
 ///     TestRpc(String, RpcReplyPort<String>),
 /// }
+/// #[cfg(feature = "cluster")]
+/// impl ractor::Message for MessageFormat {}
 ///
 /// #[async_trait::async_trait]
 /// impl Actor for TestActor {
@@ -106,6 +108,8 @@ macro_rules! call {
 /// enum MessageFormat {
 ///     TestRpc(String, RpcReplyPort<String>),
 /// }
+/// #[cfg(feature = "cluster")]
+/// impl ractor::Message for MessageFormat {}
 ///
 /// #[async_trait::async_trait]
 /// impl Actor for TestActor {

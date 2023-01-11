@@ -14,6 +14,9 @@ use crate::concurrency::Duration;
 
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
 
+#[cfg(feature = "cluster")]
+impl crate::Message for () {}
+
 #[crate::concurrency::test]
 async fn test_supervision_panic_in_post_startup() {
     struct Child;

@@ -34,6 +34,8 @@
 //!     Ping,
 //!     Pong,
 //! }
+//! #[cfg(feature = "cluster")]
+//! impl ractor::Message for Message {}
 //!
 //! impl Message {
 //!     // retrieve the next message in the sequence
@@ -133,20 +135,19 @@
 #![warn(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(unused_crate_dependencies)]
-#![cfg_attr(docsrs, feature(doc_cfg))]
-
-use std::any::Any;
+// #![cfg_attr(docsrs, feature(doc_cfg))]
 
 /// An actor's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
-pub type ActorName = &'static str;
+pub type ActorName = String;
 
 /// A process group's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
-pub type GroupName = &'static str;
+pub type GroupName = String;
 
 pub mod actor;
 pub mod actor_id;
 pub mod concurrency;
 pub mod macros;
+pub mod message;
 pub mod pg;
 pub mod port;
 pub mod registry;
@@ -161,39 +162,19 @@ use criterion as _;
 #[cfg(test)]
 use rand as _;
 
-// WIP
-// #[cfg(feature = "remote")]
-// pub mod distributed;
-
 // re-exports
 pub use actor::actor_cell::{ActorCell, ActorRef, ActorStatus, ACTIVE_STATES};
 pub use actor::errors::{ActorErr, MessagingErr, SpawnErr};
 pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorRuntime};
 pub use actor_id::ActorId;
+pub use message::Message;
 pub use port::{OutputMessage, OutputPort, RpcReplyPort};
-
-/// Message type for an actor. Generally an enum
-/// which muxes the various types of inner-messages the actor
-/// supports
-///
-/// ## Example
-///
-/// ```rust
-/// pub enum MyMessage {
-///     /// Record the name to the actor state
-///     RecordName(String),
-///     /// Print the recorded name from the state to command line
-///     PrintName,
-/// }
-/// ```
-pub trait Message: Any + Send + 'static {}
-impl<T: Any + Send + 'static> Message for T {}
 
 /// Represents the state of an actor. Must be safe
 /// to send between threads (same bounds as a [Message])
-pub trait State: Message {}
-impl<T: Message> State for T {}
+pub trait State: std::any::Any + Send + 'static {}
+impl<T: std::any::Any + Send + 'static> State for T {}
 
 /// Error types which can result from Ractor processes
 #[derive(Debug)]

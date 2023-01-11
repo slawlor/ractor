@@ -5,56 +5,15 @@
 
 //! Messages which are built-in for `ractor`'s processing routines
 //!
-//! Additionally contains definitions for [BoxedMessage] and [BoxedState]
-//! which are used to handle strongly-typed messages and states in a
+//! Additionally contains definitions for [BoxedState]
+//! which are used to handle strongly-typed states in a
 //! generic way without having to know the strong type in the underlying framework
 
 use std::any::Any;
 use std::fmt::Debug;
 
-use crate::{Message, State};
-
-/// An error downcasting a boxed item to a strong type
-#[derive(Debug)]
-pub struct BoxedDowncastErr;
-
-/// A "boxed" message denoting a strong-type message
-/// but generic so it can be passed around without type
-/// constraints
-pub struct BoxedMessage {
-    /// The message value
-    pub msg: Option<Box<dyn Any + Send>>,
-}
-
-impl BoxedMessage {
-    /// Create a new [BoxedMessage] from a strongly-typed message
-    pub fn new<T>(msg: T) -> Self
-    where
-        T: Message,
-    {
-        Self {
-            msg: Some(Box::new(msg)),
-        }
-    }
-
-    /// Try and take the resulting message as a specific type, consumes
-    /// the boxed message
-    pub fn take<T>(&mut self) -> Result<T, BoxedDowncastErr>
-    where
-        T: Message,
-    {
-        match self.msg.take() {
-            Some(m) => {
-                if m.is::<T>() {
-                    Ok(*m.downcast::<T>().unwrap())
-                } else {
-                    Err(BoxedDowncastErr)
-                }
-            }
-            None => Err(BoxedDowncastErr),
-        }
-    }
-}
+use crate::message::BoxedDowncastErr;
+use crate::State;
 
 /// A "boxed" message denoting a strong-type message
 /// but generic so it can be passed around without type
@@ -95,8 +54,8 @@ impl BoxedState {
 }
 
 /// Messages to stop an actor
-pub(crate) enum StopMessage {
-    // Normal stop
+pub enum StopMessage {
+    /// Normal stop
     Stop,
     /// Stop with a reason
     Reason(String),

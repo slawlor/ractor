@@ -14,6 +14,7 @@ pub enum Message {
     Ping,
     Pong,
 }
+impl ractor::Message for Message {}
 
 impl Message {
     fn next(&self) -> Self {
@@ -65,4 +66,16 @@ impl Actor for PingPong {
             // don't send another message, rather stop the agent after 10 iterations
         }
     }
+}
+
+/// Run the ping-pong actor test with
+///
+/// ```bash
+/// cargo run -p ractor-playground -- ping-pong
+/// ```
+pub(crate) async fn run_ping_pong() {
+    let (_, actor_handle) = Actor::spawn(None, PingPong)
+        .await
+        .expect("Failed to start actor");
+    actor_handle.await.expect("Actor failed to exit cleanly");
 }

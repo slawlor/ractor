@@ -20,6 +20,8 @@ async fn test_single_forward() {
     enum TestActorMessage {
         Stop,
     }
+    #[cfg(feature = "cluster")]
+    impl crate::Message for TestActorMessage {}
     #[async_trait::async_trait]
     impl Actor for TestActor {
         type Msg = TestActorMessage;
@@ -76,6 +78,8 @@ async fn test_50_receivers() {
     enum TestActorMessage {
         Stop,
     }
+    #[cfg(feature = "cluster")]
+    impl crate::Message for TestActorMessage {}
     #[async_trait::async_trait]
     impl Actor for TestActor {
         type Msg = TestActorMessage;

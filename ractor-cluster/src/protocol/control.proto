@@ -1,0 +1,62 @@
+// Copyright (c) Sean Lawlor
+//
+// This source code is licensed under both the MIT license found in the
+// LICENSE-MIT file in the root directory of this source tree.
+
+//! Control messages for authenticated `NodeSession`s. These manage the synchronization
+//! of actors and their lifecycles over the remote link
+
+// NOTE: We make heavy use of oneof syntax here in order to deal with a rust-like enum
+// type. You can see https://developers.google.com/protocol-buffers/docs/proto3#oneof for
+// the syntax and guide
+
+syntax = "proto3";
+
+package control;
+
+import "google/protobuf/timestamp.proto";
+
+// A heartbeat between actors
+message Ping {
+    // The original time of the ping send, returned in the `Pong` message
+    // to measure latency
+    google.protobuf.Timestamp timestamp = 1;
+}
+
+message Pong {
+    // The original time of the ping send, set by the original sender
+    google.protobuf.Timestamp timestamp = 1;
+}
+
+// Spawn an actor
+message Spawn {
+    // The actor's Id
+    uint64 id = 1;
+    // The actor's name (to be inserted in the global registry)
+    optional string name = 2;
+}
+
+// An actor termination event
+message Terminate {
+    // The remote actor's PID
+    uint64 id = 1;
+    // Flag denoting if the termination was due to panic
+    bool is_panic = 2;
+    // The exit reason or panic message
+    string panic_reason = 3;
+}
+
+// Control messages between authenticated `node()`s which are dist-connected
+message ControlMessage {
+    // The message payload
+    oneof msg {
+        // Spawn an actor
+        Spawn spawn = 1;
+        // A actor terminated
+        Terminate terminate = 2;
+        // A ping
+        Ping ping = 3;
+        // A pong
+        Pong pong = 4;
+    }
+}

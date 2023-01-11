@@ -12,7 +12,7 @@
 
 use crate::concurrency::{self, Duration, JoinHandle};
 
-use crate::{Actor, ActorCell, ActorRef, Message, MessagingErr, RpcReplyPort};
+use crate::{Actor, ActorCell, ActorRef, MessagingErr, RpcReplyPort};
 
 pub mod call_result;
 pub use call_result::CallResult;
@@ -53,7 +53,11 @@ where
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
 {
     let (tx, rx) = concurrency::oneshot();
-    actor.send_message::<TActor>(msg_builder(tx.into()))?;
+    let port: RpcReplyPort<TReply> = match timeout_option {
+        Some(duration) => (tx, duration).into(),
+        None => tx.into(),
+    };
+    actor.send_message::<TActor>(msg_builder(port))?;
 
     // wait for the reply
     Ok(if let Some(duration) = timeout_option {
@@ -95,7 +99,11 @@ where
     // send to all actors
     for actor in actors {
         let (tx, rx) = concurrency::oneshot();
-        actor.send_message::<TActor>(msg_builder(tx.into()))?;
+        let port: RpcReplyPort<TReply> = match timeout_option {
+            Some(duration) => (tx, duration).into(),
+            None => tx.into(),
+        };
+        actor.send_message::<TActor>(msg_builder(port))?;
         rx_ports.push(rx);
     }
 
@@ -162,13 +170,17 @@ pub fn call_and_forward<TActor, TForwardActor, TReply, TMsgBuilder, FwdMapFn>(
 ) -> Result<JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
 where
     TActor: Actor,
-    TReply: Message,
+    TReply: Send + 'static,
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
     TForwardActor: Actor,
     FwdMapFn: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,
 {
     let (tx, rx) = concurrency::oneshot();
-    actor.send_message::<TActor>(msg_builder(tx.into()))?;
+    let port: RpcReplyPort<TReply> = match timeout_option {
+        Some(duration) => (tx, duration).into(),
+        None => tx.into(),
+    };
+    actor.send_message::<TActor>(msg_builder(port))?;
 
     // wait for the reply
     Ok(crate::concurrency::spawn(async move {
@@ -221,7 +233,7 @@ where
         timeout_option: Option<Duration>,
     ) -> Result<crate::concurrency::JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
     where
-        TReply: Message,
+        TReply: Send + 'static,
         TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
         TForwardActor: Actor,
         TFwdMessageBuilder: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,

@@ -21,9 +21,16 @@ use tokio::time::{timeout, Duration};
 enum PublisherMessage {
     Publish(String),
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for PublisherMessage {}
+
+#[derive(Clone)]
+struct Output(String);
+#[cfg(feature = "cluster")]
+impl ractor::Message for Output {}
 
 struct Publisher {
-    output: Arc<OutputPort<String>>,
+    output: Arc<OutputPort<Output>>,
 }
 
 #[async_trait::async_trait]
@@ -38,7 +45,7 @@ impl Actor for Publisher {
         match message {
             Self::Msg::Publish(msg) => {
                 println!("Publishing {}", msg);
-                self.output.send(format!("Published: {}", msg));
+                self.output.send(Output(format!("Published: {}", msg)));
             }
         }
     }
@@ -49,6 +56,8 @@ struct Subscriber;
 enum SubscriberMessage {
     Published(String),
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for SubscriberMessage {}
 
 #[async_trait::async_trait]
 impl Actor for Subscriber {
@@ -94,7 +103,7 @@ async fn main() {
 
         // TODO: there has to be a better syntax than keeping an arc to the port?
         port.subscribe(actor_ref.clone(), |msg| {
-            Some(SubscriberMessage::Published(msg))
+            Some(SubscriberMessage::Published(msg.0))
         });
 
         subscriber_refs.push(actor_ref);

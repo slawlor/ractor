@@ -22,11 +22,11 @@ async fn test_basic_registation() {
         async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
     }
 
-    let (actor, handle) = Actor::spawn(Some("my_actor"), EmptyActor)
+    let (actor, handle) = Actor::spawn(Some("my_actor".to_string()), EmptyActor)
         .await
         .expect("Actor failed to start");
 
-    assert!(crate::registry::where_is("my_actor").is_some());
+    assert!(crate::registry::where_is("my_actor".to_string()).is_some());
 
     actor.stop(None);
     handle.await.expect("Failed to clean stop the actor");
@@ -45,13 +45,13 @@ async fn test_duplicate_registration() {
         async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
     }
 
-    let (actor, handle) = Actor::spawn(Some("my_second_actor"), EmptyActor)
+    let (actor, handle) = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor)
         .await
         .expect("Actor failed to start");
 
-    assert!(crate::registry::where_is("my_second_actor").is_some());
+    assert!(crate::registry::where_is("my_second_actor".to_string()).is_some());
 
-    let second_actor = Actor::spawn(Some("my_second_actor"), EmptyActor).await;
+    let second_actor = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor).await;
     // fails to spawn the second actor due to name err
     assert!(matches!(
         second_actor,
@@ -59,7 +59,7 @@ async fn test_duplicate_registration() {
     ));
 
     // make sure the first actor is still registered
-    assert!(crate::registry::where_is("my_second_actor").is_some());
+    assert!(crate::registry::where_is("my_second_actor".to_string()).is_some());
 
     actor.stop(None);
     handle.await.expect("Failed to clean stop the actor");
@@ -78,11 +78,11 @@ async fn test_actor_registry_unenrollment() {
         async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
     }
 
-    let (actor, handle) = Actor::spawn(Some("unenrollment"), EmptyActor)
+    let (actor, handle) = Actor::spawn(Some("unenrollment".to_string()), EmptyActor)
         .await
         .expect("Actor failed to start");
 
-    assert!(crate::registry::where_is("unenrollment").is_some());
+    assert!(crate::registry::where_is("unenrollment".to_string()).is_some());
 
     // stop the actor and wait for its death
     actor.stop(None);
@@ -95,5 +95,5 @@ async fn test_actor_registry_unenrollment() {
     crate::concurrency::sleep(Duration::from_millis(100)).await;
 
     // the actor was automatically removed
-    assert!(crate::registry::where_is("unenrollment").is_none());
+    assert!(crate::registry::where_is("unenrollment".to_string()).is_none());
 }

@@ -1,0 +1,28 @@
+// Copyright (c) Sean Lawlor
+//
+// This source code is licensed under both the MIT license found in the
+// LICENSE-MIT file in the root directory of this source tree.
+
+//! Meta-messages which all bundle together into a single `NetworkMessage` 
+//! payload
+
+syntax = "proto3";
+
+import "auth.proto";
+import "node.proto";
+import "control.proto";
+
+package meta;
+
+// Represents a message over the network
+message NetworkMessage {
+    // The inner message
+    oneof message {
+        // An authentication message
+        auth.AuthenticationMessage auth = 1;
+        // An inter-node message
+        node.NodeMessage node = 2;
+        // A control message
+        control.ControlMessage control = 3;
+    }
+}

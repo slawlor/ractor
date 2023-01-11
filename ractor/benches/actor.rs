@@ -7,18 +7,22 @@
 extern crate criterion;
 
 use criterion::{BatchSize, Criterion};
-use ractor::{Actor, ActorRef};
+use ractor::{Actor, ActorRef, Message};
 
 struct BenchActor;
 
+struct BenchActorMessage;
+#[cfg(feature = "cluster")]
+impl Message for BenchActorMessage {}
+
 #[async_trait::async_trait]
 impl Actor for BenchActor {
-    type Msg = ();
+    type Msg = BenchActorMessage;
 
     type State = ();
 
     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
-        let _ = myself.cast(());
+        let _ = myself.cast(BenchActorMessage);
     }
 
     async fn handle(&self, myself: ActorRef<Self>, _message: Self::Msg, _state: &mut Self::State) {
@@ -95,7 +99,7 @@ fn schedule_work(c: &mut Criterion) {
                 })
             },
             |mut handles| {
-                runtime.block_on(async move { while let Some(_) = handles.join_next().await {} })
+                runtime.block_on(async move { while handles.join_next().await.is_some() {} })
             },
             BatchSize::PerIteration,
         );
@@ -118,7 +122,7 @@ fn schedule_work(c: &mut Criterion) {
                 })
             },
             |mut handles| {
-                runtime.block_on(async move { while let Some(_) = handles.join_next().await {} })
+                runtime.block_on(async move { while handles.join_next().await.is_some() {} })
             },
             BatchSize::PerIteration,
         );
@@ -135,12 +139,12 @@ fn process_messages(c: &mut Criterion) {
 
     #[async_trait::async_trait]
     impl Actor for MessagingActor {
-        type Msg = ();
+        type Msg = BenchActorMessage;
 
         type State = u64;
 
         async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
-            let _ = myself.cast(());
+            let _ = myself.cast(BenchActorMessage);
             0u64
         }
 
@@ -154,7 +158,7 @@ fn process_messages(c: &mut Criterion) {
             if *state >= self.num_msgs {
                 myself.stop(None);
             } else {
-                let _ = myself.cast(());
+                let _ = myself.cast(BenchActorMessage);
             }
         }
     }

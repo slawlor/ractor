@@ -71,7 +71,8 @@ async fn test_rpc_call() {
         Timeout(rpc::RpcReplyPort<String>),
         MultiArg(String, u32, rpc::RpcReplyPort<String>),
     }
-
+    #[cfg(feature = "cluster")]
+    impl crate::Message for MessageFormat {}
     #[async_trait::async_trait]
     impl Actor for TestActor {
         type Msg = MessageFormat;
@@ -156,7 +157,8 @@ async fn test_rpc_call_forwarding() {
     enum WorkerMessage {
         TestRpc(rpc::RpcReplyPort<String>),
     }
-
+    #[cfg(feature = "cluster")]
+    impl crate::Message for WorkerMessage {}
     #[async_trait::async_trait]
     impl Actor for Worker {
         type Msg = WorkerMessage;
@@ -191,6 +193,8 @@ async fn test_rpc_call_forwarding() {
     enum ForwarderMessage {
         ForwardResult(String),
     }
+    #[cfg(feature = "cluster")]
+    impl crate::Message for ForwarderMessage {}
 
     #[async_trait::async_trait]
     impl Actor for Forwarder {

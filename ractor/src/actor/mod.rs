@@ -11,8 +11,11 @@
 
 use std::{panic::AssertUnwindSafe, sync::Arc};
 
-use crate::concurrency::JoinHandle;
 use futures::TryFutureExt;
+
+use crate::concurrency::JoinHandle;
+#[cfg(feature = "cluster")]
+use crate::ActorId;
 
 pub mod messages;
 use messages::*;
@@ -88,7 +91,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     async fn post_stop(&self, myself: ActorRef<Self>, state: &mut Self::State) {}
 
-    /// Handle the incoming message from the event processing loop. Unhandled panicks will be
+    /// Handle the incoming message from the event processing loop. Unhandled panickes will be
     /// captured and sent to the supervisor(s)
     ///
     /// * `myself` - A handle to the [ActorCell] representing this actor
@@ -97,8 +100,25 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {}
 
+    /// Handle the remote incoming message from the event processing loop. Unhandled panickes will be
+    /// captured and sent to the supervisor(s)
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The serialized messgae to handle
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(feature = "cluster")]
+    async fn handle_serialized(
+        &self,
+        myself: ActorRef<Self>,
+        message: crate::message::SerializedMessage,
+        state: &mut Self::State,
+    ) {
+    }
+
     /// Handle the incoming supervision event. Unhandled panicks will captured and
-    /// sent the the supervisor(s)
+    /// sent the the supervisor(s). The default supervision behavior is to ignore all
+    /// child events. To override this behavior, implement this method.
     ///
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `message` - The message to process
@@ -195,6 +215,41 @@ where
     ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, Some(supervisor)).await
+    }
+
+    /// Spawn a REMOTE actor with a supervisor, automatically starting the actor. Only for use
+    /// by `ractor_cluster::node::NodeSession`
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The [Actor] defining the logic for this actor
+    /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    #[cfg(feature = "cluster")]
+    pub async fn spawn_linked_remote(
+        name: Option<ActorName>,
+        handler: THandler,
+        id: ActorId,
+        supervisor: ActorCell,
+    ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
+        if id.is_local() {
+            Err(SpawnErr::StartupPanic(
+                "Cannot spawn a remote actor when the identifier is not remote!".to_string(),
+            ))
+        } else {
+            let (actor_cell, ports) = actor_cell::ActorCell::new_remote::<THandler>(name, id)?;
+
+            let (actor, ports) = (
+                Self {
+                    base: actor_cell.into(),
+                    handler: Arc::new(handler),
+                },
+                ports,
+            );
+            actor.start(ports, Some(supervisor)).await
+        }
     }
 
     /// Create a new actor with some handler implementation and initial state
@@ -361,7 +416,7 @@ where
         match ports.listen_in_priority().await {
             Ok(actor_port_message) => match actor_port_message {
                 actor_cell::ActorPortMessage::Signal(signal) => {
-                    (true, Self::handle_signal(myself, signal).await)
+                    (true, Self::handle_signal(myself, signal))
                 }
                 actor_cell::ActorPortMessage::Stop(stop_message) => {
                     let exit_reason = match stop_message {
@@ -380,7 +435,7 @@ where
                     let new_state = ports.run_with_signal(new_state_future).await;
                     match new_state {
                         Ok(()) => (false, None),
-                        Err(signal) => (true, Self::handle_signal(myself, signal).await),
+                        Err(signal) => (true, Self::handle_signal(myself, signal)),
                     }
                 }
                 actor_cell::ActorPortMessage::Message(msg) => {
@@ -389,7 +444,7 @@ where
                     let new_state = ports.run_with_signal(new_state_future).await;
                     match new_state {
                         Ok(()) => (false, None),
-                        Err(signal) => (true, Self::handle_signal(myself, signal).await),
+                        Err(signal) => (true, Self::handle_signal(myself, signal)),
                     }
                 }
             },
@@ -411,10 +466,28 @@ where
         myself: ActorRef<THandler>,
         state: &mut TState,
         handler: Arc<THandler>,
-        mut msg: BoxedMessage,
+        msg: crate::message::BoxedMessage,
     ) {
         // panic in order to kill the actor
-        let typed_msg = match msg.take() {
+        #[cfg(feature = "cluster")]
+        {
+            if !myself.get_id().is_local() {
+                match msg.serialized_msg {
+                    Some(serialized_msg) => {
+                        handler
+                            .handle_serialized(myself, serialized_msg, state)
+                            .await;
+                        return;
+                    }
+                    None => {
+                        panic!("Failed to read serialized message from `BoxedMessage`");
+                    }
+                }
+            }
+        }
+
+        // panic in order to kill the actor
+        let typed_msg = match TMsg::from_boxed(msg) {
             Ok(m) => m,
             Err(_) => {
                 panic!(
@@ -427,7 +500,7 @@ where
         handler.handle(myself, typed_msg, state).await
     }
 
-    async fn handle_signal(myself: ActorRef<THandler>, signal: Signal) -> Option<String> {
+    fn handle_signal(myself: ActorRef<THandler>, signal: Signal) -> Option<String> {
         match &signal {
             Signal::Kill => {
                 myself.terminate();

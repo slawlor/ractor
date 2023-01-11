@@ -6,3 +6,4 @@ ignore:
   - "xtask"
   - "ractor/examples"
   - "ractor/benches"
+  - "ractor-cluster" # for now
