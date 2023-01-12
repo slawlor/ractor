@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -17,12 +17,12 @@ async-trait = "0.1"
 dashmap = "5"
 futures = "0.3"
 once_cell = "1"
-tokio = { version = "1.23", features = ["rt", "time", "sync", "macros"]}
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"]}
 
 [dev-dependencies]
 criterion = "0.3"
 function_name = "0.3"
-tokio = { version = "1.23", features = ["rt", "time", "sync", "macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread"] }
 
 [[bench]]
 name = "actor"
