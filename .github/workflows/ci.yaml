@@ -101,8 +101,9 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Run benches
+      - name: Compile benchmarks
         uses: actions-rs/cargo@v1
         with:
           command: bench
+          args: --no-run
           
