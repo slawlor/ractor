@@ -108,10 +108,10 @@ async fn test_send_after() {
     .await
     .expect("Failed to create test actor");
 
-    let send_after_handle = crate::time::send_after::<TestActor, _>(
+    let send_after_handle = crate::time::send_after::<TestActor>(
         Duration::from_millis(10),
         actor_ref.clone().into(),
-        || (),
+        (),
     );
 
     // even though the timer is started, we should be in a "pause" state for 10ms,
