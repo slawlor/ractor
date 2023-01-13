@@ -6,8 +6,8 @@
 //! This module contains the basic building blocks of an actor.
 //!
 //! They are:
-//! [ActorHandler] : The internal logic for how an actor behaves
-//! [Actor] : Management structure processing the message handler, signals, and supervision events in a loop
+//! [ActorHandler]: The behavior definition for an actor's internal processing logic + state management
+//! [Actor]: Management structure processing the message handler, signals, and supervision events in a loop
 
 use std::{panic::AssertUnwindSafe, sync::Arc};
 

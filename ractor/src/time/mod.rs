@@ -61,18 +61,17 @@ where
 /// Returns: The [JoinHandle<Result<(), MessagingErr>>] which represents the backgrounded work.
 /// Awaiting the handle will yield the result of the send operation. Can be safely ignored to
 /// "fire and forget"
-pub fn send_after<TActor, F>(
+pub fn send_after<TActor>(
     period: Duration,
     actor: ActorCell,
-    msg: F,
+    msg: TActor::Msg,
 ) -> JoinHandle<Result<(), MessagingErr>>
 where
     TActor: ActorHandler,
-    F: Fn() -> TActor::Msg + Send + 'static,
 {
     tokio::spawn(async move {
         tokio::time::sleep(period).await;
-        actor.send_message::<TActor>(msg())
+        actor.send_message::<TActor>(msg)
     })
 }
 
@@ -120,11 +119,12 @@ where
     }
 
     /// Alias of [send_after]
-    pub fn send_after<F>(&self, period: Duration, msg: F) -> JoinHandle<Result<(), MessagingErr>>
-    where
-        F: Fn() -> TActor::Msg + Send + 'static,
-    {
-        send_after::<TActor, F>(period, self.get_cell(), msg)
+    pub fn send_after(
+        &self,
+        period: Duration,
+        msg: TActor::Msg,
+    ) -> JoinHandle<Result<(), MessagingErr>> {
+        send_after::<TActor>(period, self.get_cell(), msg)
     }
 
     /// Alias of [exit_after]
