@@ -4,3 +4,5 @@ codecov:
 ignore:
   - "ractor-playground"
   - "xtask"
+  - "ractor/examples"
+  - "ractor/benches"
