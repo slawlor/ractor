@@ -11,9 +11,7 @@ use tokio::sync::mpsc;
 use crate::actor::messages::{BoxedMessage, StopMessage};
 use crate::actor::supervision::SupervisionTree;
 use crate::port::{BoundedInputPort, BoundedInputPortReceiver, InputPort, InputPortReceiver};
-use crate::{
-    ActorHandler, ActorId, ActorName, ActorStatus, MessagingErr, Signal, SupervisionEvent,
-};
+use crate::{Actor, ActorId, ActorName, ActorStatus, MessagingErr, Signal, SupervisionEvent};
 
 // The inner-properties of an Actor
 pub(crate) struct ActorProperties {
@@ -39,7 +37,7 @@ impl ActorProperties {
         InputPortReceiver<BoxedMessage>,
     )
     where
-        TActor: ActorHandler,
+        TActor: Actor,
     {
         let (tx_signal, rx_signal) = mpsc::channel(2);
         let (tx_stop, rx_stop) = mpsc::channel(2);
@@ -89,7 +87,7 @@ impl ActorProperties {
 
     pub fn send_message<TActor>(&self, message: TActor::Msg) -> Result<(), MessagingErr>
     where
-        TActor: ActorHandler,
+        TActor: Actor,
     {
         if self.type_id != std::any::TypeId::of::<TActor>() {
             return Err(MessagingErr::InvalidActorType);

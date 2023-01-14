@@ -15,7 +15,7 @@ extern crate ractor;
 
 use std::sync::Arc;
 
-use ractor::{Actor, ActorHandler, ActorRef, OutputPort};
+use ractor::{Actor, ActorRef, OutputPort};
 use tokio::time::{timeout, Duration};
 
 enum PublisherMessage {
@@ -27,7 +27,7 @@ struct Publisher {
 }
 
 #[async_trait::async_trait]
-impl ActorHandler for Publisher {
+impl Actor for Publisher {
     type Msg = PublisherMessage;
 
     type State = ();
@@ -51,7 +51,7 @@ enum SubscriberMessage {
 }
 
 #[async_trait::async_trait]
-impl ActorHandler for Subscriber {
+impl Actor for Subscriber {
     type Msg = SubscriberMessage;
 
     type State = ();

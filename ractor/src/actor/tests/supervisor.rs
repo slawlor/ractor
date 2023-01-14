@@ -12,7 +12,7 @@ use std::sync::{
 
 use tokio::time::Duration;
 
-use crate::{Actor, ActorCell, ActorHandler, ActorRef, ActorStatus, SupervisionEvent};
+use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
 
 #[tokio::test]
 async fn test_supervision_panic_in_post_startup() {
@@ -22,7 +22,7 @@ async fn test_supervision_panic_in_post_startup() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Child {
+    impl Actor for Child {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -32,7 +32,7 @@ async fn test_supervision_panic_in_post_startup() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Supervisor {
+    impl Actor for Supervisor {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -89,7 +89,7 @@ async fn test_supervision_panic_in_handle() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Child {
+    impl Actor for Child {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -104,7 +104,7 @@ async fn test_supervision_panic_in_handle() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Supervisor {
+    impl Actor for Supervisor {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -169,7 +169,7 @@ async fn test_supervision_panic_in_post_stop() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Child {
+    impl Actor for Child {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
@@ -182,7 +182,7 @@ async fn test_supervision_panic_in_post_stop() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Supervisor {
+    impl Actor for Supervisor {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -233,7 +233,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Child {
+    impl Actor for Child {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -248,7 +248,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Midpoint {
+    impl Actor for Midpoint {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -265,7 +265,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Supervisor {
+    impl Actor for Supervisor {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -345,14 +345,14 @@ async fn test_killing_a_supervisor_terminates_children() {
     struct Supervisor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for Child {
+    impl Actor for Child {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Supervisor {
+    impl Actor for Supervisor {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}

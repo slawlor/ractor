@@ -7,12 +7,12 @@
 extern crate criterion;
 
 use criterion::{BatchSize, Criterion};
-use ractor::{Actor, ActorHandler, ActorRef};
+use ractor::{Actor, ActorRef};
 
 struct BenchActor;
 
 #[async_trait::async_trait]
-impl ActorHandler for BenchActor {
+impl Actor for BenchActor {
     type Msg = ();
 
     type State = ();
@@ -137,7 +137,7 @@ fn process_messages(c: &mut Criterion) {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for MessagingActor {
+    impl Actor for MessagingActor {
         type Msg = ();
 
         type State = u64;

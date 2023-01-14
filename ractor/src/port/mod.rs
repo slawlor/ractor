@@ -23,7 +23,7 @@ pub(crate) type BoundedInputPort<TMsg> = mpsc::Sender<TMsg>;
 pub(crate) type BoundedInputPortReceiver<TMsg> = mpsc::Receiver<TMsg>;
 
 /// An unbounded message port (alias of [mpsc::UnboundedSender])
-pub type InputPort<TMsg> = mpsc::UnboundedSender<TMsg>;
+pub(crate) type InputPort<TMsg> = mpsc::UnboundedSender<TMsg>;
 /// An unbounded message port's receiver (alias of [mpsc::UnboundedReceiver])
 pub(crate) type InputPortReceiver<TMsg> = mpsc::UnboundedReceiver<TMsg>;
 

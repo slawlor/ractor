@@ -10,7 +10,7 @@ use std::time::Duration;
 use futures::future::join_all;
 use tokio::time::timeout;
 
-use crate::{Actor, ActorHandler, ActorRef};
+use crate::{Actor, ActorRef};
 
 use super::*;
 
@@ -21,7 +21,7 @@ async fn test_single_forward() {
         Stop,
     }
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = TestActorMessage;
 
         type State = u8;
@@ -77,7 +77,7 @@ async fn test_50_receivers() {
         Stop,
     }
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = TestActorMessage;
 
         type State = u8;

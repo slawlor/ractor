@@ -11,7 +11,7 @@
 //! cargo run --example supervisor
 //! ```
 
-use ractor::{Actor, ActorHandler, ActorRef, RpcReplyPort, SupervisionEvent};
+use ractor::{Actor, ActorRef, RpcReplyPort, SupervisionEvent};
 
 use tokio::time::Duration;
 
@@ -67,7 +67,7 @@ enum LeafActorMessage {
 }
 
 #[async_trait::async_trait]
-impl ActorHandler for LeafActor {
+impl Actor for LeafActor {
     type Msg = LeafActorMessage;
     type State = LeafActorState;
     async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
@@ -117,7 +117,7 @@ enum MidLevelActorMessage {
 }
 
 #[async_trait::async_trait]
-impl ActorHandler for MidLevelActor {
+impl Actor for MidLevelActor {
     type Msg = MidLevelActorMessage;
     type State = MidLevelActorState;
 
@@ -189,7 +189,7 @@ enum RootActorMessage {
 }
 
 #[async_trait::async_trait]
-impl ActorHandler for RootActor {
+impl Actor for RootActor {
     type Msg = RootActorMessage;
     type State = RootActorState;
 

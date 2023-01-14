@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 
-use ractor::{Actor, ActorHandler, ActorId, ActorRef};
+use ractor::{Actor, ActorId, ActorRef};
 use rand::{thread_rng, Rng};
 
 // ================== Player Actor ================== //
@@ -60,7 +60,7 @@ impl GameState {
 struct Game;
 
 #[async_trait::async_trait]
-impl ActorHandler for Game {
+impl Actor for Game {
     type Msg = ActorRef<GameManager>;
 
     type State = GameState;
@@ -122,7 +122,7 @@ impl GameManagerState {
 }
 
 #[async_trait::async_trait]
-impl ActorHandler for GameManager {
+impl Actor for GameManager {
     type Msg = GameManagerMessage;
 
     type State = GameManagerState;

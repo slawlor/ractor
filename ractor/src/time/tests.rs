@@ -12,7 +12,7 @@ use std::sync::{
 
 use tokio::time::Duration;
 
-use crate::{Actor, ActorHandler, ActorRef};
+use crate::{Actor, ActorRef};
 
 #[tokio::test]
 async fn test_intervals() {
@@ -23,7 +23,7 @@ async fn test_intervals() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {
@@ -49,11 +49,7 @@ async fn test_intervals() {
     .await
     .expect("Failed to create test actor");
 
-    let interval_handle = crate::time::send_interval::<TestActor, _>(
-        Duration::from_millis(10),
-        actor_ref.clone().into(),
-        || (),
-    );
+    let interval_handle = actor_ref.send_interval(Duration::from_millis(10), || ());
 
     // even though the timer is started, we should be in a "pause" state for 10ms,
     // therefore the counter should be empty
@@ -82,7 +78,7 @@ async fn test_send_after() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {
@@ -108,11 +104,7 @@ async fn test_send_after() {
     .await
     .expect("Failed to create test actor");
 
-    let send_after_handle = crate::time::send_after::<TestActor>(
-        Duration::from_millis(10),
-        actor_ref.clone().into(),
-        (),
-    );
+    let send_after_handle = actor_ref.send_after(Duration::from_millis(10), ());
 
     // even though the timer is started, we should be in a "pause" state for 10ms,
     // therefore the counter should be empty
@@ -137,7 +129,7 @@ async fn test_exit_after() {
     struct TestActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -147,7 +139,7 @@ async fn test_exit_after() {
         .await
         .expect("Failed to create test actor");
 
-    let exit_handle = crate::time::exit_after(Duration::from_millis(10), actor_ref.into());
+    let exit_handle = actor_ref.exit_after(Duration::from_millis(10));
 
     tokio::time::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again
@@ -160,7 +152,7 @@ async fn test_kill_after() {
     struct TestActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
         type State = ();
         async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
@@ -185,7 +177,7 @@ async fn test_kill_after() {
     tokio::time::sleep(Duration::from_millis(10)).await;
 
     // kill the actor
-    let kill_handle = crate::time::kill_after(Duration::from_millis(10), actor_ref.into());
+    let kill_handle = actor_ref.kill_after(Duration::from_millis(10));
 
     tokio::time::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again

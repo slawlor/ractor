@@ -20,7 +20,7 @@
 //! An example "ping-pong" actor might be the following
 //!
 //! ```rust
-//! use ractor::{Actor, ActorRef, ActorHandler};
+//! use ractor::{Actor, ActorRef};
 //!
 //! /// [PingPong] is a basic actor that will print
 //! /// ping..pong.. repeatedly until some exit
@@ -54,7 +54,7 @@
 //!
 //! // the implementation of our actor's "logic"
 //! #[async_trait::async_trait]
-//! impl ActorHandler for PingPong {
+//! impl Actor for PingPong {
 //!     // An actor has a message type
 //!     type Msg = Message;
 //!     // and (optionally) internal state
@@ -111,7 +111,7 @@
 //!
 //! NOTE: panic's in `pre_start` of an actor will cause failures to spawn, rather than supervision notified failurs as the actor hasn't "linked"
 //! to its supervisor yet. However failures in `post_start`, `handle`, `handle_supervisor_evt`, `post_stop` will notify the supervisor should a failure
-//! occur. See [crate::ActorHandler] documentation for more information
+//! occur. See [crate::Actor] documentation for more information
 //!
 //! ## Messaging actors
 //!
@@ -164,9 +164,9 @@ use rand as _;
 pub use actor::actor_cell::{ActorCell, ActorRef, ActorStatus, ACTIVE_STATES};
 pub use actor::errors::{ActorErr, MessagingErr, SpawnErr};
 pub use actor::messages::{Signal, SupervisionEvent};
-pub use actor::{Actor, ActorHandler};
+pub use actor::{Actor, ActorRuntime};
 pub use actor_id::ActorId;
-pub use port::{InputPort, OutputMessage, OutputPort, RpcReplyPort};
+pub use port::{OutputMessage, OutputPort, RpcReplyPort};
 
 /// Message type for an actor. Generally an enum
 /// which muxes the various types of inner-messages the actor

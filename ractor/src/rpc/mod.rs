@@ -15,7 +15,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{self, Duration};
 
-use crate::{ActorCell, ActorHandler, ActorRef, Message, MessagingErr, RpcReplyPort};
+use crate::{Actor, ActorCell, ActorRef, Message, MessagingErr, RpcReplyPort};
 
 pub mod call_result;
 pub use call_result::CallResult;
@@ -31,7 +31,7 @@ mod tests;
 /// Returns [Ok(())] upon successful send, [Err(MessagingErr)] otherwise
 pub fn cast<TActor>(actor: &ActorCell, msg: TActor::Msg) -> Result<(), MessagingErr>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     actor.send_message::<TActor>(msg)
 }
@@ -52,7 +52,7 @@ pub async fn call<TActor, TReply, TMsgBuilder>(
     timeout_option: Option<Duration>,
 ) -> Result<CallResult<TReply>, MessagingErr>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
 {
     let (tx, rx) = oneshot::channel();
@@ -90,7 +90,7 @@ pub async fn multi_call<TActor, TReply, TMsgBuilder>(
     timeout_option: Option<Duration>,
 ) -> Result<Vec<CallResult<TReply>>, MessagingErr>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
     TMsgBuilder: Fn(RpcReplyPort<TReply>) -> TActor::Msg,
 {
     let mut rx_ports = Vec::with_capacity(actors.len());
@@ -149,10 +149,10 @@ pub fn call_and_forward<TActor, TForwardActor, TReply, TMsgBuilder, FwdMapFn>(
     timeout_option: Option<Duration>,
 ) -> Result<JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
     TReply: Message,
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
-    TForwardActor: ActorHandler,
+    TForwardActor: Actor,
     FwdMapFn: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,
 {
     let (tx, rx) = oneshot::channel();
@@ -178,12 +178,12 @@ where
 
 impl<TActor> ActorRef<TActor>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     /// Alias of [cast]
     pub fn cast(&self, msg: TActor::Msg) -> Result<(), MessagingErr>
     where
-        TActor: ActorHandler,
+        TActor: Actor,
     {
         cast::<TActor>(&self.inner, msg)
     }
@@ -211,7 +211,7 @@ where
     where
         TReply: Message,
         TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
-        TForwardActor: ActorHandler,
+        TForwardActor: Actor,
         TFwdMessageBuilder: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,
     {
         call_and_forward::<TActor, TForwardActor, TReply, TMsgBuilder, TFwdMessageBuilder>(

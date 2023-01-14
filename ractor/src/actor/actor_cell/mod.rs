@@ -16,7 +16,7 @@ use super::messages::{BoxedMessage, Signal, StopMessage};
 
 use super::SupervisionEvent;
 use crate::port::{BoundedInputPortReceiver, InputPortReceiver};
-use crate::{ActorHandler, ActorId, ActorName, SpawnErr};
+use crate::{Actor, ActorId, ActorName, SpawnErr};
 
 pub mod actor_ref;
 pub use actor_ref::ActorRef;
@@ -156,7 +156,7 @@ impl ActorCell {
     /// Returns a tuple [(ActorCell, ActorPortSet)] to bootstrap the [crate::Actor]
     pub(crate) fn new<TActor>(name: Option<ActorName>) -> Result<(Self, ActorPortSet), SpawnErr>
     where
-        TActor: ActorHandler,
+        TActor: Actor,
     {
         let (props, rx1, rx2, rx3, rx4) = ActorProperties::new::<TActor>(name);
         let cell = Self {
@@ -284,7 +284,7 @@ impl ActorCell {
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
     pub fn send_message<TActor>(&self, message: TActor::Msg) -> Result<(), MessagingErr>
     where
-        TActor: ActorHandler,
+        TActor: Actor,
     {
         self.inner.send_message::<TActor>(message)
     }
@@ -294,7 +294,7 @@ impl ActorCell {
     /// * `evt` - The event to send to this [super::Actor]'s supervisors
     pub fn notify_supervisor<TActor>(&self, evt: SupervisionEvent)
     where
-        TActor: ActorHandler,
+        TActor: Actor,
     {
         self.inner.tree.notify_supervisor::<TActor>(evt)
     }
