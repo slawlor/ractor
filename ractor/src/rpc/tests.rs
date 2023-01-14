@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::time::Duration;
 
 use crate::rpc;
-use crate::{Actor, ActorHandler, ActorRef};
+use crate::{Actor, ActorRef};
 
 #[tokio::test]
 async fn test_rpc_cast() {
@@ -22,7 +22,7 @@ async fn test_rpc_cast() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
 
         type State = ();
@@ -71,7 +71,7 @@ async fn test_rpc_call() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = MessageFormat;
 
         type State = ();
@@ -128,7 +128,7 @@ async fn test_rpc_call_forwarding() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Worker {
+    impl Actor for Worker {
         type Msg = WorkerMessage;
 
         type State = ();
@@ -163,7 +163,7 @@ async fn test_rpc_call_forwarding() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for Forwarder {
+    impl Actor for Forwarder {
         type Msg = ForwarderMessage;
 
         type State = ();

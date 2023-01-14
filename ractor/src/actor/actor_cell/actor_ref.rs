@@ -8,7 +8,7 @@
 use std::any::TypeId;
 use std::marker::PhantomData;
 
-use crate::{ActorHandler, ActorName, MessagingErr, SupervisionEvent};
+use crate::{Actor, ActorName, MessagingErr, SupervisionEvent};
 
 use super::ActorCell;
 
@@ -17,7 +17,7 @@ use super::ActorCell;
 /// the actor type everywhere
 pub struct ActorRef<TActor>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     pub(crate) inner: ActorCell,
     _tactor: PhantomData<TActor>,
@@ -25,7 +25,7 @@ where
 
 impl<TActor> Clone for ActorRef<TActor>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     fn clone(&self) -> Self {
         ActorRef {
@@ -37,7 +37,7 @@ where
 
 impl<TActor> std::ops::Deref for ActorRef<TActor>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     type Target = ActorCell;
 
@@ -48,7 +48,7 @@ where
 
 impl<TActor> From<ActorCell> for ActorRef<TActor>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     fn from(value: ActorCell) -> Self {
         Self {
@@ -60,7 +60,7 @@ where
 
 impl<TActor> From<ActorRef<TActor>> for ActorCell
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     fn from(value: ActorRef<TActor>) -> Self {
         value.inner
@@ -69,7 +69,7 @@ where
 
 impl<TActor> std::fmt::Debug for ActorRef<TActor>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.inner)
@@ -78,7 +78,7 @@ where
 
 impl<TActor> ActorRef<TActor>
 where
-    TActor: ActorHandler,
+    TActor: Actor,
 {
     /// Retrieve a cloned [ActorCell] representing this [ActorRef]
     pub fn get_cell(&self) -> ActorCell {

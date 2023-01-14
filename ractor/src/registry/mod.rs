@@ -15,7 +15,7 @@
 //!
 //! You can then retrieve actors by name with [where_is]. Note: this
 //! function only returns the [ActorCell] reference to the actor, it
-//! additionally requires knowledge of the [crate::ActorHandler] in order
+//! additionally requires knowledge of the [crate::Actor] in order
 //! to send messages to it (since you need to know the message type)
 //! or agents will runtime panic on message reception, and supervision
 //! processes would need to restart the actors.

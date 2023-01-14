@@ -9,7 +9,7 @@
 //! Supervisors are responsible for the lifecycle of a child actor such that they get notified
 //! when a child actor starts, stops, or panics (when possible). The supervisor can then decide
 //! how to handle the event. Should it restart the actor, leave it dead, potentially die itself
-//! notifying the supervisor's supervisor? That's up to the implementation of the [super::ActorHandler]
+//! notifying the supervisor's supervisor? That's up to the implementation of the [super::Actor]
 //!
 //! This is currently an initial implementation of [Erlang supervisors](https://www.erlang.org/doc/man/supervisor.html)
 //! which will be expanded upon as the library develops. Next in line is likely supervision strategies
@@ -23,7 +23,7 @@ use std::sync::{
 use dashmap::DashMap;
 
 use super::{actor_cell::ActorCell, messages::SupervisionEvent};
-use crate::{ActorHandler, ActorId};
+use crate::{Actor, ActorId};
 
 /// A supervision tree
 #[derive(Default)]
@@ -107,7 +107,7 @@ impl SupervisionTree {
     /// Send a notification to all supervisors
     pub fn notify_supervisor<TActor>(&self, evt: SupervisionEvent)
     where
-        TActor: ActorHandler,
+        TActor: Actor,
     {
         if let Some(parent) = &*(self.supervisor.read().unwrap()) {
             let _ = parent.send_supervisor_evt(evt);

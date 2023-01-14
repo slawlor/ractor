@@ -12,7 +12,7 @@ use std::sync::{
 
 use tokio::time::Duration;
 
-use crate::{Actor, ActorCell, ActorHandler, ActorRef, ActorStatus, SpawnErr, SupervisionEvent};
+use crate::{Actor, ActorCell, ActorRef, ActorStatus, SpawnErr, SupervisionEvent};
 
 mod supervisor;
 
@@ -21,7 +21,7 @@ async fn test_panic_on_start_captured() {
     struct TestActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
 
         type State = ();
@@ -44,7 +44,7 @@ async fn test_stop_higher_priority_over_messages() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
 
         type State = ();
@@ -107,7 +107,7 @@ async fn test_kill_terminates_work() {
     struct TestActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
 
         type State = ();
@@ -145,7 +145,7 @@ async fn test_stop_does_not_terminate_async_work() {
     struct TestActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
 
         type State = ();
@@ -190,7 +190,7 @@ async fn test_kill_terminates_supervision_work() {
     struct TestActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for TestActor {
+    impl Actor for TestActor {
         type Msg = ();
 
         type State = ();
@@ -223,4 +223,47 @@ async fn test_kill_terminates_supervision_work() {
 
     assert_eq!(ActorStatus::Stopped, actor.get_status());
     assert!(handle.is_finished());
+}
+
+#[tokio::test]
+async fn test_sending_message_to_invalid_actor_type() {
+    struct TestActor1;
+    struct TestMessage1;
+    #[async_trait::async_trait]
+    impl Actor for TestActor1 {
+        type Msg = TestMessage1;
+        type State = ();
+        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
+            ()
+        }
+    }
+    struct TestActor2;
+    struct TestMessage2;
+    #[async_trait::async_trait]
+    impl Actor for TestActor2 {
+        type Msg = TestMessage2;
+        type State = ();
+        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
+            ()
+        }
+    }
+
+    let (actor1, handle1) = Actor::spawn(None, TestActor1)
+        .await
+        .expect("Failed to start test actor 1");
+    let (actor2, handle2) = Actor::spawn(None, TestActor2)
+        .await
+        .expect("Failed to start test actor 2");
+
+    // check that actor 2 can't receive a message for actor 1 type
+    assert!(actor2
+        .get_cell()
+        .send_message::<TestActor1>(TestMessage1)
+        .is_err());
+
+    actor1.stop(None);
+    actor2.stop(None);
+
+    handle1.await.unwrap();
+    handle2.await.unwrap();
 }

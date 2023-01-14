@@ -7,14 +7,14 @@
 
 use tokio::time::Duration;
 
-use crate::{Actor, ActorHandler, SpawnErr};
+use crate::{Actor, SpawnErr};
 
 #[tokio::test]
 async fn test_basic_registation() {
     struct EmptyActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for EmptyActor {
+    impl Actor for EmptyActor {
         type Msg = ();
 
         type State = ();
@@ -37,7 +37,7 @@ async fn test_duplicate_registration() {
     struct EmptyActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for EmptyActor {
+    impl Actor for EmptyActor {
         type Msg = ();
 
         type State = ();
@@ -70,7 +70,7 @@ async fn test_actor_registry_unenrollment() {
     struct EmptyActor;
 
     #[async_trait::async_trait]
-    impl ActorHandler for EmptyActor {
+    impl Actor for EmptyActor {
         type Msg = ();
 
         type State = ();

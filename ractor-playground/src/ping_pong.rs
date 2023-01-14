@@ -5,7 +5,7 @@
 
 //! A ping-pong actor implementation
 
-use ractor::{ActorHandler, ActorRef};
+use ractor::{Actor, ActorRef};
 
 pub struct PingPong;
 
@@ -32,7 +32,7 @@ impl Message {
 }
 
 #[async_trait::async_trait]
-impl ActorHandler for PingPong {
+impl Actor for PingPong {
     type Msg = Message;
 
     type State = u8;

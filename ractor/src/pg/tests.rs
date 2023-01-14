@@ -9,14 +9,14 @@ use std::sync::Arc;
 use ::function_name::named;
 use tokio::time::Duration;
 
-use crate::{Actor, ActorHandler, GroupName, SupervisionEvent};
+use crate::{Actor, GroupName, SupervisionEvent};
 
 use crate::pg;
 
 struct TestActor;
 
 #[async_trait::async_trait]
-impl ActorHandler for TestActor {
+impl Actor for TestActor {
     type Msg = ();
 
     type State = ();
@@ -195,7 +195,7 @@ async fn test_pg_monitoring() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for AutoJoinActor {
+    impl Actor for AutoJoinActor {
         type Msg = ();
 
         type State = ();
@@ -211,7 +211,7 @@ async fn test_pg_monitoring() {
     }
 
     #[async_trait::async_trait]
-    impl ActorHandler for NotificationMonitor {
+    impl Actor for NotificationMonitor {
         type Msg = ();
 
         type State = ();

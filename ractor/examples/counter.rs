@@ -14,7 +14,7 @@
 
 extern crate ractor;
 
-use ractor::{Actor, ActorHandler, ActorRef, RpcReplyPort};
+use ractor::{Actor, ActorRef, RpcReplyPort};
 use tokio::time::Duration;
 
 struct Counter;
@@ -31,7 +31,7 @@ enum CounterMessage {
 }
 
 #[async_trait::async_trait]
-impl ActorHandler for Counter {
+impl Actor for Counter {
     type Msg = CounterMessage;
 
     type State = CounterState;

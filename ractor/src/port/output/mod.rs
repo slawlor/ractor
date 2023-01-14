@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use tokio::sync::broadcast as pubsub;
 use tokio::task::JoinHandle;
 
-use crate::{ActorHandler, ActorRef, Message};
+use crate::{Actor, ActorRef, Message};
 
 #[cfg(test)]
 mod tests;
@@ -69,7 +69,7 @@ where
     pub fn subscribe<TReceiver, F>(&self, receiver: ActorRef<TReceiver>, converter: F)
     where
         F: Fn(TMsg) -> Option<TReceiver::Msg> + Send + 'static,
-        TReceiver: ActorHandler,
+        TReceiver: Actor,
     {
         let mut subs = self.subscriptions.write().unwrap();
 
@@ -136,7 +136,7 @@ impl OutputPortSubscription {
     where
         TMsg: OutputMessage,
         F: Fn(TMsg) -> Option<TReceiver::Msg> + Send + 'static,
-        TReceiver: ActorHandler,
+        TReceiver: Actor,
     {
         let handle = tokio::spawn(async move {
             while let Ok(Some(msg)) = port.recv().await {

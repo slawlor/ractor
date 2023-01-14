@@ -6,7 +6,7 @@
 //! This module contains the basic building blocks of an actor.
 //!
 //! They are:
-//! [ActorHandler]: The behavior definition for an actor's internal processing logic + state management
+//! [Actor]: The behavior definition for an actor's internal processing logic + state management
 //! [Actor]: Management structure processing the message handler, signals, and supervision events in a loop
 
 use std::{panic::AssertUnwindSafe, sync::Arc};
@@ -38,10 +38,13 @@ pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-/// [ActorHandler] is the "business logic" of an Actor. It defines the
+/// [Actor] defines the behavior of an Actor. It specifies the
 /// Message type, State type, and all processing logic for the actor
+///
+/// Additionally it aliases the calls for `spawn` and `spawn_linked` from
+/// [ActorRuntime] for convenient startup + lifecycle management
 #[async_trait::async_trait]
-pub trait ActorHandler: Sized + Sync + Send + 'static {
+pub trait Actor: Sized + Sync + Send + 'static {
     /// The message type for this actor
     type Msg: Message;
 
@@ -59,7 +62,7 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
     ///
     /// * `myself` - A handle to the [ActorCell] representing this actor
     ///
-    /// Returns an initial [ActorHandler::State] to bootstrap the actor
+    /// Returns an initial [Actor::State] to bootstrap the actor
     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State;
 
     /// Invoked after an actor has started.
@@ -108,30 +111,62 @@ pub trait ActorHandler: Sized + Sync + Send + 'static {
         state: &mut Self::State,
     ) {
     }
+
+    /// Spawn an actor of this type, which is unsupervised, automatically starting
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The implementation of Self
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    async fn spawn(
+        name: Option<ActorName>,
+        handler: Self,
+    ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
+        ActorRuntime::<Self::Msg, Self::State, Self>::spawn(name, handler).await
+    }
+
+    /// Spawn an actor of this type with a supervisor, automatically starting the actor
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The implementation of Self
+    /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    async fn spawn_linked(
+        name: Option<ActorName>,
+        handler: Self,
+        supervisor: ActorCell,
+    ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
+        ActorRuntime::<Self::Msg, Self::State, Self>::spawn_linked(name, handler, supervisor).await
+    }
 }
 
-/// [Actor] is a struct which represents the actor. This struct is consumed by the
+/// [ActorRuntime] is a struct which represents the actor. This struct is consumed by the
 /// `start` operation, but results in an [ActorRef] to communicate and operate with
-pub struct Actor<TMsg, TState, THandler>
+pub struct ActorRuntime<TMsg, TState, THandler>
 where
     TMsg: Message,
     TState: State,
-    THandler: ActorHandler<Msg = TMsg, State = TState>,
+    THandler: Actor<Msg = TMsg, State = TState>,
 {
     base: ActorRef<THandler>,
     handler: Arc<THandler>,
 }
 
-impl<TMsg, TState, THandler> Actor<TMsg, TState, THandler>
+impl<TMsg, TState, THandler> ActorRuntime<TMsg, TState, THandler>
 where
     TMsg: Message,
     TState: State,
-    THandler: ActorHandler<Msg = TMsg, State = TState>,
+    THandler: Actor<Msg = TMsg, State = TState>,
 {
     /// Spawn an actor, which is unsupervised, automatically starting the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
-    /// * `handler` The [ActorHandler] defining the logic for this actor
+    /// * `handler` The [Actor] defining the logic for this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -147,7 +182,7 @@ where
     /// Spawn an actor with a supervisor, automatically starting the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
-    /// * `handler` The [ActorHandler] defining the logic for this actor
+    /// * `handler` The [Actor] defining the logic for this actor
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -165,7 +200,7 @@ where
     /// Create a new actor with some handler implementation and initial state
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
-    /// * `handler` The [ActorHandler] defining the logic for this actor
+    /// * `handler` The [Actor] defining the logic for this actor
     ///
     /// Returns A tuple [(Actor, ActorPortSet)] to be passed to the `start` function of [Actor]
     fn new(name: Option<ActorName>, handler: THandler) -> Result<(Self, ActorPortSet), SpawnErr> {
@@ -311,11 +346,11 @@ where
     /// along with optionally whether we were signaled mid-processing or not
     ///
     /// * `myself` - The current [ActorRef]
-    /// * `state` - The current [ActorHandler::State] object
-    /// * `handler` - Pointer to the [ActorHandler] definition
+    /// * `state` - The current [Actor::State] object
+    /// * `handler` - Pointer to the [Actor] definition
     /// * `ports` - The mutable [ActorPortSet] which are the message ports for this actor
     ///
-    /// Returns a tuple of the next [ActorHandler::State] and a flag to denote if the processing
+    /// Returns a tuple of the next [Actor::State] and a flag to denote if the processing
     /// loop is done
     async fn process_message(
         myself: ActorRef<THandler>,
