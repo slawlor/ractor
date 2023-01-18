@@ -145,11 +145,15 @@ pub type GroupName = &'static str;
 
 pub mod actor;
 pub mod actor_id;
+pub mod macros;
 pub mod pg;
 pub mod port;
 pub mod registry;
 pub mod rpc;
 pub mod time;
+
+#[cfg(test)]
+mod tests;
 
 #[cfg(test)]
 use criterion as _;
@@ -189,3 +193,63 @@ impl<T: Any + Send + 'static> Message for T {}
 /// to send between threads (same bounds as a [Message])
 pub trait State: Message {}
 impl<T: Message> State for T {}
+
+/// Error types which can result from Ractor processes
+#[derive(Debug)]
+pub enum RactorErr {
+    /// An error occurred spawning
+    Spawn(SpawnErr),
+    /// An error occurred in messaging (sending/receiving)
+    Messaging(MessagingErr),
+    /// An actor encountered an error while processing (canceled or panicked)
+    Actor(ActorErr),
+    /// A timeout occurred
+    Timeout,
+}
+
+impl From<SpawnErr> for RactorErr {
+    fn from(value: SpawnErr) -> Self {
+        RactorErr::Spawn(value)
+    }
+}
+
+impl From<MessagingErr> for RactorErr {
+    fn from(value: MessagingErr) -> Self {
+        RactorErr::Messaging(value)
+    }
+}
+
+impl From<ActorErr> for RactorErr {
+    fn from(value: ActorErr) -> Self {
+        RactorErr::Actor(value)
+    }
+}
+
+impl<TResult> From<rpc::CallResult<TResult>> for RactorErr {
+    fn from(value: rpc::CallResult<TResult>) -> Self {
+        match value {
+            rpc::CallResult::SenderError => RactorErr::Messaging(MessagingErr::ChannelClosed),
+            rpc::CallResult::Timeout => RactorErr::Timeout,
+            _ => panic!("A successful `CallResult` cannot be mapped to a `RactorErr`"),
+        }
+    }
+}
+
+impl std::fmt::Display for RactorErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Actor(actor_err) => {
+                write!(f, "{}", actor_err)
+            }
+            Self::Messaging(messaging_err) => {
+                write!(f, "{}", messaging_err)
+            }
+            Self::Spawn(spawn_err) => {
+                write!(f, "{}", spawn_err)
+            }
+            Self::Timeout => {
+                write!(f, "timeout")
+            }
+        }
+    }
+}

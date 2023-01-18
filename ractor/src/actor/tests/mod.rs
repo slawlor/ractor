@@ -233,9 +233,7 @@ async fn test_sending_message_to_invalid_actor_type() {
     impl Actor for TestActor1 {
         type Msg = TestMessage1;
         type State = ();
-        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
-            ()
-        }
+        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
     }
     struct TestActor2;
     struct TestMessage2;
@@ -243,9 +241,7 @@ async fn test_sending_message_to_invalid_actor_type() {
     impl Actor for TestActor2 {
         type Msg = TestMessage2;
         type State = ();
-        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
-            ()
-        }
+        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
     }
 
     let (actor1, handle1) = Actor::spawn(None, TestActor1)

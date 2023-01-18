@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::time::Duration;
 
 use crate::rpc;
-use crate::{Actor, ActorRef};
+use crate::{call, call_t, cast, forward, forward_t, Actor, ActorRef};
 
 #[tokio::test]
 async fn test_rpc_cast() {
@@ -50,12 +50,13 @@ async fn test_rpc_cast() {
 
     actor_ref.cast(()).expect("Failed to send message");
     actor_ref.cast(()).expect("Failed to send message");
+    cast!(actor_ref, ()).unwrap();
 
     // make sure they have time to process
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // assert the actor received 2 cast requests
-    assert_eq!(2, counter.load(Ordering::Relaxed));
+    assert_eq!(3, counter.load(Ordering::Relaxed));
 
     // cleanup
     actor_ref.stop(None);
@@ -68,6 +69,7 @@ async fn test_rpc_call() {
 
     enum MessageFormat {
         TestRpc(rpc::RpcReplyPort<String>),
+        TestTimeout(rpc::RpcReplyPort<String>),
     }
 
     #[async_trait::async_trait]
@@ -92,6 +94,10 @@ async fn test_rpc_call() {
                         let _ = reply.send("howdy".to_string());
                     }
                 }
+                Self::Msg::TestTimeout(reply) => {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    let _ = reply.send("howdy".to_string());
+                }
             }
         }
     }
@@ -100,11 +106,15 @@ async fn test_rpc_call() {
         .await
         .expect("Failed to start test actor");
 
-    let rpc_result = actor_ref
-        .call(MessageFormat::TestRpc, Some(Duration::from_millis(100)))
-        .await
-        .expect("Failed to send message to actor")
-        .expect("RPC didn't succeed");
+    let rpc_result = call_t!(
+        actor_ref,
+        MessageFormat::TestRpc,
+        Duration::from_millis(100)
+    )
+    .unwrap();
+    assert_eq!("howdy".to_string(), rpc_result);
+
+    let rpc_result = call!(actor_ref, MessageFormat::TestRpc).unwrap();
     assert_eq!("howdy".to_string(), rpc_result);
 
     let rpc_result = actor_ref
@@ -113,9 +123,22 @@ async fn test_rpc_call() {
         .expect("Failed to send message to actor")
         .expect("RPC didn't succeed");
     assert_eq!("howdy".to_string(), rpc_result);
+
+    let rpc_timeout = call_t!(
+        actor_ref,
+        MessageFormat::TestTimeout,
+        Duration::from_millis(10)
+    );
+    assert!(rpc_timeout.is_err());
+    println!("RPC Error {:?}", rpc_timeout);
 
     // cleanup
     actor_ref.stop(None);
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let rpc_send_fail = call!(actor_ref, MessageFormat::TestRpc);
+    assert!(rpc_send_fail.is_err());
     handle.await.expect("Actor stopped with err");
 }
 
@@ -212,6 +235,23 @@ async fn test_rpc_call_forwarding() {
         .expect("Call result didn't return success")
         .expect("Failed to forward message");
 
+    forward!(
+        worker_ref,
+        WorkerMessage::TestRpc,
+        forwarder_ref,
+        ForwarderMessage::ForwardResult
+    )
+    .expect("Failed to foward message");
+
+    forward_t!(
+        worker_ref,
+        WorkerMessage::TestRpc,
+        forwarder_ref,
+        ForwarderMessage::ForwardResult,
+        Duration::from_millis(100)
+    )
+    .expect("Failed to forward message");
+
     let forward_handle = worker_ref.call_and_forward(
         WorkerMessage::TestRpc,
         &forwarder_ref,
@@ -227,7 +267,7 @@ async fn test_rpc_call_forwarding() {
         .expect("Failed to forward message");
 
     // make sure the counter was bumped to say the message was forwarded
-    assert_eq!(2, counter.load(Ordering::Relaxed));
+    assert_eq!(4, counter.load(Ordering::Relaxed));
 
     // cleanup
     forwarder_ref.stop(None);
