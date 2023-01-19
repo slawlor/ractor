@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::time::Duration;
 
 use crate::rpc;
-use crate::{call, call_t, cast, forward, forward_t, Actor, ActorRef};
+use crate::{call, call_t, cast, forward, Actor, ActorRef};
 
 #[tokio::test]
 async fn test_rpc_cast() {
@@ -66,10 +66,10 @@ async fn test_rpc_cast() {
 #[tokio::test]
 async fn test_rpc_call() {
     struct TestActor;
-
     enum MessageFormat {
-        TestRpc(rpc::RpcReplyPort<String>),
-        TestTimeout(rpc::RpcReplyPort<String>),
+        Rpc(rpc::RpcReplyPort<String>),
+        Timeout(rpc::RpcReplyPort<String>),
+        MultiArg(String, u32, rpc::RpcReplyPort<String>),
     }
 
     #[async_trait::async_trait]
@@ -87,16 +87,19 @@ async fn test_rpc_call() {
             _state: &mut Self::State,
         ) {
             match message {
-                Self::Msg::TestRpc(reply) => {
+                Self::Msg::Rpc(reply) => {
                     // An error sending means no one is listening anymore (the receiver was dropped),
                     // so we should shortcut the processing of this message probably!
                     if !reply.is_closed() {
                         let _ = reply.send("howdy".to_string());
                     }
                 }
-                Self::Msg::TestTimeout(reply) => {
+                Self::Msg::Timeout(reply) => {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     let _ = reply.send("howdy".to_string());
+                }
+                Self::Msg::MultiArg(message, count, reply) => {
+                    let _ = reply.send(format!("{}-{}", message, count));
                 }
             }
         }
@@ -106,38 +109,42 @@ async fn test_rpc_call() {
         .await
         .expect("Failed to start test actor");
 
-    let rpc_result = call_t!(
-        actor_ref,
-        MessageFormat::TestRpc,
-        Duration::from_millis(100)
-    )
-    .unwrap();
+    let rpc_result = call_t!(actor_ref, MessageFormat::Rpc, 100).unwrap();
     assert_eq!("howdy".to_string(), rpc_result);
 
-    let rpc_result = call!(actor_ref, MessageFormat::TestRpc).unwrap();
+    let rpc_result = call!(actor_ref, MessageFormat::Rpc).unwrap();
     assert_eq!("howdy".to_string(), rpc_result);
 
     let rpc_result = actor_ref
-        .call(MessageFormat::TestRpc, Some(Duration::from_millis(100)))
+        .call(MessageFormat::Rpc, Some(Duration::from_millis(100)))
         .await
         .expect("Failed to send message to actor")
         .expect("RPC didn't succeed");
     assert_eq!("howdy".to_string(), rpc_result);
 
-    let rpc_timeout = call_t!(
-        actor_ref,
-        MessageFormat::TestTimeout,
-        Duration::from_millis(10)
-    );
+    let rpc_timeout = call_t!(actor_ref, MessageFormat::Timeout, 10);
     assert!(rpc_timeout.is_err());
     println!("RPC Error {:?}", rpc_timeout);
+
+    let rpc_value = call!(actor_ref, MessageFormat::MultiArg, "Msg".to_string(), 32).unwrap();
+    assert_eq!("Msg-32".to_string(), rpc_value);
+
+    let rpc_value = call_t!(
+        actor_ref,
+        MessageFormat::MultiArg,
+        100,
+        "Msg".to_string(),
+        32
+    )
+    .unwrap();
+    assert_eq!("Msg-32".to_string(), rpc_value);
 
     // cleanup
     actor_ref.stop(None);
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let rpc_send_fail = call!(actor_ref, MessageFormat::TestRpc);
+    let rpc_send_fail = call!(actor_ref, MessageFormat::Rpc);
     assert!(rpc_send_fail.is_err());
     handle.await.expect("Actor stopped with err");
 }
@@ -243,7 +250,7 @@ async fn test_rpc_call_forwarding() {
     )
     .expect("Failed to foward message");
 
-    forward_t!(
+    forward!(
         worker_ref,
         WorkerMessage::TestRpc,
         forwarder_ref,

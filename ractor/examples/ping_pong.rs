@@ -14,7 +14,7 @@
 
 extern crate ractor;
 
-use ractor::{Actor, ActorRef};
+use ractor::{cast, Actor, ActorRef};
 
 pub struct PingPong;
 
@@ -48,7 +48,7 @@ impl Actor for PingPong {
 
     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
         // startup the event processing
-        myself.send_message(Message::Ping).unwrap();
+        cast!(myself, Message::Ping).unwrap();
         // create the initial state
         0u8
     }
@@ -56,7 +56,7 @@ impl Actor for PingPong {
     async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
         if *state < 10u8 {
             message.print();
-            myself.send_message(message.next()).unwrap();
+            cast!(myself, message.next()).unwrap();
             *state += 1;
         } else {
             println!();

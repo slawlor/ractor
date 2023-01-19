@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 
-use ractor::{Actor, ActorId, ActorRef};
+use ractor::{cast, Actor, ActorId, ActorRef};
 use rand::{thread_rng, Rng};
 
 // ================== Player Actor ================== //
@@ -77,14 +77,18 @@ impl Actor for Game {
                 false => state.funds -= state.wager as i64,
             }
             state.results_vec.push(state.funds);
-            let _ = myself.cast(message);
+            cast!(myself, message).expect("Failed to send message");
         } else {
             // Now that the game is finished, the results of the game need to be reported
             // to the `GameManager`.
-            let _ = message.cast(GameManagerMessage {
-                id: myself.get_id(),
-                results: state.results_vec.clone(),
-            });
+            cast!(
+                message,
+                GameManagerMessage {
+                    id: myself.get_id(),
+                    results: state.results_vec.clone(),
+                }
+            )
+            .expect("Failed to send message");
             // Because the `GameManager` is monitoring this actor we can stop this actor
             myself.stop(None);
         }
@@ -141,7 +145,7 @@ impl Actor for GameManager {
             let (actor, _) = Actor::spawn_linked(None, Game, myself.clone().into())
                 .await
                 .expect("Failed to start game");
-            let _ = actor.cast(myself.clone());
+            cast!(actor, myself.clone()).expect("Failed to send message");
         }
 
         GameManagerState::new(self.num_games)

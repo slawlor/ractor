@@ -114,7 +114,7 @@ async fn test_send_after() {
     // kill the actor
     actor_ref.stop(None);
 
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
     // make sure the actor is dead + the interval handle doesn't send again
     assert!(send_after_handle.is_finished());
     assert!(actor_handle.is_finished());
