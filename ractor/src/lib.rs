@@ -12,7 +12,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ractor = "0.1"
+//! ractor = "0.4"
 //! ```
 //!
 //! ## Getting started
