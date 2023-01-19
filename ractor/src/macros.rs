@@ -14,13 +14,55 @@ macro_rules! cast {
     };
 }
 
-/// `call!`: Perform an inifinite-time remote procedure call to an [crate::Actor]
+/// `call!`: Perform an infinite-time remote procedure call to an [crate::Actor]
 ///
 /// * `$actor` - The actor to call
 /// * `$msg` - The message builder which takes in a [crate::port::RpcReplyPort] and emits a message which
 /// the actor supports
+/// * `$args` - (optional) Variable length arguments which will PRECEED the reply channel when
+/// constructing the message payload
 ///
 /// Returns [Ok(_)] with the result on successful RPC or [Err(crate::RactorErr)] on failure
+/// Example usage
+/// ```rust
+/// use ractor::{call, Actor, RpcReplyPort, ActorRef};
+/// struct TestActor;
+/// enum MessageFormat {
+///     TestRpc(String, RpcReplyPort<String>),
+/// }
+///
+/// #[async_trait::async_trait]
+/// impl Actor for TestActor {
+///     type Msg = MessageFormat;
+///
+///     type State = ();
+///
+///     async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+///
+///     async fn handle(
+///         &self,
+///         _this_actor: ActorRef<Self>,
+///         message: Self::Msg,
+///         _state: &mut Self::State,
+///     ) {
+///         match message {
+///             Self::Msg::TestRpc(arg, reply) => {
+///                 // An error sending means no one is listening anymore (the receiver was dropped),
+///                 // so we should shortcut the processing of this message probably!
+///                 if !reply.is_closed() {
+///                     let _ = reply.send(arg);
+///                 }
+///             }
+///         }
+///     }
+/// }
+///
+/// async fn test() {
+///     let (actor, _handle) = Actor::spawn(None, TestActor).await.unwrap();
+///     let result = call!(actor, MessageFormat::TestRpc, "Something".to_string()).unwrap();
+///     assert_eq!(result, "Something".to_string())
+/// }
+/// ```
 #[macro_export]
 macro_rules! call {
     ($actor:ident, $msg:expr) => {{
@@ -34,21 +76,9 @@ macro_rules! call {
             Err(e) => Err(e),
         }
     }};
-}
-
-/// `call_t!`: Perform an finite-time remote procedure call to an [crate::Actor]
-///
-/// * `$actor` - The actor to call
-/// * `$msg` - The message builder which takes in a [crate::port::RpcReplyPort] and emits a message which
-/// the actor supports
-/// * `$timeout` - The [tokio::time::Duration] timeout for how long the call can take before timing out
-///
-/// Returns [Ok(_)] with the result on successful RPC or [Err(crate::RactorErr)] on failure
-#[macro_export]
-macro_rules! call_t {
-    ($actor:ident, $msg:expr, $timeout:expr) => {{
+    ($actor:ident, $msg:expr, $($args:expr),*) => {{
         let err = $actor
-            .call(|tx| $msg(tx), Some($timeout))
+            .call(|tx| $msg($($args),*, tx), None)
             .await
             .map_err($crate::RactorErr::from);
         match err {
@@ -59,7 +89,83 @@ macro_rules! call_t {
     }};
 }
 
-/// `forward!`: Perform an infinite-time remote procedure call to a [crate::Actor]
+/// `call_t!`: Perform an finite-time remote procedure call to an [crate::Actor]
+///
+/// * `$actor` - The actor to call
+/// * `$msg` - The message builder variant
+/// * `$timeout_ms` - the timeout in milliseconds for the remote procedure call
+/// * `$args` - (optional) Variable length arguments which will PRECEED the reply channel when
+/// constructing the message payload
+///
+/// Returns [Ok(_)] with the result on successful RPC or [Err(crate::RactorErr)] on failure
+///
+/// Example usage
+/// ```rust
+/// use ractor::{call_t, Actor, ActorRef, RpcReplyPort};
+/// struct TestActor;
+/// enum MessageFormat {
+///     TestRpc(String, RpcReplyPort<String>),
+/// }
+///
+/// #[async_trait::async_trait]
+/// impl Actor for TestActor {
+///     type Msg = MessageFormat;
+///
+///     type State = ();
+///
+///     async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+///
+///     async fn handle(
+///         &self,
+///         _this_actor: ActorRef<Self>,
+///         message: Self::Msg,
+///         _state: &mut Self::State,
+///     ) {
+///         match message {
+///             Self::Msg::TestRpc(arg, reply) => {
+///                 // An error sending means no one is listening anymore (the receiver was dropped),
+///                 // so we should shortcut the processing of this message probably!
+///                 if !reply.is_closed() {
+///                     let _ = reply.send(arg);
+///                 }
+///             }
+///         }
+///     }
+/// }
+///
+/// async fn test() {
+///     let (actor, _handle) = Actor::spawn(None, TestActor).await.unwrap();
+///     let result = call_t!(actor, MessageFormat::TestRpc, 50, "Something".to_string()).unwrap();
+///     assert_eq!(result, "Something".to_string())
+/// }
+/// ```
+#[macro_export]
+macro_rules! call_t {
+    ($actor:ident, $msg:expr, $timeout_ms:literal) => {{
+        let err = $actor
+            .call(|tx| $msg(tx), Some(tokio::time::Duration::from_millis($timeout_ms)))
+            .await
+            .map_err($crate::RactorErr::from);
+        match err {
+            Ok($crate::rpc::CallResult::Success(ok_value)) => Ok(ok_value),
+            Ok(cr) => Err($crate::RactorErr::from(cr)),
+            Err(e) => Err(e),
+        }
+    }};
+    ($actor:ident, $msg:expr, $timeout_ms:literal, $($args:expr),*) => {{
+        let err = $actor
+            .call(|tx| $msg($($args),*, tx), Some(tokio::time::Duration::from_millis($timeout_ms)))
+            .await
+            .map_err($crate::RactorErr::from);
+        match err {
+            Ok($crate::rpc::CallResult::Success(ok_value)) => Ok(ok_value),
+            Ok(cr) => Err($crate::RactorErr::from(cr)),
+            Err(e) => Err(e),
+        }
+    }};
+}
+
+/// `forward!`: Perform a remote procedure call to a [crate::Actor]
 /// and forwards the result to another actor if successful
 ///
 /// * `$actor` - The actors to call
@@ -67,6 +173,7 @@ macro_rules! call_t {
 /// the actor supports.
 /// * `$forward` - The [crate::ActorRef] to forward the call to
 /// * `$forward_mapping` - The message transformer from the RPC result to the forwarding actor's message format
+/// * `$timeout` - The [tokio::time::Duration] to allow the call to complete before timing out.
 ///
 /// Returns [Ok(())] on successful call forwarding, [Err(crate::RactorErr)] otherwies
 #[macro_export]
@@ -90,21 +197,6 @@ macro_rules! forward {
             Err(e) => Err(e),
         }
     }};
-}
-
-/// `forward_t!`: Perform an finite-time remote procedure call to a [crate::Actor]
-/// and forwards the result to another actor if successful
-///
-/// * `$actor` - The actors to call
-/// * `$msg` - The message builder, which takes in a [crate::port::RpcReplyPort] and emits a message which
-/// the actor supports.
-/// * `$forward` - The [crate::ActorRef] to forward the call to
-/// * `$forward_mapping` - The message transformer from the RPC result to the forwarding actor's message format
-/// * `$timeout` - The [tokio::time::Duration] to allow the call to complete before timing out.
-///
-/// Returns [Ok(())] on successful call forwarding, [Err(crate::RactorErr)] otherwies
-#[macro_export]
-macro_rules! forward_t {
     ($actor:ident, $msg:expr, $forward:ident, $forward_mapping:expr, $timeout:expr) => {{
         let future_or_err = $actor
             .call_and_forward(|tx| $msg(tx), &$forward, $forward_mapping, Some($timeout))
@@ -125,5 +217,3 @@ macro_rules! forward_t {
         }
     }};
 }
-
-// TODO: subscribe to output port?

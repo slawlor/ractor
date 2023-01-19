@@ -20,7 +20,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use ractor::{Actor, ActorId, ActorName, ActorRef, RpcReplyPort};
+use ractor::{cast, Actor, ActorId, ActorName, ActorRef, RpcReplyPort};
 use tokio::time::{Duration, Instant};
 
 // ============================ Fork Actor ============================ //
@@ -58,14 +58,14 @@ impl Fork {
                 match &state.owned_by {
                     Some(owner) => {
                         if !state.clean {
-                            let _ = owner.cast(PhilosopherMessage::GiveUpFork(myself.get_id()));
+                            let _ = cast!(owner, PhilosopherMessage::GiveUpFork(myself.get_id()));
                         }
                         // there's already an owner, backlog this message in priority
                         return Some(message);
                     }
                     None => {
                         // give the fork to the requester
-                        let _ = who.cast(PhilosopherMessage::ReceiveFork(myself.get_id()));
+                        let _ = cast!(who, PhilosopherMessage::ReceiveFork(myself.get_id()));
                         // set ownership
                         state.owned_by = Some(who.clone());
                     }
@@ -304,7 +304,7 @@ impl Actor for Philosopher {
     type State = PhilosopherState;
     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
         // initialize the simulation by making the philosopher's hungry
-        let _ = myself.cast(Self::Msg::BecomeHungry(0));
+        let _ = cast!(myself, Self::Msg::BecomeHungry(0));
         Self::State::new(self.left.clone(), self.right.clone())
     }
 
@@ -480,14 +480,8 @@ async fn main() {
     tokio::time::sleep(run_time).await;
     // collect the metrics from the philosophers, and they'll stop after reporting metrics
     for philosopher in philosophers.iter() {
-        let metrics = philosopher
-            .call(
-                PhilosopherMessage::SendMetrics,
-                Some(Duration::from_millis(50)),
-            )
-            .await
-            .expect("Failed to send message to philosopher")
-            .expect("Call result to philosopher wasn't successful");
+        let metrics = ractor::call_t!(philosopher, PhilosopherMessage::SendMetrics, 50)
+            .expect("Failed to perform RPC");
         results.insert(philosopher.get_name().unwrap(), Some(metrics));
     }
 

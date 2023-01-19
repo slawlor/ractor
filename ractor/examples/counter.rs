@@ -14,8 +14,7 @@
 
 extern crate ractor;
 
-use ractor::{Actor, ActorRef, RpcReplyPort};
-use tokio::time::Duration;
+use ractor::{call_t, Actor, ActorRef, RpcReplyPort};
 
 struct Counter;
 
@@ -76,10 +75,7 @@ async fn main() {
             .send_message(CounterMessage::Decrement(5))
             .expect("Failed to send message");
 
-        let rpc_result = actor
-            .call(CounterMessage::Retrieve, Some(Duration::from_millis(10)))
-            .await
-            .expect("Failed to send RPC");
+        let rpc_result = call_t!(actor, CounterMessage::Retrieve, 10);
 
         println!(
             "Count is: {}",
