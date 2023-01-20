@@ -10,11 +10,11 @@ use std::sync::{
     Arc,
 };
 
-use tokio::time::Duration;
+use crate::concurrency::Duration;
 
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_supervision_panic_in_post_startup() {
     struct Child;
     struct Supervisor {
@@ -81,7 +81,7 @@ async fn test_supervision_panic_in_post_startup() {
     assert_eq!(0, supervisor_ref.get_num_children());
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_supervision_panic_in_handle() {
     struct Child;
     struct Supervisor {
@@ -161,7 +161,7 @@ async fn test_supervision_panic_in_handle() {
     assert_eq!(0, supervisor_ref.get_num_children());
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_supervision_panic_in_post_stop() {
     struct Child;
     struct Supervisor {
@@ -224,7 +224,7 @@ async fn test_supervision_panic_in_post_stop() {
 
 /// Test that a panic in the supervisor's handling propogates to
 /// the supervisor's supervisor
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_supervision_panic_in_supervisor_handle() {
     struct Child;
     struct Midpoint;
@@ -339,7 +339,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
     assert_eq!(0, supervisor_ref.get_num_children());
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_killing_a_supervisor_terminates_children() {
     struct Child;
     struct Supervisor;
@@ -389,7 +389,7 @@ async fn test_killing_a_supervisor_terminates_children() {
         .expect("Failed to wait for supervisor to shutdown");
 
     // wait for async shutdown
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    crate::concurrency::sleep(Duration::from_millis(50)).await;
 
     assert_eq!(ActorStatus::Stopped, child_ref.get_status());
 

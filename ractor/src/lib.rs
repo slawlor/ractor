@@ -145,6 +145,7 @@ pub type GroupName = &'static str;
 
 pub mod actor;
 pub mod actor_id;
+pub mod concurrency;
 pub mod macros;
 pub mod pg;
 pub mod port;

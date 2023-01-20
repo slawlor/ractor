@@ -14,7 +14,7 @@
 //! 3. Stop after a delay
 //! 4. Kill after a delay
 
-use tokio::{task::JoinHandle, time::Duration};
+use crate::concurrency::{Duration, JoinHandle};
 
 use crate::{Actor, ActorCell, MessagingErr, ACTIVE_STATES};
 
@@ -38,9 +38,9 @@ where
     TActor: Actor,
     F: Fn() -> TActor::Msg + Send + 'static,
 {
-    tokio::spawn(async move {
+    crate::concurrency::spawn(async move {
         while ACTIVE_STATES.contains(&actor.get_status()) {
-            tokio::time::sleep(period).await;
+            crate::concurrency::sleep(period).await;
             // if we receive an error trying to send, the channel is closed and we should stop trying
             // actor died
             if actor.send_message::<TActor>(msg()).is_err() {
@@ -69,8 +69,8 @@ pub fn send_after<TActor>(
 where
     TActor: Actor,
 {
-    tokio::spawn(async move {
-        tokio::time::sleep(period).await;
+    crate::concurrency::spawn(async move {
+        crate::concurrency::sleep(period).await;
         actor.send_message::<TActor>(msg)
     })
 }
@@ -84,8 +84,8 @@ where
 /// Returns: The [JoinHandle] which denotes the backgrounded operation. To cancel the
 /// exit operation, you can abort the handle
 pub fn exit_after(period: Duration, actor: ActorCell) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        tokio::time::sleep(period).await;
+    crate::concurrency::spawn(async move {
+        crate::concurrency::sleep(period).await;
         actor.stop(Some(format!("Exit after {}ms", period.as_millis())))
     })
 }
@@ -98,8 +98,8 @@ pub fn exit_after(period: Duration, actor: ActorCell) -> JoinHandle<()> {
 /// Returns: The [JoinHandle] which denotes the backgrounded operation. To cancel the
 /// kill operation, you can abort the handle
 pub fn kill_after(period: Duration, actor: ActorCell) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        tokio::time::sleep(period).await;
+    crate::concurrency::spawn(async move {
+        crate::concurrency::sleep(period).await;
         actor.kill()
     })
 }

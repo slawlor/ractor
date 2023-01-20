@@ -442,7 +442,7 @@ async fn main() {
     ];
     let mut forks = Vec::with_capacity(philosopher_names.len());
     let mut philosophers = Vec::with_capacity(philosopher_names.len());
-    let mut all_handles = Vec::new();
+    let mut all_handles = tokio::task::JoinSet::new();
 
     let mut results: HashMap<ActorName, Option<PhilosopherMetrics>> =
         HashMap::with_capacity(philosopher_names.len());
@@ -453,7 +453,7 @@ async fn main() {
             .await
             .expect("Failed to create fork!");
         forks.push(fork);
-        all_handles.push(handle);
+        all_handles.spawn(handle);
     }
 
     // Spawn the philosopher actors clockwise from top of the table
@@ -473,7 +473,7 @@ async fn main() {
             .expect("Failed to create philosopher!");
         results.insert(philosopher_names[left], None);
         philosophers.push(philosopher);
-        all_handles.push(handle);
+        all_handles.spawn(handle);
     }
 
     // wait for the simulation to end
@@ -494,7 +494,7 @@ async fn main() {
     }
 
     // wait for everything to shut down
-    let _ = futures::future::join_all(all_handles).await;
+    while let Some(_) = all_handles.join_next().await {}
 
     // print metrics
     println!("Simulation results");

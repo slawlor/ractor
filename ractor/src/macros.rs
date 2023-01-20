@@ -143,7 +143,7 @@ macro_rules! call {
 macro_rules! call_t {
     ($actor:expr, $msg:expr, $timeout_ms:expr) => {{
         let err = $actor
-            .call(|tx| $msg(tx), Some(tokio::time::Duration::from_millis($timeout_ms)))
+            .call(|tx| $msg(tx), Some($crate::concurrency::Duration::from_millis($timeout_ms)))
             .await
             .map_err($crate::RactorErr::from);
         match err {
@@ -154,7 +154,7 @@ macro_rules! call_t {
     }};
     ($actor:expr, $msg:expr, $timeout_ms:expr, $($args:expr),*) => {{
         let err = $actor
-            .call(|tx| $msg($($args),*, tx), Some(tokio::time::Duration::from_millis($timeout_ms)))
+            .call(|tx| $msg($($args),*, tx), Some($crate::concurrency::Duration::from_millis($timeout_ms)))
             .await
             .map_err($crate::RactorErr::from);
         match err {
@@ -173,7 +173,7 @@ macro_rules! call_t {
 /// the actor supports.
 /// * `$forward` - The [crate::ActorRef] to forward the call to
 /// * `$forward_mapping` - The message transformer from the RPC result to the forwarding actor's message format
-/// * `$timeout` - The [tokio::time::Duration] to allow the call to complete before timing out.
+/// * `$timeout` - The [crate::concurrency::Duration] to allow the call to complete before timing out.
 ///
 /// Returns [Ok(())] on successful call forwarding, [Err(crate::RactorErr)] otherwies
 #[macro_export]

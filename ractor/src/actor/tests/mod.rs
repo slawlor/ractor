@@ -10,13 +10,13 @@ use std::sync::{
     Arc,
 };
 
-use tokio::time::Duration;
+use crate::concurrency::Duration;
 
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SpawnErr, SupervisionEvent};
 
 mod supervisor;
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_panic_on_start_captured() {
     struct TestActor;
 
@@ -35,7 +35,7 @@ async fn test_panic_on_start_captured() {
     assert!(matches!(actor_output, Err(SpawnErr::StartupPanic(_))));
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_stop_higher_priority_over_messages() {
     let message_counter = Arc::new(AtomicU8::new(0u8));
 
@@ -58,7 +58,7 @@ async fn test_stop_higher_priority_over_messages() {
             _state: &mut Self::State,
         ) {
             self.counter.fetch_add(1, Ordering::Relaxed);
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            crate::concurrency::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -79,19 +79,19 @@ async fn test_stop_higher_priority_over_messages() {
     }
 
     // give some time to process the first message and start sleeping
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
 
     // followed by the "stop" signal
     actor.stop(None);
 
     // current async work should complete, so we're still "running" sleeping
     // on the first message
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
     assert_eq!(ActorStatus::Running, actor.get_status());
     assert!(!handle.is_finished());
 
     // now wait enough time for the first iteration to complete
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    crate::concurrency::sleep(Duration::from_millis(150)).await;
 
     println!("Counter: {}", message_counter.load(Ordering::Relaxed));
 
@@ -102,7 +102,7 @@ async fn test_stop_higher_priority_over_messages() {
     assert_eq!(1, message_counter.load(Ordering::Relaxed));
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_kill_terminates_work() {
     struct TestActor;
 
@@ -120,7 +120,7 @@ async fn test_kill_terminates_work() {
             _message: Self::Msg,
             _state: &mut Self::State,
         ) {
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            crate::concurrency::sleep(Duration::from_secs(10)).await;
         }
     }
 
@@ -131,16 +131,16 @@ async fn test_kill_terminates_work() {
     actor
         .send_message(())
         .expect("Failed to send message to actor");
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
 
     actor.kill();
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
 
     assert_eq!(ActorStatus::Stopped, actor.get_status());
     assert!(handle.is_finished());
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_stop_does_not_terminate_async_work() {
     struct TestActor;
 
@@ -158,7 +158,7 @@ async fn test_stop_does_not_terminate_async_work() {
             _message: Self::Msg,
             _state: &mut Self::State,
         ) {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            crate::concurrency::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -170,22 +170,22 @@ async fn test_stop_does_not_terminate_async_work() {
     actor
         .send_message(())
         .expect("Failed to send message to actor");
-    tokio::time::sleep(Duration::from_millis(2)).await;
+    crate::concurrency::sleep(Duration::from_millis(2)).await;
     actor.stop(None);
 
     // async work should complete, so we're still "running" sleeping
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
     assert_eq!(ActorStatus::Running, actor.get_status());
     assert!(!handle.is_finished());
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     // now enouch time has passed, so we have proceesed the next message, which is stop
     // so we should be dead now
     assert_eq!(ActorStatus::Stopped, actor.get_status());
     assert!(handle.is_finished());
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_kill_terminates_supervision_work() {
     struct TestActor;
 
@@ -203,7 +203,7 @@ async fn test_kill_terminates_supervision_work() {
             _message: SupervisionEvent,
             _state: &mut Self::State,
         ) {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            crate::concurrency::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -216,16 +216,16 @@ async fn test_kill_terminates_supervision_work() {
     actor
         .send_supervisor_evt(SupervisionEvent::ActorStarted(actor_cell))
         .expect("Failed to send message to actor");
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
 
     actor.kill();
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
 
     assert_eq!(ActorStatus::Stopped, actor.get_status());
     assert!(handle.is_finished());
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_sending_message_to_invalid_actor_type() {
     struct TestActor1;
     struct TestMessage1;
