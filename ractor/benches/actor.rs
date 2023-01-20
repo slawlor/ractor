@@ -83,20 +83,19 @@ fn schedule_work(c: &mut Criterion) {
         b.iter_batched(
             || {
                 runtime.block_on(async move {
-                    let mut handles = vec![];
+                    let mut join_set = tokio::task::JoinSet::new();
+
                     for _ in 0..small {
                         let (_, handler) = Actor::spawn(None, BenchActor)
                             .await
                             .expect("Failed to create test agent");
-                        handles.push(handler);
+                        join_set.spawn(handler);
                     }
-                    handles
+                    join_set
                 })
             },
-            |handles| {
-                runtime.block_on(async move {
-                    let _ = futures::future::join_all(handles).await;
-                })
+            |mut handles| {
+                runtime.block_on(async move { while let Some(_) = handles.join_next().await {} })
             },
             BatchSize::PerIteration,
         );
@@ -108,20 +107,18 @@ fn schedule_work(c: &mut Criterion) {
         b.iter_batched(
             || {
                 runtime.block_on(async move {
-                    let mut handles = vec![];
+                    let mut join_set = tokio::task::JoinSet::new();
                     for _ in 0..large {
                         let (_, handler) = Actor::spawn(None, BenchActor)
                             .await
                             .expect("Failed to create test agent");
-                        handles.push(handler);
+                        join_set.spawn(handler);
                     }
-                    handles
+                    join_set
                 })
             },
-            |handles| {
-                runtime.block_on(async move {
-                    let _ = futures::future::join_all(handles).await;
-                })
+            |mut handles| {
+                runtime.block_on(async move { while let Some(_) = handles.join_next().await {} })
             },
             BatchSize::PerIteration,
         );

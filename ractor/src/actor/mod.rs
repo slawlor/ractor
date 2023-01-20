@@ -11,8 +11,8 @@
 
 use std::{panic::AssertUnwindSafe, sync::Arc};
 
+use crate::concurrency::JoinHandle;
 use futures::TryFutureExt;
-use tokio::task::JoinHandle;
 
 pub mod messages;
 use messages::*;
@@ -216,7 +216,7 @@ where
 
     /// Start the actor immediately, optionally linking to a parent actor (supervision tree)
     ///
-    /// NOTE: This returned [tokio::task::JoinHandle] is guaranteed to not panic (unless the runtime is shutting down perhaps).
+    /// NOTE: This returned [crate::concurrency::JoinHandle] is guaranteed to not panic (unless the runtime is shutting down perhaps).
     /// An inner join handle is capturing panic results from any part of the inner tasks, so therefore
     /// we can safely ignore it, or wait on it to block on the actor's progress
     ///
@@ -249,7 +249,7 @@ where
         // run the processing loop, backgrounding the work
         let myself = self.base.clone();
         let myself_ret = self.base.clone();
-        let handle = tokio::spawn(async move {
+        let handle = crate::concurrency::spawn(async move {
             let evt = match Self::processing_loop(
                 ports,
                 &mut state,

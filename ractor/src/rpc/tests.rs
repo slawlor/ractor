@@ -8,12 +8,12 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
-use tokio::time::Duration;
+use crate::concurrency::Duration;
 
 use crate::rpc;
 use crate::{call, call_t, cast, forward, Actor, ActorRef};
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_rpc_cast() {
     let counter = Arc::new(AtomicU8::new(0u8));
 
@@ -53,7 +53,7 @@ async fn test_rpc_cast() {
     cast!(actor_ref, ()).unwrap();
 
     // make sure they have time to process
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
 
     // assert the actor received 2 cast requests
     assert_eq!(3, counter.load(Ordering::Relaxed));
@@ -63,7 +63,7 @@ async fn test_rpc_cast() {
     handle.await.expect("Actor stopped with err");
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_rpc_call() {
     struct TestActor;
     enum MessageFormat {
@@ -95,7 +95,7 @@ async fn test_rpc_call() {
                     }
                 }
                 Self::Msg::Timeout(reply) => {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    crate::concurrency::sleep(Duration::from_millis(100)).await;
                     let _ = reply.send("howdy".to_string());
                 }
                 Self::Msg::MultiArg(message, count, reply) => {
@@ -142,14 +142,14 @@ async fn test_rpc_call() {
     // cleanup
     actor_ref.stop(None);
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    crate::concurrency::sleep(Duration::from_millis(200)).await;
 
     let rpc_send_fail = call!(actor_ref, MessageFormat::Rpc);
     assert!(rpc_send_fail.is_err());
     handle.await.expect("Actor stopped with err");
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_rpc_call_forwarding() {
     struct Worker;
 

@@ -12,8 +12,8 @@
 
 use std::sync::RwLock;
 
+use crate::concurrency::JoinHandle;
 use tokio::sync::broadcast as pubsub;
-use tokio::task::JoinHandle;
 
 use crate::{Actor, ActorRef, Message};
 
@@ -109,7 +109,7 @@ where
 
 // ============== Subscription implementation ============== //
 
-/// The output port's subscription handle. It holds a handle to a tokio [JoinHandle]
+/// The output port's subscription handle. It holds a handle to a [JoinHandle]
 /// which listens to the [pubsub::Receiver] to see if there's a new message, and if there is
 /// forwards it to the [ActorRef] asynchronously using the specified converter.
 struct OutputPortSubscription {
@@ -138,7 +138,7 @@ impl OutputPortSubscription {
         F: Fn(TMsg) -> Option<TReceiver::Msg> + Send + 'static,
         TReceiver: Actor,
     {
-        let handle = tokio::spawn(async move {
+        let handle = crate::concurrency::spawn(async move {
             while let Ok(Some(msg)) = port.recv().await {
                 if let Some(new_msg) = converter(msg) {
                     if receiver.cast(new_msg).is_err() {

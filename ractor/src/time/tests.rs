@@ -10,11 +10,11 @@ use std::sync::{
     Arc,
 };
 
-use tokio::time::Duration;
+use crate::concurrency::Duration;
 
 use crate::{Actor, ActorRef};
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_intervals() {
     let counter = Arc::new(AtomicU8::new(0u8));
 
@@ -55,11 +55,11 @@ async fn test_intervals() {
     // therefore the counter should be empty
     assert_eq!(0, counter.load(Ordering::Relaxed));
 
-    tokio::time::sleep(Duration::from_millis(120)).await;
+    crate::concurrency::sleep(Duration::from_millis(120)).await;
     // kill the actor
     actor_ref.stop(None);
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    crate::concurrency::sleep(Duration::from_millis(50)).await;
     // make sure the actor is dead + the interval handle doesn't send again
     assert!(interval_handle.is_finished());
     assert!(actor_handle.is_finished());
@@ -69,7 +69,7 @@ async fn test_intervals() {
     assert!(counter.load(Ordering::Relaxed) >= 9);
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_send_after() {
     let counter = Arc::new(AtomicU8::new(0u8));
 
@@ -110,11 +110,11 @@ async fn test_send_after() {
     // therefore the counter should be empty
     assert_eq!(0, counter.load(Ordering::Relaxed));
 
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    crate::concurrency::sleep(Duration::from_millis(20)).await;
     // kill the actor
     actor_ref.stop(None);
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    crate::concurrency::sleep(Duration::from_millis(50)).await;
     // make sure the actor is dead + the interval handle doesn't send again
     assert!(send_after_handle.is_finished());
     assert!(actor_handle.is_finished());
@@ -124,7 +124,7 @@ async fn test_send_after() {
     assert_eq!(1, counter.load(Ordering::Relaxed));
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_exit_after() {
     struct TestActor;
 
@@ -141,13 +141,13 @@ async fn test_exit_after() {
 
     let exit_handle = actor_ref.exit_after(Duration::from_millis(10));
 
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    crate::concurrency::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again
     assert!(exit_handle.is_finished());
     assert!(actor_handle.is_finished());
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_kill_after() {
     struct TestActor;
 
@@ -162,7 +162,7 @@ async fn test_kill_after() {
             _message: Self::Msg,
             _state: &mut Self::State,
         ) {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            crate::concurrency::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -174,12 +174,12 @@ async fn test_kill_after() {
     actor_ref
         .send_message(())
         .expect("Failed to send message to actor");
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
 
     // kill the actor
     let kill_handle = actor_ref.kill_after(Duration::from_millis(10));
 
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    crate::concurrency::sleep(Duration::from_millis(20)).await;
     // make sure the actor is dead + the interval handle doesn't send again
     assert!(kill_handle.is_finished());
     assert!(actor_handle.is_finished());

@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -12,12 +12,21 @@ readme = "../README.md"
 homepage = "https://github.com/slawlor/ractor"
 categories = ["actor", "erlang"]
 
+# WIP
+# [features]
+# tokio_runtime = ["tokio/time"]
+# async_std_runtime = ["async-std"]
+
+# default = ["tokio_runtime"]
+# default = ["async_std_runtime"]
+
 [dependencies]
+async-std = { version = "1", optional = true }
 async-trait = "0.1"
 dashmap = "5"
 futures = "0.3"
 once_cell = "1"
-tokio = { version = "1", features = ["rt", "time", "sync", "macros"]}
+tokio = { version = "1", features = ["sync", "time"] }
 
 [dev-dependencies]
 criterion = "0.3"

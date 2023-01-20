@@ -6,8 +6,8 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
+use crate::concurrency::Duration;
 use ::function_name::named;
-use tokio::time::Duration;
 
 use crate::{Actor, GroupName, SupervisionEvent};
 
@@ -25,7 +25,7 @@ impl Actor for TestActor {
 }
 
 #[named]
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_basic_group() {
     let (actor, handle) = Actor::spawn(None, TestActor)
         .await
@@ -45,7 +45,7 @@ async fn test_basic_group() {
 }
 
 #[named]
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_multiple_members_in_group() {
     let group = function_name!();
 
@@ -81,7 +81,7 @@ async fn test_multiple_members_in_group() {
 }
 
 #[named]
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_multiple_groups() {
     let group_a = concat!(function_name!(), "_a");
     let group_b = concat!(function_name!(), "_b");
@@ -125,7 +125,7 @@ async fn test_multiple_groups() {
 }
 
 #[named]
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_actor_leaves_pg_group_on_shutdown() {
     let (actor, handle) = Actor::spawn(None, TestActor)
         .await
@@ -149,7 +149,7 @@ async fn test_actor_leaves_pg_group_on_shutdown() {
 }
 
 #[named]
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_actor_leaves_pg_group_manually() {
     let group = function_name!();
 
@@ -184,7 +184,7 @@ async fn test_actor_leaves_pg_group_manually() {
 }
 
 #[named]
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_pg_monitoring() {
     let group = function_name!();
 
@@ -254,7 +254,7 @@ async fn test_pg_monitoring() {
         .expect("Failed to start test actor");
 
     // the monitor is notified async, so we need to wait a tiny bit
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     assert_eq!(1, counter.load(Ordering::Relaxed));
 
     // kill the pg member

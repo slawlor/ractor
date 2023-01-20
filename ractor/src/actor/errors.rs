@@ -99,19 +99,6 @@ impl<T> From<tokio::sync::mpsc::error::SendError<T>> for MessagingErr {
         Self::ChannelClosed
     }
 }
-
-impl<T> From<tokio::sync::broadcast::error::SendError<T>> for MessagingErr {
-    fn from(_: tokio::sync::broadcast::error::SendError<T>) -> Self {
-        Self::ChannelClosed
-    }
-}
-
-impl<T> From<tokio::sync::watch::error::SendError<T>> for MessagingErr {
-    fn from(_: tokio::sync::watch::error::SendError<T>) -> Self {
-        Self::ChannelClosed
-    }
-}
-
 impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for MessagingErr {
     fn from(_: tokio::sync::mpsc::error::TrySendError<T>) -> Self {
         Self::ChannelClosed

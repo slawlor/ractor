@@ -7,14 +7,14 @@
 
 use std::time::Duration;
 
+use crate::concurrency::timeout;
 use futures::future::join_all;
-use tokio::time::timeout;
 
 use crate::{Actor, ActorRef};
 
 use super::*;
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_single_forward() {
     struct TestActor;
     enum TestActorMessage {
@@ -70,7 +70,7 @@ async fn test_single_forward() {
         .unwrap();
 }
 
-#[tokio::test]
+#[crate::concurrency::test]
 async fn test_50_receivers() {
     struct TestActor;
     enum TestActorMessage {
@@ -125,13 +125,13 @@ async fn test_50_receivers() {
         output.subscribe(actor, |_| Some(TestActorMessage::Stop));
     }
 
-    let all_handle = tokio::spawn(async move { join_all(actor_handles).await });
+    let all_handle = crate::concurrency::spawn(async move { join_all(actor_handles).await });
 
     // send 3 sends, should not exit
     for _ in 0..4 {
         output.send(());
     }
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    crate::concurrency::sleep(Duration::from_millis(50)).await;
     assert!(!all_handle.is_finished());
 
     // last send should trigger the exit condition

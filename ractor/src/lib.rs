@@ -12,7 +12,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ractor = "0.1"
+//! ractor = "0.4"
 //! ```
 //!
 //! ## Getting started
@@ -145,6 +145,7 @@ pub type GroupName = &'static str;
 
 pub mod actor;
 pub mod actor_id;
+pub mod concurrency;
 pub mod macros;
 pub mod pg;
 pub mod port;

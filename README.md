@@ -15,9 +15,9 @@ A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.e
 
 `ractor` tries to solve the problem of building and maintaing an Erlang-like actor framework in Rust. It gives
 a set of generic primitives and helps automate the supervision tree and management of our actors along with the traditional actor message processing logic. It's built *heavily* on `tokio` which is a
-hard requirement for `ractor`. 
+hard requirement for `ractor`.
 
-`ractor` is a modern actor framework written in 100% rust with NO `unsafe` code. 
+`ractor` is a modern actor framework written in 100% rust with NO `unsafe` code.
 
 ### Why ractor?
 
@@ -27,7 +27,7 @@ Ractor tries to be different my modelling more on a pure Erlang `gen_server`. Th
 
 Additionally we wrote `ractor` without building on some kind of "Runtime" or "System" which needs to be spawned. Actors can be run independently, in conjunction with other basic `tokio` runtimes with little additional overhead.
 
-We currently have full support for 
+We currently have full support for:
 
 1. Single-threaded message processing
 2. Actor supervision tree
@@ -35,7 +35,6 @@ We currently have full support for
 4. Timers
 5. Named actor registry (`ractor::registry`) from [Erlang's `Registered processes`](https://www.erlang.org/doc/reference_manual/processes.html)
 6. Process groups (`ractor::pg`) from [Erlang's `pg` module](https://www.erlang.org/doc/man/pg.html)
-
 
 On our roadmap is to add more of the Erlang functionality including potentially a distributed actor cluster.
 
@@ -45,7 +44,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies
 
 ```toml
 [dependencies]
-ractor = "0.3"
+ractor = "0.4"
 ```
 
 ## Working with Actors
@@ -150,7 +149,7 @@ work will complete, and on the next message processing iteration Stop will take 
 currently executing work, regardless of the provided reason.
 3. SupervisionEvent: Supervision events are messages from child actors to their supervisors in the event of their startup, death, and/or unhandled panic. Supervision events
 are how an actor's supervisor(s) are notified of events of their children and can handle lifetime events for them.
-4. Messages: Regular, user-defined, messages are the last channel of communication to actors. They are the lowest priority of the 4 message types and denote general actor work. The first 
+4. Messages: Regular, user-defined, messages are the last channel of communication to actors. They are the lowest priority of the 4 message types and denote general actor work. The first
 3 messages types (signals, stop, supervision) are generally quiet unless it's a lifecycle event for the actor, but this channel is the "work" channel doing what your actor wants to do!
 
 ## Contributors

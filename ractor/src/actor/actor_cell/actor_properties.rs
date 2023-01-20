@@ -6,11 +6,14 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use crate::concurrency as mpsc;
 
 use crate::actor::messages::{BoxedMessage, StopMessage};
 use crate::actor::supervision::SupervisionTree;
-use crate::port::{BoundedInputPort, BoundedInputPortReceiver, InputPort, InputPortReceiver};
+use crate::concurrency::{
+    MpscReceiver as BoundedInputPortReceiver, MpscSender as BoundedInputPort,
+    MpscUnboundedReceiver as InputPortReceiver, MpscUnboundedSender as InputPort,
+};
 use crate::{Actor, ActorId, ActorName, ActorStatus, MessagingErr, Signal, SupervisionEvent};
 
 // The inner-properties of an Actor
@@ -39,10 +42,10 @@ impl ActorProperties {
     where
         TActor: Actor,
     {
-        let (tx_signal, rx_signal) = mpsc::channel(2);
-        let (tx_stop, rx_stop) = mpsc::channel(2);
-        let (tx_supervision, rx_supervision) = mpsc::unbounded_channel();
-        let (tx_message, rx_message) = mpsc::unbounded_channel();
+        let (tx_signal, rx_signal) = mpsc::mpsc_bounded(2);
+        let (tx_stop, rx_stop) = mpsc::mpsc_bounded(2);
+        let (tx_supervision, rx_supervision) = mpsc::mpsc_unbounded();
+        let (tx_message, rx_message) = mpsc::mpsc_unbounded();
         (
             Self {
                 id: crate::actor_id::get_new_local_id(),

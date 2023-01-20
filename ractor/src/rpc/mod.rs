@@ -10,10 +10,7 @@
 //! The tl;dr is that `cast` is an send without waiting on a reply while `call` is expecting
 //! a reply from the actor being communicated with.
 
-use futures::future::join_all;
-use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
-use tokio::time::{self, Duration};
+use crate::concurrency::{self, Duration, JoinHandle};
 
 use crate::{Actor, ActorCell, ActorRef, Message, MessagingErr, RpcReplyPort};
 
@@ -55,12 +52,12 @@ where
     TActor: Actor,
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
 {
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = concurrency::oneshot();
     actor.send_message::<TActor>(msg_builder(tx.into()))?;
 
     // wait for the reply
     Ok(if let Some(duration) = timeout_option {
-        match time::timeout(duration, rx).await {
+        match crate::concurrency::timeout(duration, rx).await {
             Ok(Ok(result)) => CallResult::Success(result),
             Ok(Err(_send_err)) => CallResult::SenderError,
             Err(_timeout_err) => CallResult::Timeout,
@@ -91,37 +88,52 @@ pub async fn multi_call<TActor, TReply, TMsgBuilder>(
 ) -> Result<Vec<CallResult<TReply>>, MessagingErr>
 where
     TActor: Actor,
+    TReply: Send + 'static,
     TMsgBuilder: Fn(RpcReplyPort<TReply>) -> TActor::Msg,
 {
     let mut rx_ports = Vec::with_capacity(actors.len());
     // send to all actors
     for actor in actors {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = concurrency::oneshot();
         actor.send_message::<TActor>(msg_builder(tx.into()))?;
         rx_ports.push(rx);
     }
 
-    let results: Vec<_> = async move {
+    let mut join_set = tokio::task::JoinSet::new();
+    for (i, rx) in rx_ports.into_iter().enumerate() {
         if let Some(duration) = timeout_option {
-            join_all(rx_ports.into_iter().map(|rx| async {
-                match tokio::time::timeout(duration, rx).await {
-                    Ok(Ok(result)) => CallResult::Success(result),
-                    Ok(Err(_send_err)) => CallResult::SenderError,
-                    Err(_) => CallResult::Timeout,
-                }
-            }))
-            .await
+            join_set.spawn(async move {
+                (
+                    i,
+                    match tokio::time::timeout(duration, rx).await {
+                        Ok(Ok(result)) => CallResult::Success(result),
+                        Ok(Err(_send_err)) => CallResult::SenderError,
+                        Err(_) => CallResult::Timeout,
+                    },
+                )
+            });
         } else {
-            join_all(rx_ports.into_iter().map(|rx| async {
-                match rx.await {
-                    Ok(result) => CallResult::Success(result),
-                    Err(_send_err) => CallResult::SenderError,
-                }
-            }))
-            .await
+            join_set.spawn(async move {
+                (
+                    i,
+                    match rx.await {
+                        Ok(result) => CallResult::Success(result),
+                        Err(_send_err) => CallResult::SenderError,
+                    },
+                )
+            });
         }
     }
-    .await;
+
+    // we threaded the index in order to maintain ordering from the originally called
+    // actors.
+    let mut results = Vec::with_capacity(join_set.len());
+    while let Some(result) = join_set.join_next().await {
+        match result {
+            Ok((i, r)) => results[i] = r,
+            _ => return Err(MessagingErr::ChannelClosed),
+        }
+    }
 
     // wait for the replies
     Ok(results)
@@ -155,13 +167,13 @@ where
     TForwardActor: Actor,
     FwdMapFn: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,
 {
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = concurrency::oneshot();
     actor.send_message::<TActor>(msg_builder(tx.into()))?;
 
     // wait for the reply
-    Ok(tokio::spawn(async move {
+    Ok(crate::concurrency::spawn(async move {
         if let Some(duration) = timeout_option {
-            match time::timeout(duration, rx).await {
+            match crate::concurrency::timeout(duration, rx).await {
                 Ok(Ok(result)) => CallResult::Success(result),
                 Ok(Err(_send_err)) => CallResult::SenderError,
                 Err(_timeout_err) => CallResult::Timeout,
@@ -207,7 +219,7 @@ where
         response_forward: &ActorRef<TForwardActor>,
         forward_mapping: TFwdMessageBuilder,
         timeout_option: Option<Duration>,
-    ) -> Result<tokio::task::JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
+    ) -> Result<crate::concurrency::JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
     where
         TReply: Message,
         TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,

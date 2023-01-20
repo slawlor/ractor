@@ -15,7 +15,9 @@ use super::errors::MessagingErr;
 use super::messages::{BoxedMessage, Signal, StopMessage};
 
 use super::SupervisionEvent;
-use crate::port::{BoundedInputPortReceiver, InputPortReceiver};
+use crate::concurrency::{
+    MpscReceiver as BoundedInputPortReceiver, MpscUnboundedReceiver as InputPortReceiver,
+};
 use crate::{Actor, ActorId, ActorName, SpawnErr};
 
 pub mod actor_ref;
@@ -75,18 +77,12 @@ impl ActorPortSet {
     /// signal interrupts the async work.
     pub async fn run_with_signal<TState>(
         &mut self,
-        future: impl futures::Future<Output = TState>,
+        future: impl std::future::Future<Output = TState>,
     ) -> Result<TState, Signal>
     where
         TState: crate::State,
     {
-        tokio::select! {
-            // Biased ensures that we poll the ports in the order they appear, giving
-            // priority to our message reception operations. See:
-            // https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
-            // for more information
-            biased;
-
+        crate::concurrency::select! {
             // supervision or message processing work
             // can be interrupted by the signal port receiving
             // a kill signal
@@ -108,13 +104,7 @@ impl ActorPortSet {
     /// Returns [Ok(ActorPortMessage)] on a successful message reception, [MessagingErr]
     /// in the event any of the channels is closed.
     pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr> {
-        tokio::select! {
-            // Biased ensures that we poll the ports in the order they appear, giving
-            // priority to our message reception operations. See:
-            // https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
-            // for more information
-            biased;
-
+        crate::concurrency::select! {
             signal = self.signal_rx.recv() => {
                 signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
             }

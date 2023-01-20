@@ -10,22 +10,9 @@
 //! and utilities to make working with mailbox processing in `ractor` easier in
 //! the actor framework.
 
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
+use crate::concurrency;
 
 use crate::MessagingErr;
-
-// ============ Input Ports ============ //
-
-/// A bounded-depth message port (alias of [mpsc::Sender])
-pub(crate) type BoundedInputPort<TMsg> = mpsc::Sender<TMsg>;
-/// A bounded-depth message port's receiver (alias of [mpsc::Receiver])
-pub(crate) type BoundedInputPortReceiver<TMsg> = mpsc::Receiver<TMsg>;
-
-/// An unbounded message port (alias of [mpsc::UnboundedSender])
-pub(crate) type InputPort<TMsg> = mpsc::UnboundedSender<TMsg>;
-/// An unbounded message port's receiver (alias of [mpsc::UnboundedReceiver])
-pub(crate) type InputPortReceiver<TMsg> = mpsc::UnboundedReceiver<TMsg>;
 
 // ============ Output Ports ============ //
 pub mod output;
@@ -33,10 +20,10 @@ pub use output::*;
 
 // ============ Rpc (one-use) Ports ============ //
 
-/// A remote procedure call's reply port. Wrapper of [tokio::sync::oneshot::Sender] with a
+/// A remote procedure call's reply port. Wrapper of [concurrency::OneshotSender] with a
 /// consistent error type
 pub struct RpcReplyPort<TMsg> {
-    port: oneshot::Sender<TMsg>,
+    port: concurrency::OneshotSender<TMsg>,
 }
 
 impl<TMsg> RpcReplyPort<TMsg> {
@@ -59,8 +46,8 @@ impl<TMsg> RpcReplyPort<TMsg> {
     }
 }
 
-impl<TMsg> From<oneshot::Sender<TMsg>> for RpcReplyPort<TMsg> {
-    fn from(value: oneshot::Sender<TMsg>) -> Self {
+impl<TMsg> From<concurrency::OneshotSender<TMsg>> for RpcReplyPort<TMsg> {
+    fn from(value: concurrency::OneshotSender<TMsg>) -> Self {
         Self { port: value }
     }
 }
