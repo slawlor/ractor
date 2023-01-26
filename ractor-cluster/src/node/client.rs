@@ -18,7 +18,7 @@ pub enum ClientConnectError {
     /// Error communicating to the [super::NodeServer] actor. Actor receiving port is
     /// closed
     Messaging(MessagingErr),
-    /// A timeout in trying to start a new [NodeSession]
+    /// A timeout in trying to start a new [super::NodeSession]
     Timeout,
     /// Error spawning the tcp session actor supervision tree
     TcpSpawn(SpawnErr),
@@ -26,7 +26,7 @@ pub enum ClientConnectError {
 
 impl Display for ClientConnectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -53,7 +53,7 @@ impl From<SpawnErr> for ClientConnectError {
 /// * `host` - The hostname to connect to
 /// * `port` - The host's port to connect to
 ///
-/// Returns: [Ok(())] if the connection was successful and the [NodeSession] was started. Handshake will continue
+/// Returns: [Ok(())] if the connection was successful and the [super::NodeSession] was started. Handshake will continue
 /// automatically. Results in a [Err(ClientConnectError)] if any part of the process failed to initiate
 pub async fn connect(
     node_server: ActorRef<super::NodeServer>,
@@ -73,9 +73,6 @@ pub async fn connect(
             is_server: false
         }
     );
-
-    // // notify the `NodeSession` about it's tcp connection
-    // let _ = session_handler.cast(super::SessionMessage::SetTcpSession(tcp_actor));
     log::info!("TCP Session opened for {}", addr);
 
     Ok(())

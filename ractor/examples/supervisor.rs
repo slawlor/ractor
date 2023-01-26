@@ -163,10 +163,7 @@ impl Actor for MidLevelActor {
             SupervisionEvent::ActorPanicked(dead_actor, panic_msg)
                 if dead_actor.get_id() == state.leaf_actor.get_id() =>
             {
-                println!(
-                    "MidLevelActor: {:?} panicked with '{}'",
-                    dead_actor, panic_msg
-                );
+                println!("MidLevelActor: {dead_actor:?} panicked with '{panic_msg}'");
 
                 panic!(
                     "MidLevelActor: Mid-level actor panicking because Leaf actor panicked with '{}'",
@@ -174,7 +171,7 @@ impl Actor for MidLevelActor {
                 );
             }
             other => {
-                println!("MidLevelActor: recieved supervisor event '{}'", other);
+                println!("MidLevelActor: recieved supervisor event '{other}'");
             }
         }
     }
@@ -201,7 +198,7 @@ impl Actor for RootActor {
     type State = RootActorState;
 
     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
-        println!("RootActor: Started {:?}", myself);
+        println!("RootActor: Started {myself:?}");
         let (mid_level_actor, _) =
             Actor::spawn_linked(Some("mid-level".to_string()), MidLevelActor, myself.into())
                 .await
@@ -239,13 +236,13 @@ impl Actor for RootActor {
             SupervisionEvent::ActorPanicked(dead_actor, panic_msg)
                 if dead_actor.get_id() == state.mid_level_actor.get_id() =>
             {
-                println!("RootActor: {:?} panicked with '{}'", dead_actor, panic_msg);
+                println!("RootActor: {dead_actor:?} panicked with '{panic_msg}'");
 
                 println!("RootActor: Terminating root actor, all my kids are dead!");
                 myself.stop(Some("Everyone died :(".to_string()));
             }
             other => {
-                println!("RootActor: recieved supervisor event '{}'", other);
+                println!("RootActor: recieved supervisor event '{other}'");
             }
         }
     }

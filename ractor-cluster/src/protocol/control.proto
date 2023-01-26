@@ -16,6 +16,14 @@ package control;
 
 import "google/protobuf/timestamp.proto";
 
+// Represents a single actor
+message Actor {
+    // The local PID of the actor
+    uint64 pid = 1;
+    // The optional name of the actor
+    optional string name = 2;
+}
+
 // A heartbeat between actors
 message Ping {
     // The original time of the ping send, returned in the `Pong` message
@@ -23,27 +31,38 @@ message Ping {
     google.protobuf.Timestamp timestamp = 1;
 }
 
+// Reply to a ping
 message Pong {
     // The original time of the ping send, set by the original sender
     google.protobuf.Timestamp timestamp = 1;
 }
 
-// Spawn an actor
+// Actor(s) spawn notification
 message Spawn {
-    // The actor's Id
-    uint64 id = 1;
-    // The actor's name (to be inserted in the global registry)
-    optional string name = 2;
+    // The actors to spawn
+    repeated Actor actors = 1;
 }
 
-// An actor termination event
+// Actor(s) termination event
 message Terminate {
-    // The remote actor's PID
-    uint64 id = 1;
-    // Flag denoting if the termination was due to panic
-    bool is_panic = 2;
-    // The exit reason or panic message
-    string panic_reason = 3;
+    // The remote actors' PIDs
+    repeated uint64 ids = 1;
+}
+
+// Process group join occurred
+message PgJoin {
+    // The group
+    string group = 1;
+    // The actors
+    repeated Actor actors = 2;
+}
+
+// Process group leave occurred
+message PgLeave {
+    // The group
+    string group = 1;
+    // The actors
+    repeated Actor actors = 2;
 }
 
 // Control messages between authenticated `node()`s which are dist-connected
@@ -58,5 +77,9 @@ message ControlMessage {
         Ping ping = 3;
         // A pong
         Pong pong = 4;
+        // A PG group join event
+        PgJoin pg_join = 5;
+        // A PG group leave event
+        PgLeave pg_leave = 6;
     }
 }

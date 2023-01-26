@@ -268,5 +268,63 @@ async fn test_pg_monitoring() {
     monitor_handle.await.expect("Actor cleanup failed");
 }
 
-// TODO: Tests to add
-// 1. Local vs remote members (can't test until we have proper remoting)
+#[named]
+#[cfg(feature = "cluster")]
+#[crate::concurrency::test]
+async fn local_vs_remote_pg_members() {
+    use crate::ActorRuntime;
+
+    let group = function_name!().to_string();
+
+    struct TestRemoteActor;
+    struct TestRemoteActorMessage;
+    impl crate::Message for TestRemoteActorMessage {}
+    #[async_trait::async_trait]
+    impl Actor for TestRemoteActor {
+        type Msg = TestRemoteActorMessage;
+        type State = ();
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+    }
+
+    let remote_pid = crate::ActorId::Remote { node_id: 1, pid: 1 };
+
+    let mut actors: Vec<crate::ActorCell> = vec![];
+    let mut handles = vec![];
+    for _ in 0..10 {
+        let (actor, handle) = Actor::spawn(None, TestActor)
+            .await
+            .expect("Failed to spawn test actor");
+        actors.push(actor.into());
+        handles.push(handle);
+    }
+    let (actor, handle) = ActorRuntime::spawn_linked_remote(
+        None,
+        TestRemoteActor,
+        remote_pid,
+        actors.first().unwrap().clone(),
+    )
+    .await
+    .expect("Failed to spawn remote actor");
+    println!("Spawned {}", actor.get_id());
+
+    actors.push(actor.into());
+    handles.push(handle);
+
+    // join the group
+    pg::join(group.clone(), actors.to_vec());
+
+    // assert
+    let members = pg::get_local_members(&group);
+    assert_eq!(10, members.len());
+
+    let members = pg::get_members(&group);
+    assert_eq!(11, members.len());
+
+    // Cleanup
+    for actor in actors {
+        actor.stop(None);
+    }
+    for handle in handles.into_iter() {
+        handle.await.expect("Actor cleanup failed");
+    }
+}

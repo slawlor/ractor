@@ -17,8 +17,8 @@ fn build_protobufs() {
     let mut protobuf_files = Vec::with_capacity(PROTOBUF_FILES.len());
 
     for file in PROTOBUF_FILES.iter() {
-        let proto_file = format!("{}/{}.proto", PROTOBUF_BASE_DIRECTORY, file);
-        println!("cargo:rerun-if-changed={}", proto_file);
+        let proto_file = format!("{PROTOBUF_BASE_DIRECTORY}/{file}.proto");
+        println!("cargo:rerun-if-changed={proto_file}");
         protobuf_files.push(proto_file);
     }
 

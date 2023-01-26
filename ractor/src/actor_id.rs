@@ -43,8 +43,8 @@ impl ActorId {
 impl Display for ActorId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ActorId::Local(id) => write!(f, "0.{}", id),
-            ActorId::Remote { node_id, pid } => write!(f, "{}.{}", node_id, pid),
+            ActorId::Local(id) => write!(f, "0.{id}"),
+            ActorId::Remote { node_id, pid } => write!(f, "{node_id}.{pid}"),
         }
     }
 }

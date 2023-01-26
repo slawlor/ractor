@@ -75,6 +75,9 @@ async fn test_stop_higher_priority_over_messages() {
     .await
     .expect("Actor failed to start");
 
+    #[cfg(feature = "cluster")]
+    assert!(!actor.supports_remoting());
+
     // pump 10 messages on the queue
     for _i in 0..10 {
         actor
@@ -322,6 +325,8 @@ async fn test_serialized_cast() {
     .await
     .expect("Failed to spawn test actor");
 
+    assert!(actor.supports_remoting());
+
     let serialized = (TestMessage).serialize();
     actor
         .send_serialized(serialized)
@@ -444,6 +449,8 @@ async fn test_serialized_rpc() {
         .send_serialized(msg)
         .expect("Serialized message send failed!");
 
+    assert!(actor.supports_remoting());
+
     let data = rx
         .await
         .expect("Faield to get reply from actor (within 100ms)");
@@ -541,4 +548,40 @@ async fn test_remote_actor() {
     sup.stop(None);
     handle.await.unwrap();
     sup_handle.await.unwrap();
+}
+
+#[cfg(feature = "cluster")]
+#[crate::concurrency::test]
+async fn spawning_local_actor_as_remote_fails() {
+    struct RemoteActor;
+    struct RemoteActorMessage;
+    impl crate::Message for RemoteActorMessage {}
+    #[async_trait::async_trait]
+    impl Actor for RemoteActor {
+        type Msg = RemoteActorMessage;
+        type State = ();
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+    }
+
+    struct EmptyActor;
+    #[async_trait::async_trait]
+    impl Actor for EmptyActor {
+        type Msg = ();
+        type State = ();
+        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+    }
+    let remote_pid = crate::ActorId::Local(1);
+
+    let (actor, handle) = Actor::spawn(None, EmptyActor)
+        .await
+        .expect("Actor failed to start");
+
+    let remote_spawn_result =
+        crate::ActorRuntime::spawn_linked_remote(None, RemoteActor, remote_pid, actor.get_cell())
+            .await;
+
+    assert!(remote_spawn_result.is_err());
+
+    actor.stop(None);
+    handle.await.expect("Failed to clean stop the actor");
 }

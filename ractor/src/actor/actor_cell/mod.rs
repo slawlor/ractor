@@ -55,19 +55,19 @@ pub const ACTIVE_STATES: [ActorStatus; 3] = [
 ];
 
 /// The collection of ports an actor needs to listen to
-pub struct ActorPortSet {
+pub(crate) struct ActorPortSet {
     /// The inner signal port
-    pub signal_rx: BoundedInputPortReceiver<Signal>,
+    pub(crate) signal_rx: BoundedInputPortReceiver<Signal>,
     /// The inner stop port
-    pub stop_rx: BoundedInputPortReceiver<StopMessage>,
+    pub(crate) stop_rx: BoundedInputPortReceiver<StopMessage>,
     /// The inner supervisor port
-    pub supervisor_rx: InputPortReceiver<SupervisionEvent>,
+    pub(crate) supervisor_rx: InputPortReceiver<SupervisionEvent>,
     /// The inner message port
-    pub message_rx: InputPortReceiver<BoxedMessage>,
+    pub(crate) message_rx: InputPortReceiver<BoxedMessage>,
 }
 
 /// Messages that come in off an actor's port, with associated priority
-pub enum ActorPortMessage {
+pub(crate) enum ActorPortMessage {
     /// A signal message
     Signal(Signal),
     /// A stop message
@@ -164,8 +164,13 @@ impl ActorCell {
         let cell = Self {
             inner: Arc::new(props),
         };
+
         #[cfg(feature = "cluster")]
-        crate::registry::register_pid(cell.get_id(), cell.clone());
+        {
+            // registry to the PID registry
+            crate::registry::pid_registry::register_pid(cell.get_id(), cell.clone())?;
+        }
+
         if let Some(r_name) = name {
             crate::registry::register(r_name, cell.clone())?;
         }
@@ -191,16 +196,17 @@ impl ActorCell {
         TActor: Actor,
     {
         if id.is_local() {
-            panic!("Cannot create a new remote actor handler without the actor id being marked as a remote actor!");
+            return Err(SpawnErr::StartupPanic("Cannot create a new remote actor handler without the actor id being marked as a remote actor!".to_string()));
         }
 
-        let (props, rx1, rx2, rx3, rx4) = ActorProperties::new_remote::<TActor>(name.clone(), id);
+        let (props, rx1, rx2, rx3, rx4) = ActorProperties::new_remote::<TActor>(name, id);
         let cell = Self {
             inner: Arc::new(props),
         };
-        if let Some(r_name) = name {
-            crate::registry::register(r_name, cell.clone())?;
-        }
+        // TODO: remote actors don't appear in the name registry
+        // if let Some(r_name) = name {
+        //     crate::registry::register(r_name, cell.clone())?;
+        // }
         Ok((
             cell,
             ActorPortSet {
@@ -229,6 +235,14 @@ impl ActorCell {
         self.inner.get_status()
     }
 
+    /// Identifies if this actor supports remote (dist) communication
+    ///
+    /// Returns [true] if the actor's messaging protocols support remote calls, [false] otherwise
+    #[cfg(feature = "cluster")]
+    pub fn supports_remoting(&self) -> bool {
+        self.inner.supports_remoting
+    }
+
     /// Set the status of the [super::Actor]. If the status is set to
     /// [ActorStatus::Stopping] or [ActorStatus::Stopped] the actor
     /// will also be unenrolled from both the named registry ([crate::registry])
@@ -239,7 +253,12 @@ impl ActorCell {
         // The actor is shut down
         if status == ActorStatus::Stopped || status == ActorStatus::Stopping {
             #[cfg(feature = "cluster")]
-            crate::registry::unregister_pid(self.get_id());
+            {
+                // stop monitoring for updates
+                crate::registry::pid_registry::demonitor(self.get_id());
+                // unregistry from the PID registry
+                crate::registry::pid_registry::unregister_pid(self.get_id());
+            }
             // If it's enrolled in the registry, remove it
             if let Some(name) = self.get_name() {
                 crate::registry::unregister(name);

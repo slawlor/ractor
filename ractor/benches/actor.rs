@@ -7,7 +7,9 @@
 extern crate criterion;
 
 use criterion::{BatchSize, Criterion};
-use ractor::{Actor, ActorRef, Message};
+#[cfg(feature = "cluster")]
+use ractor::Message;
+use ractor::{Actor, ActorRef};
 
 struct BenchActor;
 
@@ -34,7 +36,7 @@ fn create_actors(c: &mut Criterion) {
     let small = 100;
     let large = 10000;
 
-    let id = format!("Creation of {} actors", small);
+    let id = format!("Creation of {small} actors");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(
@@ -55,7 +57,7 @@ fn create_actors(c: &mut Criterion) {
         );
     });
 
-    let id = format!("Creation of {} actors", large);
+    let id = format!("Creation of {large} actors");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(
@@ -81,7 +83,7 @@ fn schedule_work(c: &mut Criterion) {
     let small = 100;
     let large = 1000;
 
-    let id = format!("Waiting on {} actors to process first message", small);
+    let id = format!("Waiting on {small} actors to process first message");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(
@@ -105,7 +107,7 @@ fn schedule_work(c: &mut Criterion) {
         );
     });
 
-    let id = format!("Waiting on {} actors to process first message", large);
+    let id = format!("Waiting on {large} actors to process first message");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(
@@ -163,7 +165,7 @@ fn process_messages(c: &mut Criterion) {
         }
     }
 
-    let id = format!("Waiting on {} messages to be processed", NUM_MSGS);
+    let id = format!("Waiting on {NUM_MSGS} messages to be processed");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(

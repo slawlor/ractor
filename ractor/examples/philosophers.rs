@@ -85,10 +85,7 @@ impl Fork {
                     );
                 }
                 None => {
-                    println!(
-                        "ERROR Received `UsingFork` from {:?}. Real owner is `None`",
-                        who
-                    );
+                    println!("ERROR Received `UsingFork` from {who:?}. Real owner is `None`");
                 }
             },
             ForkMessage::PutForkDown(who) => match &state.owned_by {
@@ -104,10 +101,7 @@ impl Fork {
                     );
                 }
                 None => {
-                    println!(
-                        "ERROR Received `PutForkDown` from {:?}. Real owner is `None`",
-                        who
-                    );
+                    println!("ERROR Received `PutForkDown` from {who:?}. Real owner is `None`");
                 }
             },
         }
@@ -253,6 +247,7 @@ impl Philosopher {
 
         // schedule become hungry after the thinking time has elapsed
         let metrics_count = state.metrics.state_change_count;
+        #[allow(clippy::let_underscore_future)]
         let _ = myself.send_after(self.time_slice, move || {
             PhilosopherMessage::BecomeHungry(metrics_count)
         });
@@ -278,6 +273,7 @@ impl Philosopher {
 
         // schedule stop eating after the eating time has elapsed
         let metrics_count = state.metrics.state_change_count;
+        #[allow(clippy::let_underscore_future)]
         let _ = myself.send_after(self.time_slice, move || {
             PhilosopherMessage::StopEating(metrics_count)
         });
@@ -503,6 +499,6 @@ async fn main() {
     // print metrics
     println!("Simulation results");
     for (who, metric) in results {
-        println!("{}: {:?}", who, metric);
+        println!("{who}: {metric:?}");
     }
 }

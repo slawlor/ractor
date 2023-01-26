@@ -26,7 +26,7 @@ impl Display for SpawnErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::StartupPanic(panic_msg) => {
-                write!(f, "Actor panicked during startup '{}'", panic_msg)
+                write!(f, "Actor panicked during startup '{panic_msg}'")
             }
             Self::StartupCancelled => {
                 write!(
@@ -40,8 +40,7 @@ impl Display for SpawnErr {
             Self::ActorAlreadyRegistered(actor_name) => {
                 write!(
                     f,
-                    "Actor '{}' is already registered in the actor registry",
-                    actor_name
+                    "Actor '{actor_name}' is already registered in the actor registry"
                 )
             }
         }
@@ -71,7 +70,7 @@ impl Display for ActorErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Panic(panic_msg) => {
-                write!(f, "Actor panicked '{}'", panic_msg)
+                write!(f, "Actor panicked '{panic_msg}'")
             }
             Self::Cancelled => {
                 write!(f, "Actor operation cancelled")

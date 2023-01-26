@@ -20,7 +20,7 @@
 //!
 //! An important note on usage, when utilizing `ractor-cluster` and [ractor] in the cluster configuration
 //! (i.e. `ractor/cluster`), you no longer receive the auto-implementation for all types for [ractor::Message]. This
-//! is due to specialization (see: https://github.com/rust-lang/rust/issues/31844). Ideally we'd have the trait have a
+//! is due to specialization (see: <https://github.com/rust-lang/rust/issues/31844>). Ideally we'd have the trait have a
 //! "default" non-serializable implementation for all types that could be messages, and specific implementations for
 //! those that can be messages sent over the network. However this is presently a `+nightly` only functionality and
 //! has a soundness hole in it's processes. Therefore as a workaround, when the `cluster` feature is enabled on [ractor]

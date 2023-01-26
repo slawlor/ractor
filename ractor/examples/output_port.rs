@@ -44,8 +44,8 @@ impl Actor for Publisher {
     async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
         match message {
             Self::Msg::Publish(msg) => {
-                println!("Publishing {}", msg);
-                self.output.send(Output(format!("Published: {}", msg)));
+                println!("Publishing {msg}");
+                self.output.send(Output(format!("Published: {msg}")));
             }
         }
     }
@@ -70,10 +70,7 @@ impl Actor for Subscriber {
     async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
         match message {
             Self::Msg::Published(msg) => {
-                println!(
-                    "Subscriber ({:?}) received published message '{}'",
-                    myself, msg
-                );
+                println!("Subscriber ({myself:?}) received published message '{msg}'");
             }
         }
     }
@@ -113,7 +110,7 @@ async fn main() {
     // send some messages (we should see the subscribers printout)
     for i in 0..3 {
         publisher_ref
-            .cast(PublisherMessage::Publish(format!("Something {}", i)))
+            .cast(PublisherMessage::Publish(format!("Something {i}")))
             .expect("Send failed");
         tokio::time::sleep(Duration::from_millis(500)).await;
     }

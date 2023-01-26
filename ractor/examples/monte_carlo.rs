@@ -172,7 +172,7 @@ impl Actor for GameManager {
                 / state.total_games as i64;
 
             println!("Simulations ran: {}", state.results.len());
-            println!("Final average funds: ${}", average_funds);
+            println!("Final average funds: ${average_funds}");
 
             myself.stop(None);
         }

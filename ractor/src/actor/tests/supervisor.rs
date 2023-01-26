@@ -53,7 +53,7 @@ async fn test_supervision_panic_in_post_startup() {
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) {
-            println!("Supervisor event received {:?}", message);
+            println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
@@ -125,7 +125,7 @@ async fn test_supervision_panic_in_handle() {
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) {
-            println!("Supervisor event received {:?}", message);
+            println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
@@ -195,7 +195,7 @@ async fn test_supervision_panic_in_post_stop() {
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) {
-            println!("Supervisor event received {:?}", message);
+            println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
@@ -286,7 +286,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) {
-            println!("Supervisor event received {:?}", message);
+            println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
             if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {

@@ -30,6 +30,8 @@ pub(crate) struct ActorProperties {
     pub(crate) message: InputPort<BoxedMessage>,
     pub(crate) tree: SupervisionTree,
     pub(crate) type_id: std::any::TypeId,
+    #[cfg(feature = "cluster")]
+    pub(crate) supports_remoting: bool,
 }
 
 impl ActorProperties {
@@ -76,6 +78,8 @@ impl ActorProperties {
                 message: tx_message,
                 tree: SupervisionTree::default(),
                 type_id: std::any::TypeId::of::<TActor>(),
+                #[cfg(feature = "cluster")]
+                supports_remoting: TActor::Msg::serializable(),
             },
             rx_signal,
             rx_stop,

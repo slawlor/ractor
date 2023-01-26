@@ -12,8 +12,10 @@ use std::convert::TryInto;
 use std::net::SocketAddr;
 
 use ractor::message::SerializedMessage;
+use ractor::pg::GroupChangeMessage;
+use ractor::registry::PidLifecycleEvent;
 use ractor::rpc::CallResult;
-use ractor::{Actor, ActorId, ActorRef, SupervisionEvent};
+use ractor::{Actor, ActorId, ActorRef, SpawnErr, SupervisionEvent};
 use rand::Rng;
 use tokio::time::Duration;
 
@@ -301,14 +303,18 @@ impl NodeSession {
         if let Some(msg) = message.msg {
             match msg {
                 node_protocol::node_message::Msg::Cast(cast_args) => {
-                    if let Some(actor) = ractor::registry::get_pid(ActorId::Local(cast_args.to)) {
+                    if let Some(actor) =
+                        ractor::registry::where_is_pid(ActorId::Local(cast_args.to))
+                    {
                         let _ = actor.send_serialized(SerializedMessage::Cast(cast_args.what));
                     }
                 }
                 node_protocol::node_message::Msg::Call(call_args) => {
                     let to = call_args.to;
                     let tag = call_args.tag;
-                    if let Some(actor) = ractor::registry::get_pid(ActorId::Local(call_args.to)) {
+                    if let Some(actor) =
+                        ractor::registry::where_is_pid(ActorId::Local(call_args.to))
+                    {
                         let (tx, rx) = ractor::concurrency::oneshot();
 
                         // send off the transmission in the serialized format, letting the message's own deserialization handle
@@ -327,6 +333,7 @@ impl NodeSession {
                         }
 
                         // kick off a background task to reply to the channel request, threading the tag and who to reply to
+                        #[allow(clippy::let_underscore_future)]
                         let _ = ractor::concurrency::spawn(async move {
                             if let Some(timeout) = maybe_timeout {
                                 if let Ok(Ok(result)) =
@@ -384,42 +391,30 @@ impl NodeSession {
     ) {
         if let Some(msg) = message.msg {
             match msg {
-                control_protocol::control_message::Msg::Spawn(spawn_actor) => {
-                    let actor = crate::remote_actor::RemoteActor {
-                        session: myself.clone(),
-                    };
-
-                    match actor
-                        .spawn_linked(
-                            spawn_actor.name,
-                            spawn_actor.id,
-                            self.node_id,
-                            myself.get_cell(),
-                        )
-                        .await
-                    {
-                        Ok((actor, _)) => {
-                            state.remote_actors.insert(spawn_actor.id, actor);
-                        }
-                        Err(spawn_err) => {
+                control_protocol::control_message::Msg::Spawn(spawned_actors) => {
+                    for net_actor in spawned_actors.actors {
+                        if let Err(spawn_err) = self
+                            .get_or_spawn_remote_actor(
+                                &myself,
+                                net_actor.name,
+                                net_actor.pid,
+                                state,
+                            )
+                            .await
+                        {
                             log::error!("Failed to spawn remote actor with {}", spawn_err);
                         }
                     }
                 }
                 control_protocol::control_message::Msg::Terminate(termination) => {
-                    if let Some(actor) = state.remote_actors.remove(&termination.id) {
-                        actor.stop(Some(format!("Remote: {:?}", termination)));
-                        if termination.is_panic {
-                            log::info!(
-                                "Remote actor {} panicked with {:?}",
-                                actor.get_id(),
-                                termination.panic_reason
-                            );
-                        } else {
+                    for pid in termination.ids {
+                        if let Some(actor) = state.remote_actors.remove(&pid) {
+                            actor.stop(Some("remote".to_string()));
                             log::debug!(
-                                "Remote actor {} exited with {:?}",
-                                actor.get_id(),
-                                termination.panic_reason
+                                "Actor {} on node {} exited, terminating local `RemoteActor` {}",
+                                pid,
+                                self.node_id,
+                                actor.get_id()
                             );
                         }
                     }
@@ -458,23 +453,135 @@ impl NodeSession {
                     // schedule next ping
                     state.schedule_tcp_ping();
                 }
+                control_protocol::control_message::Msg::PgJoin(join) => {
+                    let mut cells = vec![];
+                    for control_protocol::Actor { name, pid } in join.actors {
+                        match self
+                            .get_or_spawn_remote_actor(&myself, name, pid, state)
+                            .await
+                        {
+                            Ok(actor) => {
+                                cells.push(actor.get_cell());
+                            }
+                            Err(spawn_err) => {
+                                log::error!("Failed to spawn remote actor with '{}'", spawn_err);
+                            }
+                        }
+                    }
+                    // join the remote actors to the local PG group
+                    if !cells.is_empty() {
+                        ractor::pg::join(join.group, cells);
+                    }
+                }
+                control_protocol::control_message::Msg::PgLeave(leave) => {
+                    let mut cells = vec![];
+                    for control_protocol::Actor { name, pid } in leave.actors {
+                        match self
+                            .get_or_spawn_remote_actor(&myself, name, pid, state)
+                            .await
+                        {
+                            Ok(actor) => {
+                                cells.push(actor.get_cell());
+                            }
+                            Err(spawn_err) => {
+                                log::error!("Failed to spawn remote actor with '{}'", spawn_err);
+                            }
+                        }
+                    }
+                    // join the remote actors to the local PG group
+                    if !cells.is_empty() {
+                        ractor::pg::leave(leave.group, cells);
+                    }
+                }
             }
         }
     }
 
     /// Called once the session is authenticated
-    fn after_authenticated(&self, state: &mut NodeSessionState) {
+    fn after_authenticated(&self, myself: ActorRef<Self>, state: &mut NodeSessionState) {
         log::info!(
             "Session authenticated on NodeSession {} - ({:?})",
             self.node_id,
             state.peer_addr
         );
 
-        // startup the ping sending operation
+        // startup the ping healthcheck activity
         state.schedule_tcp_ping();
 
-        // TODO: startup control message processing and additionally subscribe to process
-        // group changes
+        // setup PID monitoring
+        ractor::registry::pid_registry::monitor(myself.get_cell());
+
+        // Scan all PIDs and spawn them on the remote host
+        let pids = ractor::registry::pid_registry::get_all_pids()
+            .into_iter()
+            .filter(|act| act.supports_remoting())
+            .map(|a| control_protocol::Actor {
+                name: a.get_name(),
+                pid: a.get_id().pid(),
+            })
+            .collect::<Vec<_>>();
+        if !pids.is_empty() {
+            let msg = control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::Spawn(
+                    control_protocol::Spawn { actors: pids },
+                )),
+            };
+            state.tcp_send_control(msg);
+        }
+
+        // setup PG monitoring
+        ractor::pg::monitor(
+            ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
+            myself.get_cell(),
+        );
+
+        // Scan all PG groups + synchronize them
+        let groups = ractor::pg::which_groups();
+        for group in groups {
+            let local_members = ractor::pg::get_local_members(&group)
+                .into_iter()
+                .filter(|v| v.supports_remoting())
+                .map(|act| control_protocol::Actor {
+                    name: act.get_name(),
+                    pid: act.get_id().get_pid(),
+                })
+                .collect::<Vec<_>>();
+            if !local_members.is_empty() {
+                let control_message = control_protocol::ControlMessage {
+                    msg: Some(control_protocol::control_message::Msg::PgJoin(
+                        control_protocol::PgJoin {
+                            group,
+                            actors: local_members,
+                        },
+                    )),
+                };
+                state.tcp_send_control(control_message);
+            }
+        }
+        // TODO: subscribe to the named registry and synchronize it? What happes on a name clash? How would this be handled
+        // if both sessions had a "node_a" for example? Which resolves, local only?
+    }
+
+    /// Get a given remote actor, or spawn it if it doesn't exist.
+    async fn get_or_spawn_remote_actor(
+        &self,
+        myself: &ActorRef<Self>,
+        actor_name: Option<String>,
+        actor_pid: u64,
+        state: &mut NodeSessionState,
+    ) -> Result<ActorRef<RemoteActor>, SpawnErr> {
+        match state.remote_actors.get(&actor_pid) {
+            Some(actor) => Ok(actor.clone()),
+            _ => {
+                let (remote_actor, _) = crate::remote_actor::RemoteActor {
+                    session: myself.clone(),
+                }
+                .spawn_linked(actor_name, actor_pid, self.node_id, myself.get_cell())
+                .await?;
+                state.remote_actors.insert(actor_pid, remote_actor.clone());
+                Ok(remote_actor)
+            }
+        }
     }
 }
 
@@ -527,6 +634,7 @@ impl NodeSessionState {
 
     fn schedule_tcp_ping(&self) {
         if let Some(tcp) = &self.tcp {
+            #[allow(clippy::let_underscore_future)]
             let _ = tcp.send_after(Self::get_send_delay(), || {
                 let ping = control_protocol::ControlMessage {
                     msg: Some(control_protocol::control_message::Msg::Ping(
@@ -573,6 +681,13 @@ impl Actor for NodeSession {
         }
     }
 
+    async fn post_stop(&self, myself: ActorRef<Self>, _state: &mut Self::State) {
+        ractor::pg::demonitor(
+            ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
+            myself.get_id(),
+        );
+    }
+
     async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
         match message {
             super::SessionMessage::SetTcpStream(stream) if state.tcp.is_none() => {
@@ -607,9 +722,9 @@ impl Actor for NodeSession {
                     match network_message {
                         crate::protocol::meta::network_message::Message::Auth(auth_message) => {
                             let p_state = state.auth.is_ok();
-                            self.handle_auth(state, auth_message, myself).await;
+                            self.handle_auth(state, auth_message, myself.clone()).await;
                             if !p_state && state.auth.is_ok() {
-                                self.after_authenticated(state);
+                                self.after_authenticated(myself, state);
                             }
                         }
                         crate::protocol::meta::network_message::Message::Node(node_message) => {
@@ -639,6 +754,7 @@ impl Actor for NodeSession {
         state: &mut Self::State,
     ) {
         match message {
+            SupervisionEvent::ActorStarted(_) => {}
             SupervisionEvent::ActorPanicked(actor, msg) => {
                 if state.is_tcp_actor(actor.get_id()) {
                     log::error!(
@@ -659,13 +775,11 @@ impl Actor for NodeSession {
                     // NOTE: This is a legitimate panic of the `RemoteActor`, not the actor on the remote machine panicking (which
                     // is handled by the remote actor's supervisor). Therefore we should re-spawn the actor
                     let pid = actor.get_id().get_pid();
-                    let (remote_actor, _) = crate::remote_actor::RemoteActor {
-                        session: myself.clone(),
-                    }
-                    .spawn_linked(actor.get_name(), pid, self.node_id, myself.get_cell())
-                    .await
-                    .expect("Failed to spawn remote actor");
-                    state.remote_actors.insert(pid, remote_actor);
+                    let name = actor.get_name();
+                    let _ = self
+                        .get_or_spawn_remote_actor(&myself, name, pid, state)
+                        .await
+                        .expect("Failed to restart remote actor");
                 } else {
                     log::error!("NodeSesion {:?} received an unknown child panic superivision message from {} - '{}'",
                         state.name,
@@ -693,9 +807,79 @@ impl Actor for NodeSession {
                     );
                 }
             }
-            _ => {
-                //no-op
-            }
+            SupervisionEvent::ProcessGroupChanged(change) => match change {
+                GroupChangeMessage::Join(group, actors) => {
+                    let filtered = actors
+                        .into_iter()
+                        .filter(|act| act.supports_remoting())
+                        .map(|act| control_protocol::Actor {
+                            name: act.get_name(),
+                            pid: act.get_id().get_pid(),
+                        })
+                        .collect::<Vec<_>>();
+                    if !filtered.is_empty() {
+                        let msg = control_protocol::ControlMessage {
+                            msg: Some(control_protocol::control_message::Msg::PgJoin(
+                                control_protocol::PgJoin {
+                                    group,
+                                    actors: filtered,
+                                },
+                            )),
+                        };
+                        state.tcp_send_control(msg);
+                    }
+                }
+                GroupChangeMessage::Leave(group, actors) => {
+                    let filtered = actors
+                        .into_iter()
+                        .filter(|act| act.supports_remoting())
+                        .map(|act| control_protocol::Actor {
+                            name: act.get_name(),
+                            pid: act.get_id().get_pid(),
+                        })
+                        .collect::<Vec<_>>();
+                    if !filtered.is_empty() {
+                        let msg = control_protocol::ControlMessage {
+                            msg: Some(control_protocol::control_message::Msg::PgLeave(
+                                control_protocol::PgLeave {
+                                    group,
+                                    actors: filtered,
+                                },
+                            )),
+                        };
+                        state.tcp_send_control(msg);
+                    }
+                }
+            },
+            SupervisionEvent::PidLifecycleEvent(pid) => match pid {
+                PidLifecycleEvent::Spawn(who) => {
+                    if who.supports_remoting() {
+                        let msg = control_protocol::ControlMessage {
+                            msg: Some(control_protocol::control_message::Msg::Spawn(
+                                control_protocol::Spawn {
+                                    actors: vec![control_protocol::Actor {
+                                        pid: who.get_id().get_pid(),
+                                        name: who.get_name(),
+                                    }],
+                                },
+                            )),
+                        };
+                        state.tcp_send_control(msg);
+                    }
+                }
+                PidLifecycleEvent::Terminate(who) => {
+                    if who.supports_remoting() {
+                        let msg = control_protocol::ControlMessage {
+                            msg: Some(control_protocol::control_message::Msg::Terminate(
+                                control_protocol::Terminate {
+                                    ids: vec![who.get_id().get_pid()],
+                                },
+                            )),
+                        };
+                        state.tcp_send_control(msg);
+                    }
+                }
+            },
         }
     }
 }

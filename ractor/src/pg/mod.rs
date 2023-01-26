@@ -28,6 +28,9 @@ use once_cell::sync::OnceCell;
 
 use crate::{ActorCell, ActorId, GroupName, SupervisionEvent};
 
+/// Key to monitor all of the groups
+pub const ALL_GROUPS_NOTIFICATION: &str = "__world__";
+
 #[cfg(test)]
 mod tests;
 
@@ -94,6 +97,14 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
             ));
         }
     }
+    // notify the world monitors
+    if let Some(listeners) = monitor.listeners.get(ALL_GROUPS_NOTIFICATION) {
+        for listener in listeners.value() {
+            let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
+                GroupChangeMessage::Join(group.clone(), actors.clone()),
+            ));
+        }
+    }
 }
 
 /// Leaves the specified [crate::Actor]s from the PG group
@@ -114,6 +125,14 @@ pub fn leave(group: GroupName, actors: Vec<ActorCell>) {
                 occupied.remove();
             }
             if let Some(listeners) = monitor.listeners.get(&group) {
+                for listener in listeners.value() {
+                    let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
+                        GroupChangeMessage::Leave(group.clone(), actors.clone()),
+                    ));
+                }
+            }
+            // notify the world monitors
+            if let Some(listeners) = monitor.listeners.get(ALL_GROUPS_NOTIFICATION) {
                 for listener in listeners.value() {
                     let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
                         GroupChangeMessage::Leave(group.clone(), actors.clone()),
@@ -151,6 +170,14 @@ pub(crate) fn leave_all(actor: ActorId) {
                     GroupChangeMessage::Leave(group.clone(), vec![cell.clone()]),
                 ));
             });
+        }
+        // notify the world monitors
+        if let Some(listeners) = all_listeners.get(ALL_GROUPS_NOTIFICATION) {
+            for listener in listeners.value() {
+                let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
+                    GroupChangeMessage::Leave(group.clone(), vec![cell.clone()]),
+                ));
+            }
         }
     }
 

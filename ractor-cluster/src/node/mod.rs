@@ -9,18 +9,18 @@
 //! The supervision tree is the following
 //!
 //! [NodeServer] supervises
-//!     1. The server-socket TCP [crate::net::listener::Listener]
+//!     1. The server-socket TCP `ractor_cluster::net::listener::Listener`
 //!     2. All of the individual [NodeSession]s
 //!
 //! Each [NodeSession] supervises
-//!     1. The TCP [crate::net::session::Session] connection
+//!     1. The TCP `ractor_cluster::net::session::Session` connection
 //!     2. (todo) All of the remote referenced actors. That way if the overall node session closes (due to tcp err for example) will lose connectivity
 //!         to all of the remote actors
 //!
-//! Each [crate::net::session::Session] supervises
-//!     1. A TCP writer actor (`crate::net::session::SessionWriter`)
-//!     2. A TCP reader actor (`crate::net::session::SessionReader`)
-//! -> If either child actor closes, then it will terminate the overall [crate::net::session::Session] which in
+//! Each `actor_cluster::net::session::Session` supervises
+//!     1. A TCP writer actor (`ractor_cluster::net::session::SessionWriter`)
+//!     2. A TCP reader actor (`ractor_cluster::net::session::SessionReader`)
+//! -> If either child actor closes, then it will terminate the overall `ractor_cluster::net::session::Session` which in
 //!    turn will terminate the [NodeSession] and the [NodeServer] will de-register the [NodeSession] from its
 //!    internal state
 //!
@@ -125,7 +125,7 @@ pub enum SessionManagerMessage {
 
 impl ractor::Message for SessionManagerMessage {}
 
-/// Message from the TCP [session::Session] actor and the
+/// Message from the TCP `ractor_cluster::net::session::Session` actor and the
 /// monitoring Sesson actor
 pub enum SessionMessage {
     /// The Session actor is setting it's handle
@@ -141,7 +141,7 @@ impl ractor::Message for SessionMessage {}
 
 /// Represents the server which is managing all node session instances
 ///
-/// The [NodeServer] supervises a single [crate::net::listener::Listener] actor which is
+/// The [NodeServer] supervises a single `ractor_cluster::net::listener::Listener` actor which is
 /// responsible for hosting a server port for incoming `node()` connections. It also supervises
 /// all of the [NodeSession] actors which are tied to tcp sessions and manage the FSM around `node()`s
 /// establishing inter connections.

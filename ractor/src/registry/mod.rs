@@ -38,14 +38,18 @@ use dashmap::mapref::entry::Entry::{Occupied, Vacant};
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
-#[cfg(feature = "cluster")]
-use crate::ActorId;
 use crate::{ActorCell, ActorName};
+
+#[cfg(feature = "cluster")]
+pub mod pid_registry;
+#[cfg(feature = "cluster")]
+pub use pid_registry::{get_all_pids, where_is_pid, PidLifecycleEvent};
 
 #[cfg(test)]
 mod tests;
 
 /// Errors involving the [crate::registry]'s actor registry
+#[derive(Debug)]
 pub enum ActorRegistryErr {
     /// Actor already registered
     AlreadyRegistered(ActorName),
@@ -53,16 +57,10 @@ pub enum ActorRegistryErr {
 
 /// The name'd actor registry
 static ACTOR_REGISTRY: OnceCell<Arc<DashMap<ActorName, ActorCell>>> = OnceCell::new();
-#[cfg(feature = "cluster")]
-static PID_REGISTRY: OnceCell<Arc<DashMap<ActorId, ActorCell>>> = OnceCell::new();
 
 /// Retrieve the named actor registry handle
 fn get_actor_registry<'a>() -> &'a Arc<DashMap<ActorName, ActorCell>> {
     ACTOR_REGISTRY.get_or_init(|| Arc::new(DashMap::new()))
-}
-#[cfg(feature = "cluster")]
-fn get_pid_registry<'a>() -> &'a Arc<DashMap<ActorId, ActorCell>> {
-    PID_REGISTRY.get_or_init(|| Arc::new(DashMap::new()))
 }
 
 /// Put an actor into the registry
@@ -75,23 +73,11 @@ pub(crate) fn register(name: ActorName, actor: ActorCell) -> Result<(), ActorReg
         }
     }
 }
-#[cfg(feature = "cluster")]
-pub(crate) fn register_pid(id: ActorId, actor: ActorCell) {
-    if id.is_local() {
-        get_pid_registry().insert(id, actor);
-    }
-}
 
 /// Remove an actor from the registry given it's actor name
 pub(crate) fn unregister(name: ActorName) {
     if let Some(reg) = ACTOR_REGISTRY.get() {
         let _ = reg.remove(&name);
-    }
-}
-#[cfg(feature = "cluster")]
-pub(crate) fn unregister_pid(id: ActorId) {
-    if id.is_local() {
-        let _ = get_pid_registry().remove(&id);
     }
 }
 
@@ -113,18 +99,4 @@ pub fn where_is(name: ActorName) -> Option<ActorCell> {
 pub fn registered() -> Vec<ActorName> {
     let reg = get_actor_registry();
     reg.iter().map(|kvp| kvp.key().clone()).collect::<Vec<_>>()
-}
-
-/// Retrieve an actor from the global registery of all local actors
-///
-/// * `id` - The **local** id of the actor to retrieve
-///
-/// Returns [Some(_)] if the actor exists locally, [None] otherwise
-#[cfg(feature = "cluster")]
-pub fn get_pid(id: ActorId) -> Option<ActorCell> {
-    if id.is_local() {
-        get_pid_registry().get(&id).map(|v| v.value().clone())
-    } else {
-        None
-    }
 }
