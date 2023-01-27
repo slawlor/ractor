@@ -4,7 +4,7 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 //! A [NodeSession] is an individual connection between a specific pair of
-//!  `node()`s and all of its authentication and communication for that
+//! `node()`s and all of its authentication and communication for that
 //! pairing
 
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ use ractor::message::SerializedMessage;
 use ractor::pg::GroupChangeMessage;
 use ractor::registry::PidLifecycleEvent;
 use ractor::rpc::CallResult;
-use ractor::{Actor, ActorId, ActorRef, SpawnErr, SupervisionEvent};
+use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, SpawnErr, SupervisionEvent};
 use rand::Rng;
 use tokio::time::Duration;
 
@@ -50,9 +50,29 @@ impl AuthenticationState {
     }
 }
 
-/// Represents a session with a specific node
+/// Represents a remote connection to a `node()`. The [NodeSession] is the main
+/// handler for all inter-node communication and handles
+///
+/// 1. The state of the authentication handshake
+/// 2. Control messages for actor synchronization + group membership changes
+/// 3. `RemoteActor`s wishing to send messages to their remote counterparts on the
+/// remote system (and receive replies)
+///
+/// A [NodeSession] can either be a client or server session, depending on the connection sequence.
+/// If it was an incoming request to the [NodeServer] then it's a "server" session, as
+/// the server spawned this actor. Otherwise it's an outgoing "client" request.
+///
+/// If the [NodeSession] is a client session, it will start the authentication handshake with
+/// a `auth_protocol::NameMessage` announcing this node's name to the remote system for deduplication
+/// and starting the rest of the handshake. For full authentication pattern details, see
+///
+/// 1. `src/protocol/auth.proto`
+/// 2. `src/node/auth.rs`
+///
+/// Lastly the node's have an intern-node "ping" operation which occurs to keep the TCP session alive
+/// and additionally measure peer latency.
 pub struct NodeSession {
-    node_id: u64,
+    node_id: crate::NodeId,
     is_server: bool,
     cookie: String,
     node_server: ActorRef<NodeServer>,
@@ -63,7 +83,7 @@ impl NodeSession {
     /// Construct a new [NodeSession] with the supplied
     /// arguments
     pub fn new(
-        node_id: u64,
+        node_id: crate::NodeId,
         is_server: bool,
         cookie: String,
         node_server: ActorRef<NodeServer>,
@@ -300,6 +320,11 @@ impl NodeSession {
         message: node_protocol::NodeMessage,
         myself: ActorRef<Self>,
     ) {
+        if !state.auth.is_ok() {
+            log::warn!("Inter-node message received on unauthenticated NodeSession");
+            return;
+        }
+
         if let Some(msg) = message.msg {
             match msg {
                 node_protocol::node_message::Msg::Cast(cast_args) => {
@@ -389,6 +414,11 @@ impl NodeSession {
         message: control_protocol::ControlMessage,
         myself: ActorRef<Self>,
     ) {
+        if !state.auth.is_ok() {
+            log::warn!("Control message received on unauthenticated NodeSession");
+            return;
+        }
+
         if let Some(msg) = message.msg {
             match msg {
                 control_protocol::control_message::Msg::Spawn(spawned_actors) => {
@@ -666,8 +696,9 @@ impl NodeSessionState {
 impl Actor for NodeSession {
     type Msg = super::SessionMessage;
     type State = NodeSessionState;
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
-        Self::State {
+
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+        Ok(Self::State {
             tcp: None,
             name: None,
             auth: if self.is_server {
@@ -678,21 +709,34 @@ impl Actor for NodeSession {
             remote_actors: HashMap::new(),
             peer_addr: None,
             local_addr: None,
-        }
+        })
     }
 
-    async fn post_stop(&self, myself: ActorRef<Self>, _state: &mut Self::State) {
+    async fn post_stop(
+        &self,
+        myself: ActorRef<Self>,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        // unhook monitoring sessions
         ractor::pg::demonitor(
             ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
             myself.get_id(),
         );
+        ractor::registry::pid_registry::demonitor(myself.get_id());
+
+        Ok(())
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             super::SessionMessage::SetTcpStream(stream) if state.tcp.is_none() => {
-                let peer_addr = stream.peer_addr().expect("Failed to get peer address");
-                let my_addr = stream.local_addr().expect("Failed to get local address");
+                let peer_addr = stream.peer_addr()?;
+                let my_addr = stream.local_addr()?;
                 // startup the TCP socket handler for message write + reading
                 let actor = crate::net::session::Session::spawn_linked(
                     myself.clone(),
@@ -701,8 +745,7 @@ impl Actor for NodeSession {
                     my_addr,
                     myself.get_cell(),
                 )
-                .await
-                .expect("Failed to spawn TCP session");
+                .await?;
 
                 state.tcp = Some(actor);
                 state.peer_addr = Some(peer_addr);
@@ -723,6 +766,7 @@ impl Actor for NodeSession {
                         crate::protocol::meta::network_message::Message::Auth(auth_message) => {
                             let p_state = state.auth.is_ok();
                             self.handle_auth(state, auth_message, myself.clone()).await;
+                            // If we were not originally authenticated, but now we are, startup the node sync'ing logic
                             if !p_state && state.auth.is_ok() {
                                 self.after_authenticated(myself, state);
                             }
@@ -745,6 +789,7 @@ impl Actor for NodeSession {
                 // no-op, ignore
             }
         }
+        Ok(())
     }
 
     async fn handle_supervisor_evt(
@@ -752,7 +797,7 @@ impl Actor for NodeSession {
         myself: ActorRef<Self>,
         message: SupervisionEvent,
         state: &mut Self::State,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             SupervisionEvent::ActorStarted(_) => {}
             SupervisionEvent::ActorPanicked(actor, msg) => {
@@ -778,8 +823,7 @@ impl Actor for NodeSession {
                     let name = actor.get_name();
                     let _ = self
                         .get_or_spawn_remote_actor(&myself, name, pid, state)
-                        .await
-                        .expect("Failed to restart remote actor");
+                        .await?;
                 } else {
                     log::error!("NodeSesion {:?} received an unknown child panic superivision message from {} - '{}'",
                         state.name,
@@ -798,15 +842,16 @@ impl Actor for NodeSession {
                         state.name,
                         maybe_reason
                     );
-                    actor.kill();
+                    actor.stop(Some("remote_exit".to_string()));
                 } else {
-                    log::info!("NodeSession {:?} received an unknown child actor exit event from {} - '{:?}'",
+                    log::warn!("NodeSession {:?} received an unknown child actor exit event from {} - '{:?}'",
                         state.name,
                         actor.get_id(),
                         maybe_reason,
                     );
                 }
             }
+            // ======== Lifecycle event handlers (PG groups + PID registry) ======== //
             SupervisionEvent::ProcessGroupChanged(change) => match change {
                 GroupChangeMessage::Join(group, actors) => {
                     let filtered = actors
@@ -881,5 +926,6 @@ impl Actor for NodeSession {
                 }
             },
         }
+        Ok(())
     }
 }

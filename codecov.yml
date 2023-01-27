@@ -2,8 +2,8 @@ codecov:
   require_ci_to_pass: false
 
 ignore:
-  - "ractor-playground"
+  - "ractor_playground"
   - "xtask"
   - "ractor/examples"
   - "ractor/benches"
-  - "ractor-cluster" # for now
+  - "ractor_cluster" # for now

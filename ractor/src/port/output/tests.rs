@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use crate::concurrency::timeout;
+use crate::{concurrency::timeout, ActorProcessingErr};
 use futures::future::join_all;
 
 use crate::{Actor, ActorRef};
@@ -28,8 +28,11 @@ async fn test_single_forward() {
 
         type State = u8;
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {
-            0u8
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(0u8)
         }
 
         async fn handle(
@@ -37,7 +40,7 @@ async fn test_single_forward() {
             myself: ActorRef<Self>,
             message: Self::Msg,
             state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             println!("Test actor received a message");
             match message {
                 Self::Msg::Stop => {
@@ -47,6 +50,7 @@ async fn test_single_forward() {
                 }
             }
             *state += 1;
+            Ok(())
         }
     }
 
@@ -86,8 +90,11 @@ async fn test_50_receivers() {
 
         type State = u8;
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {
-            0u8
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(0u8)
         }
 
         async fn handle(
@@ -95,7 +102,7 @@ async fn test_50_receivers() {
             myself: ActorRef<Self>,
             message: Self::Msg,
             state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             println!("Test actor received a message");
             match message {
                 Self::Msg::Stop => {
@@ -105,6 +112,7 @@ async fn test_50_receivers() {
                 }
             }
             *state += 1;
+            Ok(())
         }
     }
 

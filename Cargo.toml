@@ -2,7 +2,7 @@
 
 members = [
     "ractor",
-    "ractor-cluster",
-    "ractor-playground",
+    "ractor_cluster",
+    "ractor_playground",
     "xtask"
 ]

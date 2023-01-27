@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 
-use ractor::{cast, Actor, ActorId, ActorRef};
+use ractor::{cast, Actor, ActorId, ActorProcessingErr, ActorRef};
 use rand::{thread_rng, Rng};
 
 // ================== Player Actor ================== //
@@ -68,11 +68,16 @@ impl Actor for Game {
 
     type State = GameState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
-        GameState::default()
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+        Ok(GameState::default())
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         if state.current_round <= state.total_rounds {
             state.current_round += 1;
             match Self::State::roll_dice() {
@@ -95,6 +100,7 @@ impl Actor for Game {
             // Because the `GameManager` is monitoring this actor we can stop this actor
             myself.stop(None);
         }
+        Ok(())
     }
 }
 
@@ -136,7 +142,7 @@ impl Actor for GameManager {
 
     type State = GameManagerState;
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         // This is the first code that will run in the actor. It spawns the Game actors,
         // registers them to its monitoring list, then sends them a message indicating
         // that they should start their games.
@@ -153,10 +159,15 @@ impl Actor for GameManager {
             cast!(actor, GameMessage(myself.clone())).expect("Failed to send message");
         }
 
-        GameManagerState::new(self.num_games)
+        Ok(GameManagerState::new(self.num_games))
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         state.results.insert(message.id, message.results);
 
         state.games_finished += 1;
@@ -176,6 +187,7 @@ impl Actor for GameManager {
 
             myself.stop(None);
         }
+        Ok(())
     }
 }
 

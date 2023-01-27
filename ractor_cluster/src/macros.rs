@@ -30,12 +30,12 @@
 ///         true
 ///     }
 ///
-///     fn serialize(self) -> SerializedMessage {
+///     fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
 ///         match self {
-///             Self::Cast(args) => SerializedMessage::Cast(args.into_bytes()),
+///             Self::Cast(args) => Ok(SerializedMessage::Cast(args.into_bytes())),
 ///             Self::Call(args, reply) => {
 ///                 let tx = serialized_rpc_forward!(reply, |bytes| String::from_utf8(bytes).unwrap());
-///                 SerializedMessage::Call(args.into_bytes(), tx.into())
+///                 Ok(SerializedMessage::Call(args.into_bytes(), tx.into()))
 ///             }
 ///         }
 ///     }
@@ -96,13 +96,13 @@ mod tests {
             true
         }
 
-        fn serialize(self) -> SerializedMessage {
+        fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
             match self {
-                Self::Cast(args) => SerializedMessage::Cast(args.into_bytes()),
+                Self::Cast(args) => Ok(SerializedMessage::Cast(args.into_bytes())),
                 Self::Call(args, reply) => {
                     let tx =
                         serialized_rpc_forward!(reply, |bytes| String::from_utf8(bytes).unwrap());
-                    SerializedMessage::Call(args.into_bytes(), tx)
+                    Ok(SerializedMessage::Call(args.into_bytes(), tx))
                 }
             }
         }
@@ -123,7 +123,7 @@ mod tests {
     async fn no_timeout_rpc() {
         let (tx, rx) = ractor::concurrency::oneshot();
         let no_timeout = MessageType::Call("test".to_string(), tx.into());
-        let no_timeout_serialized = no_timeout.serialize();
+        let no_timeout_serialized = no_timeout.serialize().unwrap();
         match no_timeout_serialized {
             SerializedMessage::Call(args, reply) => {
                 let _ = reply.send(args);
@@ -141,7 +141,7 @@ mod tests {
         let duration = Duration::from_millis(10);
         let with_timeout = MessageType::Call("test".to_string(), (tx, duration).into());
 
-        let with_timeout_serialized = with_timeout.serialize();
+        let with_timeout_serialized = with_timeout.serialize().unwrap();
         match with_timeout_serialized {
             SerializedMessage::Call(args, reply) => {
                 let _ = reply.send(args);
@@ -159,7 +159,7 @@ mod tests {
         let duration = Duration::from_millis(10);
         let with_timeout = MessageType::Call("test".to_string(), (tx, duration).into());
 
-        let with_timeout_serialized = with_timeout.serialize();
+        let with_timeout_serialized = with_timeout.serialize().unwrap();
         match with_timeout_serialized {
             SerializedMessage::Call(args, reply) => {
                 ractor::concurrency::sleep(Duration::from_millis(50)).await;
@@ -177,7 +177,7 @@ mod tests {
         let (tx, rx) = ractor::concurrency::oneshot();
 
         let no_timeout = MessageType::Call("test".to_string(), tx.into());
-        let no_timeout_serialized = no_timeout.serialize();
+        let no_timeout_serialized = no_timeout.serialize().unwrap();
         let no_timeout_deserialized =
             MessageType::deserialize(no_timeout_serialized).expect("Failed to deserialize port");
         if let MessageType::Call(args, reply) = no_timeout_deserialized {
@@ -196,7 +196,7 @@ mod tests {
 
         let initial_call =
             MessageType::Call("test".to_string(), (tx, Duration::from_millis(50)).into());
-        let serialized_call = initial_call.serialize();
+        let serialized_call = initial_call.serialize().unwrap();
         let deserialized_call =
             MessageType::deserialize(serialized_call).expect("Failed to deserialize port");
         if let MessageType::Call(args, reply) = deserialized_call {
@@ -215,7 +215,7 @@ mod tests {
 
         let initial_call =
             MessageType::Call("test".to_string(), (tx, Duration::from_millis(50)).into());
-        let serialized_call = initial_call.serialize();
+        let serialized_call = initial_call.serialize().unwrap();
         let deserialized_call =
             MessageType::deserialize(serialized_call).expect("Failed to deserialize port");
         if let MessageType::Call(args, reply) = deserialized_call {

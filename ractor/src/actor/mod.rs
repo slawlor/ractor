@@ -29,14 +29,14 @@ mod tests;
 
 use crate::{ActorName, Message, State};
 use actor_cell::{ActorCell, ActorPortSet, ActorRef, ActorStatus};
-use errors::{ActorErr, MessagingErr, SpawnErr};
+use errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
 
-pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> String {
+pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> ActorProcessingErr {
     match e.downcast::<String>() {
-        Ok(v) => *v,
+        Ok(v) => From::from(*v),
         Err(e) => match e.downcast::<&str>() {
-            Ok(v) => v.to_string(),
-            _ => "Unknown panic occurred which couldn't be coerced to a string".to_string(),
+            Ok(v) => From::from(*v),
+            _ => From::from("Unknown panic occurred which couldn't be coerced to a string"),
         },
     }
 }
@@ -46,6 +46,22 @@ pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> String {
 ///
 /// Additionally it aliases the calls for `spawn` and `spawn_linked` from
 /// [ActorRuntime] for convenient startup + lifecycle management
+///
+/// NOTE: All of the implemented trait functions
+///
+/// * `pre_start`
+/// * `post_start`
+/// * `post_stop`
+/// * `handle`
+/// * `handle_serialized` (Available with `cluster` feature only)
+/// * `handle_supervision_evt`
+///
+/// return a [Result<_, ActorProcessingError>] where the error type is an
+/// alias of [Box<dyn std::error::Error + Send + Sync + 'static>]. This is treated
+/// as an "unhandled" error and will terminate the actor + execute necessary supervision
+/// patterns. Panics are also captured from the inner functions and wrapped into an Error
+/// type, however should an [Err(_)] result from any of these functions the **actor will
+/// terminate** and cleanup.
 #[async_trait::async_trait]
 pub trait Actor: Sized + Sync + Send + 'static {
     /// The message type for this actor
@@ -66,7 +82,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `myself` - A handle to the [ActorCell] representing this actor
     ///
     /// Returns an initial [Actor::State] to bootstrap the actor
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State;
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr>;
 
     /// Invoked after an actor has started.
     ///
@@ -78,7 +94,13 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
-    async fn post_start(&self, myself: ActorRef<Self>, state: &mut Self::State) {}
+    async fn post_start(
+        &self,
+        myself: ActorRef<Self>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        Ok(())
+    }
 
     /// Invoked after an actor has been stopped to perform final cleanup. In the
     /// event the actor is terminated with [Signal::Kill] or has self-panicked,
@@ -89,7 +111,13 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `state` - A mutable reference to the internal actor's last known state
     #[allow(unused_variables)]
-    async fn post_stop(&self, myself: ActorRef<Self>, state: &mut Self::State) {}
+    async fn post_stop(
+        &self,
+        myself: ActorRef<Self>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        Ok(())
+    }
 
     /// Handle the incoming message from the event processing loop. Unhandled panickes will be
     /// captured and sent to the supervisor(s)
@@ -98,7 +126,14 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `message` - The message to process
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {}
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        Ok(())
+    }
 
     /// Handle the remote incoming message from the event processing loop. Unhandled panickes will be
     /// captured and sent to the supervisor(s)
@@ -113,7 +148,8 @@ pub trait Actor: Sized + Sync + Send + 'static {
         myself: ActorRef<Self>,
         message: crate::message::SerializedMessage,
         state: &mut Self::State,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
+        Ok(())
     }
 
     /// Handle the incoming supervision event. Unhandled panicks will captured and
@@ -129,7 +165,8 @@ pub trait Actor: Sized + Sync + Send + 'static {
         myself: ActorRef<Self>,
         message: SupervisionEvent,
         state: &mut Self::State,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
+        Ok(())
     }
 
     /// Spawn an actor of this type, which is unsupervised, automatically starting
@@ -235,9 +272,9 @@ where
         supervisor: ActorCell,
     ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         if id.is_local() {
-            Err(SpawnErr::StartupPanic(
-                "Cannot spawn a remote actor when the identifier is not remote!".to_string(),
-            ))
+            Err(SpawnErr::StartupPanic(From::from(
+                "Cannot spawn a remote actor when the identifier is not remote!",
+            )))
         } else {
             let (actor_cell, ports) = actor_cell::ActorCell::new_remote::<THandler>(name, id)?;
 
@@ -294,7 +331,9 @@ where
         self.base.set_status(ActorStatus::Starting);
 
         // Perform the pre-start routine, crashing immediately if we fail to start
-        let mut state = Self::do_pre_start(self.base.clone(), self.handler.clone()).await?;
+        let mut state = Self::do_pre_start(self.base.clone(), self.handler.clone())
+            .await?
+            .map_err(SpawnErr::StartupPanic)?;
 
         // setup supervision
         if let Some(sup) = &supervisor {
@@ -355,7 +394,9 @@ where
         myself: ActorRef<THandler>,
     ) -> Result<Option<String>, ActorErr> {
         // perform the post-start, with supervision enabled
-        Self::do_post_start(myself.clone(), handler.clone(), state).await?;
+        Self::do_post_start(myself.clone(), handler.clone(), state)
+            .await?
+            .map_err(ActorErr::Panic)?;
 
         myself.set_status(ActorStatus::Running);
         myself.notify_supervisor(SupervisionEvent::ActorStarted(myself.clone().into()));
@@ -374,10 +415,11 @@ where
                     handler_clone.clone(),
                     &mut ports,
                 )
-                .await;
+                .await
+                .map_err(ActorErr::Panic)?;
                 // processing loop exit
                 if should_exit {
-                    return (state, maybe_exit_reason);
+                    return Ok((state, maybe_exit_reason));
                 }
             }
         };
@@ -389,10 +431,12 @@ where
         // set status to stopping
         myself.set_status(ActorStatus::Stopping);
 
-        let (nstate, exit_reason) = loop_done?;
+        let (nstate, exit_reason) = loop_done??;
 
         // if we didn't exit in error mode, call `post_stop`
-        Self::do_post_stop(myself, handler, nstate).await?;
+        Self::do_post_stop(myself, handler, nstate)
+            .await?
+            .map_err(ActorErr::Panic)?;
 
         Ok(exit_reason)
     }
@@ -412,18 +456,18 @@ where
         state: &mut TState,
         handler: Arc<THandler>,
         ports: &mut ActorPortSet,
-    ) -> (bool, Option<String>) {
+    ) -> Result<(bool, Option<String>), ActorProcessingErr> {
         match ports.listen_in_priority().await {
             Ok(actor_port_message) => match actor_port_message {
                 actor_cell::ActorPortMessage::Signal(signal) => {
-                    (true, Self::handle_signal(myself, signal))
+                    Ok((true, Self::handle_signal(myself, signal)))
                 }
                 actor_cell::ActorPortMessage::Stop(stop_message) => {
                     let exit_reason = match stop_message {
                         StopMessage::Stop => None,
                         StopMessage::Reason(reason) => Some(reason),
                     };
-                    (true, exit_reason)
+                    Ok((true, exit_reason))
                 }
                 actor_cell::ActorPortMessage::Supervision(supervision) => {
                     let new_state_future = Self::handle_supervision_message(
@@ -434,8 +478,9 @@ where
                     );
                     let new_state = ports.run_with_signal(new_state_future).await;
                     match new_state {
-                        Ok(()) => (false, None),
-                        Err(signal) => (true, Self::handle_signal(myself, signal)),
+                        Ok(Ok(())) => Ok((false, None)),
+                        Ok(Err(internal_err)) => Err(internal_err),
+                        Err(signal) => Ok((true, Self::handle_signal(myself, signal))),
                     }
                 }
                 actor_cell::ActorPortMessage::Message(msg) => {
@@ -443,8 +488,9 @@ where
                         Self::handle_message(myself.clone(), state, handler, msg);
                     let new_state = ports.run_with_signal(new_state_future).await;
                     match new_state {
-                        Ok(()) => (false, None),
-                        Err(signal) => (true, Self::handle_signal(myself, signal)),
+                        Ok(Ok(())) => Ok((false, None)),
+                        Ok(Err(internal_err)) => Err(internal_err),
+                        Err(signal) => Ok((true, Self::handle_signal(myself, signal))),
                     }
                 }
             },
@@ -453,11 +499,11 @@ where
                 // the receiver was dropped and in this case
                 // we should always die. Therefore we flag
                 // to terminate
-                (true, None)
+                Ok((true, None))
             }
             Err(MessagingErr::InvalidActorType) => {
                 // not possible. Treat like a channel closed
-                (true, None)
+                Ok((true, None))
             }
         }
     }
@@ -467,36 +513,31 @@ where
         state: &mut TState,
         handler: Arc<THandler>,
         msg: crate::message::BoxedMessage,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
         // panic in order to kill the actor
         #[cfg(feature = "cluster")]
         {
+            // A `RemoteActor` will handle serialized messages, without decoding them, forwarding them
+            // to the remote system for decoding + handling by the real implementation. Therefore `RemoteActor`s
+            // can be thought of as a "shim" to a real actor on a remote system
             if !myself.get_id().is_local() {
                 match msg.serialized_msg {
                     Some(serialized_msg) => {
-                        handler
+                        return handler
                             .handle_serialized(myself, serialized_msg, state)
                             .await;
-                        return;
                     }
                     None => {
-                        panic!("Failed to read serialized message from `BoxedMessage`");
+                        return Err(From::from(
+                            "`RemoteActor` failed to read `SerializedMessage` from `BoxedMessage`",
+                        ));
                     }
                 }
             }
         }
 
-        // panic in order to kill the actor
-        let typed_msg = match TMsg::from_boxed(msg) {
-            Ok(m) => m,
-            Err(_) => {
-                panic!(
-                    "Failed to convert message from `BoxedMessage` to `{}`",
-                    std::any::type_name::<TMsg>()
-                )
-            }
-        };
-
+        // An error here will bubble up to terminate the actor
+        let typed_msg = TMsg::from_boxed(msg)?;
         handler.handle(myself, typed_msg, state).await
     }
 
@@ -514,54 +555,39 @@ where
         state: &mut TState,
         handler: Arc<THandler>,
         message: SupervisionEvent,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
         handler.handle_supervisor_evt(myself, message, state).await
     }
 
     async fn do_pre_start(
         myself: ActorRef<THandler>,
         handler: Arc<THandler>,
-    ) -> Result<TState, SpawnErr> {
+    ) -> Result<Result<TState, ActorProcessingErr>, SpawnErr> {
         let future = handler.pre_start(myself);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
-            .map_err(|err| {
-                SpawnErr::StartupPanic(format!(
-                    "Actor panicked in pre_start with '{}'",
-                    get_panic_string(err)
-                ))
-            })
+            .map_err(|err| SpawnErr::StartupPanic(get_panic_string(err)))
     }
 
     async fn do_post_start(
         myself: ActorRef<THandler>,
         handler: Arc<THandler>,
         state: &mut TState,
-    ) -> Result<(), ActorErr> {
+    ) -> Result<Result<(), ActorProcessingErr>, ActorErr> {
         let future = handler.post_start(myself, state);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
-            .map_err(|err| {
-                ActorErr::Panic(format!(
-                    "Actor panicked in post_start with '{}'",
-                    get_panic_string(err)
-                ))
-            })
+            .map_err(|err| ActorErr::Panic(get_panic_string(err)))
     }
 
     async fn do_post_stop(
         myself: ActorRef<THandler>,
         handler: Arc<THandler>,
         state: &mut TState,
-    ) -> Result<(), ActorErr> {
+    ) -> Result<Result<(), ActorProcessingErr>, ActorErr> {
         let future = handler.post_stop(myself, state);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
-            .map_err(|err| {
-                ActorErr::Panic(format!(
-                    "Actor panicked in post_stop with '{}'",
-                    get_panic_string(err)
-                ))
-            })
+            .map_err(|err| ActorErr::Panic(get_panic_string(err)))
     }
 }

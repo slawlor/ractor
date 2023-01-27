@@ -20,8 +20,8 @@ jobs:
           - name: Test ractor with the `cluster` feature
             package: ractor
             flags: -F cluster
-          - name: Test ractor-cluster
-            package: ractor-cluster
+          - name: Test ractor_cluster
+            package: ractor_cluster
             # flags: 
             
     steps:

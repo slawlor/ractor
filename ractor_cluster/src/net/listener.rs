@@ -5,7 +5,7 @@
 
 //! TCP Server to accept incoming sessions
 
-use ractor::{cast, Message};
+use ractor::{cast, ActorProcessingErr, Message};
 use ractor::{Actor, ActorRef};
 use tokio::net::TcpListener;
 
@@ -48,12 +48,12 @@ impl Actor for Listener {
 
     type State = ListenerState;
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         let addr = format!("0.0.0.0:{}", self.port);
         let listener = match TcpListener::bind(&addr).await {
             Ok(l) => l,
             Err(err) => {
-                panic!("Error listening to socket: {}", err);
+                return Err(From::from(err));
             }
         };
 
@@ -61,18 +61,28 @@ impl Actor for Listener {
         let _ = myself.cast(ListenerMessage);
 
         // create the initial state
-        Self::State {
+        Ok(Self::State {
             listener: Some(listener),
-        }
+        })
     }
 
-    async fn post_stop(&self, _myself: ActorRef<Self>, state: &mut Self::State) {
+    async fn post_stop(
+        &self,
+        _myself: ActorRef<Self>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         // close the listener properly, in case anyone else has handles to the actor stopping
         // total droppage
         drop(state.listener.take());
+        Ok(())
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, _message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        _message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         if let Some(listener) = &mut state.listener {
             match listener.accept().await {
                 Ok((stream, addr)) => {
@@ -96,5 +106,6 @@ impl Actor for Listener {
 
         // continue accepting new sockets
         let _ = myself.cast(ListenerMessage);
+        Ok(())
     }
 }

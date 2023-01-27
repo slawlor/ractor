@@ -19,6 +19,8 @@ hard requirement for `ractor`.
 
 `ractor` is a modern actor framework written in 100% rust with NO `unsafe` code.
 
+Additionally `ractor` has a companion library, `ractor_cluster` which is needed for `ractor` to be deployed in a distributed (cluster-like) scenario. `ractor_cluster` is not yet ready for public release, but is work-in-progress and coming shortly!
+
 ### Why ractor?
 
 There are other actor frameworks written in Rust ([Actix](https://github.com/actix/actix), [riker](https://github.com/riker-rs/riker), or [just actors in Tokio](https://ryhl.io/blog/actors-with-tokio/)) plus a whole list compiled on [this Reddit post](https://www.reddit.com/r/rust/comments/n2cmvd/there_are_a_lot_of_actor_framework_projects_on/)
@@ -47,6 +49,12 @@ Install `ractor` by adding the following to your Cargo.toml dependencies
 ractor = "0.4"
 ```
 
+## Features
+
+`ractor` exposes a single feature currently, namely
+
+1. `cluster` which exposes various functionality required for `ractor_cluster` to setup and manage a cluster of actors over a network link. This is work-in-progress and is being tracked in [#16](https://github.com/slawlor/ractor/issues/16).
+
 ## Working with Actors
 
 Actors in `ractor` are very lightweight and can be treated as thread-safe. Each actor will only call one of it's handler functions at a time, and they will
@@ -55,7 +63,7 @@ never be executed in parallel. Following the actor model leads to microservices 
 An example `ping-pong` actor might be the following
 
 ```rust
-use ractor::{Actor, ActorCell};
+use ractor::{Actor, ActorCell, ActorProcessingErr};
 
 /// [PingPong] is a basic actor that will print
 /// ping..pong.. repeatedly until some exit
@@ -98,10 +106,10 @@ impl Actor for PingPong {
     // Initially we need to create our state, and potentially
     // start some internal processing (by posting a message for
     // example)
-    async fn pre_start(&self, myself: ActorCell) -> Self::State {
+    async fn pre_start(&self, myself: ActorCell) -> Result<Self::State, ActorProcessingErr> {
         // startup the event processing
-        self.send_message(myself, Message::Ping).unwrap();
-        0u8
+        myself.cast(Message::Ping)?;
+        Ok(0u8)
     }
 
     // This is our main message handler
@@ -110,15 +118,16 @@ impl Actor for PingPong {
         myself: ActorCell,
         message: Self::Msg,
         state: &mut Self::State,
-    ){
+    ) -> Result<(), ActorProcessingErr> {
         if *state < 10u8 {
             message.print();
-            self.send_message(myself, message.next()).unwrap();
+            myself.cast(message.next())?;
             *state += 1;
         } else {
             myself.stop(None);
             // don't send another message, rather stop the agent after 10 iterations
         }
+        Ok(())
     }
 }
 

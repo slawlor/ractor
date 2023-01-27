@@ -6,6 +6,17 @@
 //! Erlang `node()` host communication for managing remote actor communication in
 //! a cluster
 //!
+//! ## Overview
+//!
+//! A [NodeServer] handles opening the TCP listener and managing incoming and outgoing
+//! [NodeSession] requests. [NodeSession]s represent a remote server, locally.
+//!
+//! Additionally, you can open a session as a "client" by requesting a new session from the [NodeServer]
+//! after intially connecting a [TcpStream] to the desired endpoint and then attaching the [NodeSession]
+//! to the TcpStream (and linking the actors). See [client::connect] for client-based connections
+//!
+//! ## Supervision
+//!
 //! The supervision tree is the following
 //!
 //! [NodeServer] supervises
@@ -14,8 +25,9 @@
 //!
 //! Each [NodeSession] supervises
 //!     1. The TCP `ractor_cluster::net::session::Session` connection
-//!     2. (todo) All of the remote referenced actors. That way if the overall node session closes (due to tcp err for example) will lose connectivity
-//!         to all of the remote actors
+//!     2. All of the remote referenced actors `ractor_cluster::remote_actor::RemoteActor`.
+//!        That way if the overall node session closes (due to tcp err for example) will
+//!        lose connectivity to all of the remote actors
 //!
 //! Each `actor_cluster::net::session::Session` supervises
 //!     1. A TCP writer actor (`ractor_cluster::net::session::SessionWriter`)
@@ -26,25 +38,10 @@
 //!
 
 /*
-TODO:
+What's there to do? See tracking issue <https://github.com/slawlor/ractor/issues/16> for the most
+up-to-date information on the status of remoting and actors
 
-Overview:
-
-A `NodeServer` handles opening the TCP listener and managing incoming and outgoing `NodeSession` requests. `NodeSession`s
-will represent a remote server locally.
-
-Additionally, you can open a session as a "client" by requesting a new session from the  NodeServer
-after intially connecting a [TcpStream] to the desired endpoint and then attaching the NodeSession
-to the TcpStream (and linking the actor). (See src/node/client.rs)
-
-What's there to do?
-1. The inter-node messaging protocol -> Based heavily on https://www.erlang.org/doc/apps/erts/erl_dist_protocol.html#protocol-between-connected-nodes
-2. Having a [NodeSession] manage child actors from the remote system
-3. Remote-supportive actors, which support serializing their payloads over the wire
-4. Populating the global + pg registries with remote registered actors
-5. Adjustments in the default Message type which allow messages to be serializable. (with `cluster` feature enabled)
-6. Allow actor id's to be set for remote actors, tied to a specific node session
-
+4. Populating the global named registered actors (do we want this?)
 */
 
 pub mod auth;
@@ -56,7 +53,7 @@ use tokio::net::TcpStream;
 use std::collections::HashMap;
 use std::{cmp::Ordering, collections::hash_map::Entry};
 
-use ractor::{cast, Actor, ActorId, ActorRef, RpcReplyPort, SupervisionEvent};
+use ractor::{cast, Actor, ActorId, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
 
 use crate::protocol::auth as auth_protocol;
 
@@ -91,7 +88,7 @@ impl From<SessionCheckReply> for auth_protocol::server_status::Status {
     }
 }
 
-/// Messages to/from the session aggregator
+/// Messages to/from the session manager
 pub enum SessionManagerMessage {
     /// Notifies the session manager that a new incoming (`is_server = true`) or outgoing (`is_server = false`)
     /// [TcpStream] was accepted
@@ -122,7 +119,6 @@ pub enum SessionManagerMessage {
         name: auth_protocol::NameMessage,
     },
 }
-
 impl ractor::Message for SessionManagerMessage {}
 
 /// Message from the TCP `ractor_cluster::net::session::Session` actor and the
@@ -207,7 +203,7 @@ impl NodeServerState {
                         value.is_server,
                     ) {
                         // the peer's name is > this node's name and they connected to us
-                        // od
+                        // or
                         // the peer's name is < this node's name and we connected to them
                         (Ordering::Greater, true) | (Ordering::Less, false) => {
                             value.actor.stop(Some("duplicate_connection".to_string()));
@@ -234,14 +230,12 @@ impl NodeServerState {
 impl Actor for NodeServer {
     type Msg = SessionManagerMessage;
     type State = NodeServerState;
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         let listener = crate::net::listener::Listener::new(self.port, myself.clone());
 
-        let (actor_ref, _) = Actor::spawn_linked(None, listener, myself.get_cell())
-            .await
-            .expect("Failed to start listener");
+        let (actor_ref, _) = Actor::spawn_linked(None, listener, myself.get_cell()).await?;
 
-        Self::State {
+        Ok(Self::State {
             node_sessions: HashMap::new(),
             listener: actor_ref,
             node_id_counter: 0,
@@ -251,10 +245,15 @@ impl Actor for NodeServer {
                 }),
                 name: format!("{}@{}", self.node_name, self.hostname),
             },
-        }
+        })
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             Self::Msg::ConnectionOpened { stream, is_server } => {
                 let node_id = state.node_id_counter;
@@ -292,6 +291,7 @@ impl Actor for NodeServer {
                 let _ = reply.send(state.check_peers(peer_name));
             }
         }
+        Ok(())
     }
 
     async fn handle_supervisor_evt(
@@ -299,7 +299,7 @@ impl Actor for NodeServer {
         myself: ActorRef<Self>,
         message: SupervisionEvent,
         state: &mut Self::State,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             SupervisionEvent::ActorPanicked(actor, msg) => {
                 if state.listener.get_id() == actor.get_id() {
@@ -312,9 +312,8 @@ impl Actor for NodeServer {
                     // trying to start the NodeServer
                     let listener = crate::net::listener::Listener::new(self.port, myself.clone());
 
-                    let (actor_ref, _) = Actor::spawn_linked(None, listener, myself.get_cell())
-                        .await
-                        .expect("Failed to start listener");
+                    let (actor_ref, _) =
+                        Actor::spawn_linked(None, listener, myself.get_cell()).await?;
                     state.listener = actor_ref;
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
@@ -347,9 +346,8 @@ impl Actor for NodeServer {
                     // trying to start the NodeServer
                     let listener = crate::net::listener::Listener::new(self.port, myself.clone());
 
-                    let (actor_ref, _) = Actor::spawn_linked(None, listener, myself.get_cell())
-                        .await
-                        .expect("Failed to start listener");
+                    let (actor_ref, _) =
+                        Actor::spawn_linked(None, listener, myself.get_cell()).await?;
                     state.listener = actor_ref;
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
@@ -375,5 +373,6 @@ impl Actor for NodeServer {
                 //no-op
             }
         }
+        Ok(())
     }
 }

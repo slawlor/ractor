@@ -14,6 +14,13 @@ use crate::RpcReplyPort;
 /// An error downcasting a boxed item to a strong type
 #[derive(Debug)]
 pub struct BoxedDowncastErr;
+impl std::fmt::Display for BoxedDowncastErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "An error occurred handling a boxed message")
+    }
+}
+
+impl std::error::Error for BoxedDowncastErr {}
 
 /// Represents a serialized call or cast message
 #[cfg(feature = "cluster")]
@@ -96,29 +103,29 @@ pub trait Message: Any + Send + Sized + 'static {
 
     /// Convert this message to a [BoxedMessage]
     #[cfg(feature = "cluster")]
-    fn box_message(self, pid: &ActorId) -> BoxedMessage {
+    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
         if Self::serializable() && !pid.is_local() {
             // it's a message to a remote actor, serialize it and send it over the wire!
-            BoxedMessage {
+            Ok(BoxedMessage {
                 msg: None,
-                serialized_msg: Some(self.serialize()),
-            }
+                serialized_msg: Some(self.serialize()?),
+            })
         } else if pid.is_local() {
-            BoxedMessage {
+            Ok(BoxedMessage {
                 msg: Some(Box::new(self)),
                 serialized_msg: None,
-            }
+            })
         } else {
-            panic!("Cannot send message to remote actor without the message being serializable");
+            Err(BoxedDowncastErr)
         }
     }
 
     /// Convert this message to a [BoxedMessage]
     #[cfg(not(feature = "cluster"))]
-    fn box_message(self, _pid: &ActorId) -> BoxedMessage {
-        BoxedMessage {
+    fn box_message(self, _pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
+        Ok(BoxedMessage {
             msg: Some(Box::new(self)),
-        }
+        })
     }
 
     /// Determines if this type is serializable
@@ -129,14 +136,14 @@ pub trait Message: Any + Send + Sized + 'static {
 
     /// Serializes this message (if supported)
     #[cfg(feature = "cluster")]
-    fn serialize(self) -> SerializedMessage {
-        unimplemented!()
+    fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
+        Err(BoxedDowncastErr)
     }
 
     /// Deserialize binary data to this message type
     #[cfg(feature = "cluster")]
     fn deserialize(_bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
-        unimplemented!()
+        Err(BoxedDowncastErr)
     }
 }
 
