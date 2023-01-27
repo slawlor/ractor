@@ -17,6 +17,12 @@ jobs:
           - name: Run the default tests
             package: ractor
             # flags: 
+          - name: Test ractor with the `cluster` feature
+            package: ractor
+            flags: -F cluster
+          - name: Test ractor-cluster
+            package: ractor-cluster
+            # flags: 
             
     steps:
       - uses: actions/checkout@main
@@ -27,7 +33,7 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Run test
+      - name: ${{matrix.name}}
         uses: actions-rs/cargo@v1
         with:
           command: test

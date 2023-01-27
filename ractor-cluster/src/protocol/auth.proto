@@ -1,0 +1,117 @@
+// Copyright (c) Sean Lawlor
+//
+// This source code is licensed under both the MIT license found in the
+// LICENSE-MIT file in the root directory of this source tree.
+
+//! Authentication handshake messages for connecting `node()`s together.
+//! The protocol messages defined here roughly follow the Erlang distributed systems guide
+//! found at: https://www.erlang.org/doc/apps/erts/erl_dist_protocol.html#distribution-handshake
+
+// NOTE: We make heavy use of oneof syntax here in order to deal with a rust-like enum
+// type. You can see https://developers.google.com/protocol-buffers/docs/proto3#oneof for
+// the syntax and guide
+
+syntax = "proto3";
+
+package auth;
+
+// Placeholder to represent a node's flags
+message NodeFlags {
+    // The node version
+    uint32 version = 1;
+}
+
+// A message containing the node's name
+message NameMessage {
+    // The node's full name
+    // Format: `node_name@hostname`
+    string name = 1;
+
+    // The node's capability flags
+    NodeFlags flags = 2;
+}
+
+// Server -> Client: `SendStatus` is the server replying with the handshake status to the client
+message ServerStatus {
+    // Status types
+    enum Status {
+        // The handshake will continue
+        OK = 0;
+        // The handshake will continue, but A is informed that B has another ongoing 
+        // connection attempt that will be shut down (simultaneous connect where A's 
+        // name is greater than B's name, compared literally).
+        OK_SIMULTANEOUS = 1;
+        // The handshake will not continue, as B already has an ongoing handshake, which 
+        // it itself has initiated (simultaneous connect where B's name is greater than A's).
+        NOT_OK = 2;
+        // The connection is disallowed for some (unspecified) security reason.
+        NOT_ALLOWED = 3;
+        // A connection to the node is already active, which either means that node A is confused 
+        // or that the TCP connection breakdown of a previous node with this name has not yet 
+        // reached node B.
+        ALIVE = 4;
+
+        // Skipped NAMED = 5;
+    }
+
+    // The status
+    Status status = 1;
+}
+
+// The client's status reply if the `ServerStatus` was ALIVE
+//
+// If status was alive, node A answers with another status message containing either true, 
+// which means that the connection is to continue (the old connection from this node is 
+// broken), or false, which means that the connection is to be closed (the connection 
+// attempt was a mistake.
+message ClientStatus {
+    // The status
+    bool status = 1;
+}
+
+// The server's initial challenge request
+message Challenge {
+    // The server's name
+    string name = 1;
+    // The node's capability flags
+    NodeFlags flags = 2;
+    // The challenge value
+    uint32 challenge = 3;
+}
+
+// The reply to the server's challenge.
+message ChallengeReply {
+    // The client's own challenge for the server to handle
+    uint32 challenge = 1;
+    // An MD5 digest that the client constructed from the server's
+    // challenge value
+    bytes digest = 2;
+}
+
+// The server's reply to the client about their own
+// challenge
+message ChallengeAck {
+    // Another MD5 digest that the server constructed from the 
+    // client's challenge value
+    bytes digest = 1;
+}
+
+// A authentication message
+message AuthenticationMessage {
+    // The inner message type
+    oneof msg {
+        // Send the name
+        NameMessage name = 1;
+        // Send the status
+        ServerStatus server_status = 2;
+        // Send the client status
+        ClientStatus client_status = 3;
+        // Server's challenge to the client
+        Challenge server_challenge = 4;
+        // Client's reply to server's challenge and 
+        // client's own challenge to the server
+        ChallengeReply client_challenge = 5;
+        // Server's reply to the client's challenge
+        ChallengeAck server_ack = 6;
+    }
+}

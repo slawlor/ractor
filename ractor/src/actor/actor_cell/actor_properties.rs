@@ -6,14 +6,17 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
-use crate::concurrency as mpsc;
+use crate::{concurrency as mpsc, Message};
 
-use crate::actor::messages::{BoxedMessage, StopMessage};
+use crate::actor::messages::StopMessage;
 use crate::actor::supervision::SupervisionTree;
 use crate::concurrency::{
     MpscReceiver as BoundedInputPortReceiver, MpscSender as BoundedInputPort,
     MpscUnboundedReceiver as InputPortReceiver, MpscUnboundedSender as InputPort,
 };
+use crate::message::BoxedMessage;
+#[cfg(feature = "cluster")]
+use crate::message::SerializedMessage;
 use crate::{Actor, ActorId, ActorName, ActorStatus, MessagingErr, Signal, SupervisionEvent};
 
 // The inner-properties of an Actor
@@ -27,11 +30,29 @@ pub(crate) struct ActorProperties {
     pub(crate) message: InputPort<BoxedMessage>,
     pub(crate) tree: SupervisionTree,
     pub(crate) type_id: std::any::TypeId,
+    #[cfg(feature = "cluster")]
+    pub(crate) supports_remoting: bool,
 }
 
 impl ActorProperties {
     pub fn new<TActor>(
         name: Option<ActorName>,
+    ) -> (
+        Self,
+        BoundedInputPortReceiver<Signal>,
+        BoundedInputPortReceiver<StopMessage>,
+        InputPortReceiver<SupervisionEvent>,
+        InputPortReceiver<BoxedMessage>,
+    )
+    where
+        TActor: Actor,
+    {
+        Self::new_remote::<TActor>(name, crate::actor_id::get_new_local_id())
+    }
+
+    pub fn new_remote<TActor>(
+        name: Option<ActorName>,
+        id: ActorId,
     ) -> (
         Self,
         BoundedInputPortReceiver<Signal>,
@@ -48,7 +69,7 @@ impl ActorProperties {
         let (tx_message, rx_message) = mpsc::mpsc_unbounded();
         (
             Self {
-                id: crate::actor_id::get_new_local_id(),
+                id,
                 name,
                 status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
                 signal: tx_signal,
@@ -57,6 +78,8 @@ impl ActorProperties {
                 message: tx_message,
                 tree: SupervisionTree::default(),
                 type_id: std::any::TypeId::of::<TActor>(),
+                #[cfg(feature = "cluster")]
+                supports_remoting: TActor::Msg::serializable(),
             },
             rx_signal,
             rx_stop,
@@ -92,11 +115,22 @@ impl ActorProperties {
     where
         TActor: Actor,
     {
-        if self.type_id != std::any::TypeId::of::<TActor>() {
+        // Only type-check messages of local actors, remote actors send serialized
+        // payloads
+        if self.id.is_local() && self.type_id != std::any::TypeId::of::<TActor>() {
             return Err(MessagingErr::InvalidActorType);
         }
 
-        let boxed = BoxedMessage::new(message);
+        let boxed = message.box_message(&self.id);
+        self.message.send(boxed).map_err(|e| e.into())
+    }
+
+    #[cfg(feature = "cluster")]
+    pub fn send_serialized(&self, message: SerializedMessage) -> Result<(), MessagingErr> {
+        let boxed = BoxedMessage {
+            msg: None,
+            serialized_msg: Some(message),
+        };
         self.message.send(boxed).map_err(|e| e.into())
     }
 

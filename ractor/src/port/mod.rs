@@ -24,9 +24,17 @@ pub use output::*;
 /// consistent error type
 pub struct RpcReplyPort<TMsg> {
     port: concurrency::OneshotSender<TMsg>,
+    timeout: Option<concurrency::Duration>,
 }
 
 impl<TMsg> RpcReplyPort<TMsg> {
+    /// Read the timeout of this RPC reply port
+    ///
+    /// Returns [Some(concurrency::Duration)] if a timeout is set, [None] otherwise
+    pub fn get_timeout(&self) -> Option<concurrency::Duration> {
+        self.timeout
+    }
+
     /// Send a message to the Rpc reply port. This consumes the port
     ///
     /// * `msg` - The message to send
@@ -48,6 +56,18 @@ impl<TMsg> RpcReplyPort<TMsg> {
 
 impl<TMsg> From<concurrency::OneshotSender<TMsg>> for RpcReplyPort<TMsg> {
     fn from(value: concurrency::OneshotSender<TMsg>) -> Self {
-        Self { port: value }
+        Self {
+            port: value,
+            timeout: None,
+        }
+    }
+}
+
+impl<TMsg> From<(concurrency::OneshotSender<TMsg>, concurrency::Duration)> for RpcReplyPort<TMsg> {
+    fn from((value, timeout): (concurrency::OneshotSender<TMsg>, concurrency::Duration)) -> Self {
+        Self {
+            port: value,
+            timeout: Some(timeout),
+        }
     }
 }

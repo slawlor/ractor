@@ -12,6 +12,10 @@ publish = false
 
 [dependencies]
 async-trait = "0.1"
-ractor = { path="../ractor" }
-rustyrepl = "0.1"
-tokio = { version = "1.23", features = ["full"]}
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.10"
+log = "0.4"
+ractor = { path="../ractor", features = ["cluster"] }
+ractor-cluster = { path = "../ractor-cluster" }
+# rustyrepl = "0.1"
+tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread"] }

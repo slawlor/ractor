@@ -7,18 +7,24 @@
 extern crate criterion;
 
 use criterion::{BatchSize, Criterion};
+#[cfg(feature = "cluster")]
+use ractor::Message;
 use ractor::{Actor, ActorRef};
 
 struct BenchActor;
 
+struct BenchActorMessage;
+#[cfg(feature = "cluster")]
+impl Message for BenchActorMessage {}
+
 #[async_trait::async_trait]
 impl Actor for BenchActor {
-    type Msg = ();
+    type Msg = BenchActorMessage;
 
     type State = ();
 
     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
-        let _ = myself.cast(());
+        let _ = myself.cast(BenchActorMessage);
     }
 
     async fn handle(&self, myself: ActorRef<Self>, _message: Self::Msg, _state: &mut Self::State) {
@@ -30,7 +36,7 @@ fn create_actors(c: &mut Criterion) {
     let small = 100;
     let large = 10000;
 
-    let id = format!("Creation of {} actors", small);
+    let id = format!("Creation of {small} actors");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(
@@ -51,7 +57,7 @@ fn create_actors(c: &mut Criterion) {
         );
     });
 
-    let id = format!("Creation of {} actors", large);
+    let id = format!("Creation of {large} actors");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(
@@ -77,7 +83,7 @@ fn schedule_work(c: &mut Criterion) {
     let small = 100;
     let large = 1000;
 
-    let id = format!("Waiting on {} actors to process first message", small);
+    let id = format!("Waiting on {small} actors to process first message");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(
@@ -95,13 +101,13 @@ fn schedule_work(c: &mut Criterion) {
                 })
             },
             |mut handles| {
-                runtime.block_on(async move { while let Some(_) = handles.join_next().await {} })
+                runtime.block_on(async move { while handles.join_next().await.is_some() {} })
             },
             BatchSize::PerIteration,
         );
     });
 
-    let id = format!("Waiting on {} actors to process first message", large);
+    let id = format!("Waiting on {large} actors to process first message");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(
@@ -118,7 +124,7 @@ fn schedule_work(c: &mut Criterion) {
                 })
             },
             |mut handles| {
-                runtime.block_on(async move { while let Some(_) = handles.join_next().await {} })
+                runtime.block_on(async move { while handles.join_next().await.is_some() {} })
             },
             BatchSize::PerIteration,
         );
@@ -135,12 +141,12 @@ fn process_messages(c: &mut Criterion) {
 
     #[async_trait::async_trait]
     impl Actor for MessagingActor {
-        type Msg = ();
+        type Msg = BenchActorMessage;
 
         type State = u64;
 
         async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
-            let _ = myself.cast(());
+            let _ = myself.cast(BenchActorMessage);
             0u64
         }
 
@@ -154,12 +160,12 @@ fn process_messages(c: &mut Criterion) {
             if *state >= self.num_msgs {
                 myself.stop(None);
             } else {
-                let _ = myself.cast(());
+                let _ = myself.cast(BenchActorMessage);
             }
         }
     }
 
-    let id = format!("Waiting on {} messages to be processed", NUM_MSGS);
+    let id = format!("Waiting on {NUM_MSGS} messages to be processed");
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     c.bench_function(&id, move |b| {
         b.iter_batched(

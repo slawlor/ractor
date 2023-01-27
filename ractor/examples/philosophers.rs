@@ -34,6 +34,8 @@ enum ForkMessage {
     /// allow the fork to be sent to the next user.
     PutForkDown(ActorId),
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for ForkMessage {}
 
 struct ForkState {
     /// Flag to identify if the fork is clean or not
@@ -83,10 +85,7 @@ impl Fork {
                     );
                 }
                 None => {
-                    println!(
-                        "ERROR Received `UsingFork` from {:?}. Real owner is `None`",
-                        who
-                    );
+                    println!("ERROR Received `UsingFork` from {who:?}. Real owner is `None`");
                 }
             },
             ForkMessage::PutForkDown(who) => match &state.owned_by {
@@ -102,10 +101,7 @@ impl Fork {
                     );
                 }
                 None => {
-                    println!(
-                        "ERROR Received `PutForkDown` from {:?}. Real owner is `None`",
-                        who
-                    );
+                    println!("ERROR Received `PutForkDown` from {who:?}. Real owner is `None`");
                 }
             },
         }
@@ -232,6 +228,8 @@ enum PhilosopherMessage {
     ReceiveFork(ActorId),
     SendMetrics(RpcReplyPort<PhilosopherMetrics>),
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for PhilosopherMessage {}
 
 struct Philosopher {
     time_slice: Duration,
@@ -248,10 +246,11 @@ impl Philosopher {
         state.last_state_change = Instant::now();
 
         // schedule become hungry after the thinking time has elapsed
-        let _ = myself.send_after(
-            self.time_slice,
-            PhilosopherMessage::BecomeHungry(state.metrics.state_change_count),
-        );
+        let metrics_count = state.metrics.state_change_count;
+        #[allow(clippy::let_underscore_future)]
+        let _ = myself.send_after(self.time_slice, move || {
+            PhilosopherMessage::BecomeHungry(metrics_count)
+        });
     }
 
     /// Helper command to set the internal state to begin eating
@@ -273,10 +272,11 @@ impl Philosopher {
             .cast(ForkMessage::UsingFork(myself.get_id()));
 
         // schedule stop eating after the eating time has elapsed
-        let _ = myself.send_after(
-            self.time_slice,
-            PhilosopherMessage::StopEating(state.metrics.state_change_count),
-        );
+        let metrics_count = state.metrics.state_change_count;
+        #[allow(clippy::let_underscore_future)]
+        let _ = myself.send_after(self.time_slice, move || {
+            PhilosopherMessage::StopEating(metrics_count)
+        });
     }
 
     /// Helper command to request any forks which are missing
@@ -468,10 +468,10 @@ async fn main() {
             left: forks[left].clone(),
             right: forks[right].clone(),
         };
-        let (philosopher, handle) = Actor::spawn(Some(philosopher_names[left]), p)
+        let (philosopher, handle) = Actor::spawn(Some(philosopher_names[left].to_string()), p)
             .await
             .expect("Failed to create philosopher!");
-        results.insert(philosopher_names[left], None);
+        results.insert(philosopher_names[left].to_string(), None);
         philosophers.push(philosopher);
         all_handles.spawn(handle);
     }
@@ -494,11 +494,11 @@ async fn main() {
     }
 
     // wait for everything to shut down
-    while let Some(_) = all_handles.join_next().await {}
+    while all_handles.join_next().await.is_some() {}
 
     // print metrics
     println!("Simulation results");
     for (who, metric) in results {
-        println!("{}: {:?}", who, metric);
+        println!("{who}: {metric:?}");
     }
 }

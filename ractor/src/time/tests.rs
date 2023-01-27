@@ -55,7 +55,7 @@ async fn test_intervals() {
     // therefore the counter should be empty
     assert_eq!(0, counter.load(Ordering::Relaxed));
 
-    crate::concurrency::sleep(Duration::from_millis(120)).await;
+    crate::concurrency::sleep(Duration::from_millis(150)).await;
     // kill the actor
     actor_ref.stop(None);
 
@@ -104,7 +104,7 @@ async fn test_send_after() {
     .await
     .expect("Failed to create test actor");
 
-    let send_after_handle = actor_ref.send_after(Duration::from_millis(10), ());
+    let send_after_handle = actor_ref.send_after(Duration::from_millis(10), || ());
 
     // even though the timer is started, we should be in a "pause" state for 10ms,
     // therefore the counter should be empty

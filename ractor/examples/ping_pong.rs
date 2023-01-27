@@ -23,6 +23,8 @@ pub enum Message {
     Ping,
     Pong,
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for Message {}
 
 impl Message {
     fn next(&self) -> Self {

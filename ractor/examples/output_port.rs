@@ -21,9 +21,16 @@ use tokio::time::{timeout, Duration};
 enum PublisherMessage {
     Publish(String),
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for PublisherMessage {}
+
+#[derive(Clone)]
+struct Output(String);
+#[cfg(feature = "cluster")]
+impl ractor::Message for Output {}
 
 struct Publisher {
-    output: Arc<OutputPort<String>>,
+    output: Arc<OutputPort<Output>>,
 }
 
 #[async_trait::async_trait]
@@ -37,8 +44,8 @@ impl Actor for Publisher {
     async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
         match message {
             Self::Msg::Publish(msg) => {
-                println!("Publishing {}", msg);
-                self.output.send(format!("Published: {}", msg));
+                println!("Publishing {msg}");
+                self.output.send(Output(format!("Published: {msg}")));
             }
         }
     }
@@ -49,6 +56,8 @@ struct Subscriber;
 enum SubscriberMessage {
     Published(String),
 }
+#[cfg(feature = "cluster")]
+impl ractor::Message for SubscriberMessage {}
 
 #[async_trait::async_trait]
 impl Actor for Subscriber {
@@ -61,10 +70,7 @@ impl Actor for Subscriber {
     async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
         match message {
             Self::Msg::Published(msg) => {
-                println!(
-                    "Subscriber ({:?}) received published message '{}'",
-                    myself, msg
-                );
+                println!("Subscriber ({myself:?}) received published message '{msg}'");
             }
         }
     }
@@ -94,7 +100,7 @@ async fn main() {
 
         // TODO: there has to be a better syntax than keeping an arc to the port?
         port.subscribe(actor_ref.clone(), |msg| {
-            Some(SubscriberMessage::Published(msg))
+            Some(SubscriberMessage::Published(msg.0))
         });
 
         subscriber_refs.push(actor_ref);
@@ -104,7 +110,7 @@ async fn main() {
     // send some messages (we should see the subscribers printout)
     for i in 0..3 {
         publisher_ref
-            .cast(PublisherMessage::Publish(format!("Something {}", i)))
+            .cast(PublisherMessage::Publish(format!("Something {i}")))
             .expect("Send failed");
         tokio::time::sleep(Duration::from_millis(500)).await;
     }

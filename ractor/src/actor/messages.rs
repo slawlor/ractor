@@ -5,56 +5,15 @@
 
 //! Messages which are built-in for `ractor`'s processing routines
 //!
-//! Additionally contains definitions for [BoxedMessage] and [BoxedState]
-//! which are used to handle strongly-typed messages and states in a
+//! Additionally contains definitions for [BoxedState]
+//! which are used to handle strongly-typed states in a
 //! generic way without having to know the strong type in the underlying framework
 
 use std::any::Any;
 use std::fmt::Debug;
 
-use crate::{Message, State};
-
-/// An error downcasting a boxed item to a strong type
-#[derive(Debug)]
-pub struct BoxedDowncastErr;
-
-/// A "boxed" message denoting a strong-type message
-/// but generic so it can be passed around without type
-/// constraints
-pub struct BoxedMessage {
-    /// The message value
-    pub msg: Option<Box<dyn Any + Send>>,
-}
-
-impl BoxedMessage {
-    /// Create a new [BoxedMessage] from a strongly-typed message
-    pub fn new<T>(msg: T) -> Self
-    where
-        T: Message,
-    {
-        Self {
-            msg: Some(Box::new(msg)),
-        }
-    }
-
-    /// Try and take the resulting message as a specific type, consumes
-    /// the boxed message
-    pub fn take<T>(&mut self) -> Result<T, BoxedDowncastErr>
-    where
-        T: Message,
-    {
-        match self.msg.take() {
-            Some(m) => {
-                if m.is::<T>() {
-                    Ok(*m.downcast::<T>().unwrap())
-                } else {
-                    Err(BoxedDowncastErr)
-                }
-            }
-            None => Err(BoxedDowncastErr),
-        }
-    }
-}
+use crate::message::BoxedDowncastErr;
+use crate::State;
 
 /// A "boxed" message denoting a strong-type message
 /// but generic so it can be passed around without type
@@ -95,8 +54,8 @@ impl BoxedState {
 }
 
 /// Messages to stop an actor
-pub(crate) enum StopMessage {
-    // Normal stop
+pub enum StopMessage {
+    /// Normal stop
     Stop,
     /// Stop with a reason
     Reason(String),
@@ -104,7 +63,7 @@ pub(crate) enum StopMessage {
 
 impl Debug for StopMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Stop message: {}", self)
+        write!(f, "Stop message: {self}")
     }
 }
 
@@ -112,7 +71,7 @@ impl std::fmt::Display for StopMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Stop => write!(f, "Stop"),
-            Self::Reason(reason) => write!(f, "Stop (reason = {})", reason),
+            Self::Reason(reason) => write!(f, "Stop (reason = {reason})"),
         }
     }
 }
@@ -135,11 +94,15 @@ pub enum SupervisionEvent {
 
     /// A subscribed process group changed
     ProcessGroupChanged(crate::pg::GroupChangeMessage),
+
+    /// A process lifecycle event occurred
+    #[cfg(feature = "cluster")]
+    PidLifecycleEvent(crate::registry::PidLifecycleEvent),
 }
 
 impl Debug for SupervisionEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Supervision event: {}", self)
+        write!(f, "Supervision event: {self}")
     }
 }
 
@@ -147,20 +110,24 @@ impl std::fmt::Display for SupervisionEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SupervisionEvent::ActorStarted(actor) => {
-                write!(f, "Started actor {:?}", actor)
+                write!(f, "Started actor {actor:?}")
             }
             SupervisionEvent::ActorTerminated(actor, _, reason) => {
                 if let Some(r) = reason {
-                    write!(f, "Stopped actor {:?} (reason = {})", actor, r)
+                    write!(f, "Stopped actor {actor:?} (reason = {r})")
                 } else {
-                    write!(f, "Stopped actor {:?}", actor)
+                    write!(f, "Stopped actor {actor:?}")
                 }
             }
             SupervisionEvent::ActorPanicked(actor, panic_msg) => {
-                write!(f, "Actor panicked {:?} - {}", actor, panic_msg)
+                write!(f, "Actor panicked {actor:?} - {panic_msg}")
             }
             SupervisionEvent::ProcessGroupChanged(change) => {
                 write!(f, "Process group {} changed", change.get_group())
+            }
+            #[cfg(feature = "cluster")]
+            SupervisionEvent::PidLifecycleEvent(change) => {
+                write!(f, "PID lifecycle event {change:?}")
             }
         }
     }
@@ -175,7 +142,7 @@ pub enum Signal {
 
 impl Debug for Signal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Signal: {}", self)
+        write!(f, "Signal: {self}")
     }
 }
 

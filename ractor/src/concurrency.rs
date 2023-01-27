@@ -52,6 +52,9 @@ pub mod tokio_primatives {
     /// A duration of time
     pub type Duration = tokio::time::Duration;
 
+    /// An instant measured on system time
+    pub type Instant = tokio::time::Instant;
+
     /// Sleep the task for a duration of time
     pub async fn sleep(dur: super::Duration) {
         tokio::time::sleep(dur).await;
@@ -97,10 +100,8 @@ pub mod tokio_primatives {
 
     pub(crate) use select;
 
-    // pub use tokio::select;
     // test macro
-    #[cfg(test)]
-    pub(crate) use tokio::test;
+    pub use tokio::test;
 }
 // #[cfg(feature = "tokio_runtime")]
 pub use tokio_primatives::*;

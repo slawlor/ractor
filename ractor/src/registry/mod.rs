@@ -5,8 +5,8 @@
 
 //! Represents an actor registry.
 //!
-//! It allows unique naming of actors via `'static &str` (not strings)
-//! so it works more like a Erlang `atom()`
+//! It allows unique naming of actors via `String`
+//! so it works more or less like an Erlang `atom()`
 //!
 //! Actors are automatically registered into the global registry, if they
 //! provide a name, upon construction.Actors are also
@@ -24,7 +24,7 @@
 //!
 //! ```rust
 //! async fn test() {
-//!     let maybe_actor = ractor::registry::where_is("my_actor");
+//!     let maybe_actor = ractor::registry::where_is("my_actor".to_string());
 //!     if let Some(actor) = maybe_actor {
 //!         // send a message, or interact with the actor
 //!         // but you'll need to know the actor's strong type
@@ -40,10 +40,16 @@ use once_cell::sync::OnceCell;
 
 use crate::{ActorCell, ActorName};
 
+#[cfg(feature = "cluster")]
+pub mod pid_registry;
+#[cfg(feature = "cluster")]
+pub use pid_registry::{get_all_pids, where_is_pid, PidLifecycleEvent};
+
 #[cfg(test)]
 mod tests;
 
 /// Errors involving the [crate::registry]'s actor registry
+#[derive(Debug)]
 pub enum ActorRegistryErr {
     /// Actor already registered
     AlreadyRegistered(ActorName),
@@ -59,7 +65,7 @@ fn get_actor_registry<'a>() -> &'a Arc<DashMap<ActorName, ActorCell>> {
 
 /// Put an actor into the registry
 pub(crate) fn register(name: ActorName, actor: ActorCell) -> Result<(), ActorRegistryErr> {
-    match get_actor_registry().entry(name) {
+    match get_actor_registry().entry(name.clone()) {
         Occupied(_) => Err(ActorRegistryErr::AlreadyRegistered(name)),
         Vacant(vacancy) => {
             vacancy.insert(actor);
@@ -92,5 +98,5 @@ pub fn where_is(name: ActorName) -> Option<ActorCell> {
 /// currently
 pub fn registered() -> Vec<ActorName> {
     let reg = get_actor_registry();
-    reg.iter().map(|kvp| *kvp.key()).collect::<Vec<_>>()
+    reg.iter().map(|kvp| kvp.key().clone()).collect::<Vec<_>>()
 }

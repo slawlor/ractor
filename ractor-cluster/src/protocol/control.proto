@@ -1,0 +1,85 @@
+// Copyright (c) Sean Lawlor
+//
+// This source code is licensed under both the MIT license found in the
+// LICENSE-MIT file in the root directory of this source tree.
+
+//! Control messages for authenticated `NodeSession`s. These manage the synchronization
+//! of actors and their lifecycles over the remote link
+
+// NOTE: We make heavy use of oneof syntax here in order to deal with a rust-like enum
+// type. You can see https://developers.google.com/protocol-buffers/docs/proto3#oneof for
+// the syntax and guide
+
+syntax = "proto3";
+
+package control;
+
+import "google/protobuf/timestamp.proto";
+
+// Represents a single actor
+message Actor {
+    // The local PID of the actor
+    uint64 pid = 1;
+    // The optional name of the actor
+    optional string name = 2;
+}
+
+// A heartbeat between actors
+message Ping {
+    // The original time of the ping send, returned in the `Pong` message
+    // to measure latency
+    google.protobuf.Timestamp timestamp = 1;
+}
+
+// Reply to a ping
+message Pong {
+    // The original time of the ping send, set by the original sender
+    google.protobuf.Timestamp timestamp = 1;
+}
+
+// Actor(s) spawn notification
+message Spawn {
+    // The actors to spawn
+    repeated Actor actors = 1;
+}
+
+// Actor(s) termination event
+message Terminate {
+    // The remote actors' PIDs
+    repeated uint64 ids = 1;
+}
+
+// Process group join occurred
+message PgJoin {
+    // The group
+    string group = 1;
+    // The actors
+    repeated Actor actors = 2;
+}
+
+// Process group leave occurred
+message PgLeave {
+    // The group
+    string group = 1;
+    // The actors
+    repeated Actor actors = 2;
+}
+
+// Control messages between authenticated `node()`s which are dist-connected
+message ControlMessage {
+    // The message payload
+    oneof msg {
+        // Spawn an actor
+        Spawn spawn = 1;
+        // A actor terminated
+        Terminate terminate = 2;
+        // A ping
+        Ping ping = 3;
+        // A pong
+        Pong pong = 4;
+        // A PG group join event
+        PgJoin pg_join = 5;
+        // A PG group leave event
+        PgLeave pg_leave = 6;
+    }
+}
