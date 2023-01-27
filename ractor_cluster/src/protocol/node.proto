@@ -19,6 +19,7 @@ message Cast {
     bytes what = 2;
 }
 
+// An outgoing remote procedure call
 message Call {
     // `to` is the intended actor
     uint64 to = 1;
@@ -31,6 +32,7 @@ message Call {
     optional uint64 timeout_ms = 4;
 }
 
+// A reply to a remote procedure call
 message CallReply {
     // `to` is the intended RemoteActor
     uint64 to = 1;

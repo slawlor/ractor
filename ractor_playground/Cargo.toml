@@ -1,5 +1,5 @@
 [package]
-name = "ractor-playground"
+name = "ractor_playground"
 version = "0.0.0"
 authors = ["Sean Lawlor <seanlawlor@fb.com>"]
 description = "A actor framework for Rust - REPL"
@@ -16,6 +16,6 @@ clap = { version = "4", features = ["derive"] }
 env_logger = "0.10"
 log = "0.4"
 ractor = { path="../ractor", features = ["cluster"] }
-ractor-cluster = { path = "../ractor-cluster" }
+ractor_cluster = { path = "../ractor_cluster" }
 # rustyrepl = "0.1"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread"] }

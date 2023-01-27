@@ -12,7 +12,9 @@ use std::sync::{
 
 use crate::concurrency::Duration;
 
-use crate::{Actor, ActorCell, ActorRef, ActorStatus, SpawnErr, SupervisionEvent};
+use crate::{
+    Actor, ActorCell, ActorProcessingErr, ActorRef, ActorStatus, SpawnErr, SupervisionEvent,
+};
 
 mod supervisor;
 
@@ -30,8 +32,33 @@ async fn test_panic_on_start_captured() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
             panic!("Boom!");
+        }
+    }
+
+    let actor_output = Actor::spawn(None, TestActor).await;
+    assert!(matches!(actor_output, Err(SpawnErr::StartupPanic(_))));
+}
+
+#[crate::concurrency::test]
+async fn test_error_on_start_captured() {
+    struct TestActor;
+
+    #[async_trait::async_trait]
+    impl Actor for TestActor {
+        type Msg = EmptyMessage;
+
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Err(From::from("boom"))
         }
     }
 
@@ -53,16 +80,22 @@ async fn test_stop_higher_priority_over_messages() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _myself: ActorRef<Self>,
             _message: Self::Msg,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             self.counter.fetch_add(1, Ordering::Relaxed);
             crate::concurrency::sleep(Duration::from_millis(100)).await;
+            Ok(())
         }
     }
 
@@ -119,15 +152,21 @@ async fn test_kill_terminates_work() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _myself: ActorRef<Self>,
             _message: Self::Msg,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             crate::concurrency::sleep(Duration::from_secs(10)).await;
+            Ok(())
         }
     }
 
@@ -157,15 +196,21 @@ async fn test_stop_does_not_terminate_async_work() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _myself: ActorRef<Self>,
             _message: Self::Msg,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             crate::concurrency::sleep(Duration::from_millis(100)).await;
+            Ok(())
         }
     }
 
@@ -202,15 +247,21 @@ async fn test_kill_terminates_supervision_work() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle_supervisor_evt(
             &self,
             _myself: ActorRef<Self>,
             _message: SupervisionEvent,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             crate::concurrency::sleep(Duration::from_millis(100)).await;
+            Ok(())
         }
     }
 
@@ -242,7 +293,12 @@ async fn test_sending_message_to_invalid_actor_type() {
     impl Actor for TestActor1 {
         type Msg = TestMessage1;
         type State = ();
-        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
     struct TestActor2;
     struct TestMessage2;
@@ -252,7 +308,12 @@ async fn test_sending_message_to_invalid_actor_type() {
     impl Actor for TestActor2 {
         type Msg = TestMessage2;
         type State = ();
-        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     let (actor1, handle1) = Actor::spawn(None, TestActor1)
@@ -304,15 +365,21 @@ async fn test_serialized_cast() {
     impl Actor for TestActor {
         type Msg = TestMessage;
         type State = ();
-        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _myself: ActorRef<Self>,
             _message: TestMessage,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             self.counter.fetch_add(1, Ordering::Relaxed);
+            Ok(())
         }
     }
 
@@ -417,20 +484,26 @@ async fn test_serialized_rpc() {
     impl Actor for TestActor {
         type Msg = TestMessage;
         type State = ();
-        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _myself: ActorRef<Self>,
             message: TestMessage,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             self.counter.fetch_add(1, Ordering::Relaxed);
             match message {
                 TestMessage::Rpc(port) => {
                     let _ = port.send("hello".to_string());
                 }
             }
+            Ok(())
         }
     }
 
@@ -477,7 +550,12 @@ async fn test_remote_actor() {
     impl Actor for DummySupervisor {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     struct TestRemoteActor {
@@ -501,14 +579,19 @@ async fn test_remote_actor() {
     impl Actor for TestRemoteActor {
         type Msg = TestRemoteMessage;
         type State = ();
-        async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _myself: ActorRef<Self>,
             _message: TestRemoteMessage,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             panic!("Remote actor's don't handle anything");
         }
 
@@ -517,8 +600,9 @@ async fn test_remote_actor() {
             _myself: ActorRef<Self>,
             _message: SerializedMessage,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             self.counter.fetch_add(1, Ordering::Relaxed);
+            Ok(())
         }
     }
 
@@ -553,6 +637,8 @@ async fn test_remote_actor() {
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
 async fn spawning_local_actor_as_remote_fails() {
+    use crate::ActorProcessingErr;
+
     struct RemoteActor;
     struct RemoteActorMessage;
     impl crate::Message for RemoteActorMessage {}
@@ -560,7 +646,12 @@ async fn spawning_local_actor_as_remote_fails() {
     impl Actor for RemoteActor {
         type Msg = RemoteActorMessage;
         type State = ();
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     struct EmptyActor;
@@ -568,7 +659,12 @@ async fn spawning_local_actor_as_remote_fails() {
     impl Actor for EmptyActor {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
     let remote_pid = crate::ActorId::Local(1);
 

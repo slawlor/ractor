@@ -10,7 +10,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::concurrency::Duration;
+use crate::{concurrency::Duration, ActorProcessingErr};
 
 use crate::{Actor, ActorRef};
 
@@ -26,17 +26,21 @@ async fn test_intervals() {
     impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
-        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {
-            self.counter.clone()
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(self.counter.clone())
         }
         async fn handle(
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
             state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             // stop the supervisor, which starts the supervision shutdown of children
             state.fetch_add(1, Ordering::Relaxed);
+            Ok(())
         }
     }
 
@@ -81,17 +85,21 @@ async fn test_send_after() {
     impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
-        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {
-            self.counter.clone()
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(self.counter.clone())
         }
         async fn handle(
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
             state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             // stop the supervisor, which starts the supervision shutdown of children
             state.fetch_add(1, Ordering::Relaxed);
+            Ok(())
         }
     }
 
@@ -132,7 +140,12 @@ async fn test_exit_after() {
     impl Actor for TestActor {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     let (actor_ref, actor_handle) = Actor::spawn(None, TestActor)
@@ -155,14 +168,20 @@ async fn test_kill_after() {
     impl Actor for TestActor {
         type Msg = ();
         type State = ();
-        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
         async fn handle(
             &self,
             _myself: ActorRef<Self>,
             _message: Self::Msg,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             crate::concurrency::sleep(Duration::from_millis(100)).await;
+            Ok(())
         }
     }
 

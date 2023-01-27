@@ -9,28 +9,33 @@
 
 use std::collections::HashMap;
 
-use ractor::cast;
 use ractor::concurrency::JoinHandle;
 use ractor::message::SerializedMessage;
+use ractor::{cast, ActorProcessingErr};
 use ractor::{Actor, ActorCell, ActorId, ActorName, ActorRef, RpcReplyPort, SpawnErr};
 
 use crate::node::SessionMessage;
 use crate::NodeId;
 
-/// A Remote actor is an actor which represents an actor on another node
+/// A [RemoteActor] is an actor which represents an actor on another node
+///
+/// A [RemoteActor] handles serialized messages without decoding them, forwarding them
+/// to the remote system for decoding + handling by the real implementation.
+/// Therefore [RemoteActor]s can be thought of as a "shim" to a real actor on a remote system
 pub(crate) struct RemoteActor {
     /// The owning node session
     pub(crate) session: ActorRef<crate::node::NodeSession>,
 }
 
 impl RemoteActor {
-    /// Spawn an actor of this type with a supervisor, automatically starting the actor
+    /// Spawn a [RemoteActor] with a supervisor (which should always be a [super::node::NodeSession])
+    /// and automatically start the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
-    /// * `handler`: The implementation of Self
     /// * `pid`: The actor's local id on the remote system
-    /// * `node_id` The actor's node-identifier. Alongside `pid` this makes for a unique actor identifier
-    /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
+    /// * `node_id` The id of the [super::node::NodeSession]. Alongside `pid` this makes for a unique actor identifier
+    /// * `supervisor`: The [super::node::NodeSession]'s [ActorCell] handle which will be linked in
+    /// the supervision tree
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -50,14 +55,17 @@ impl RemoteActor {
 
 #[derive(Default)]
 pub(crate) struct RemoteActorState {
-    tag: u64,
+    message_tag: u64,
+    /// The map of <message_tag, serialized_rpc_reply> port for network
+    /// handling of [SerializedMessage::CallReply]s
     pending_requests: HashMap<u64, RpcReplyPort<Vec<u8>>>,
 }
 
 impl RemoteActorState {
-    fn next_tag(&mut self) -> u64 {
-        self.tag += 1;
-        self.tag
+    /// Increment the message tag and return the "next" value
+    fn get_and_increment_mtag(&mut self) -> u64 {
+        self.message_tag += 1;
+        self.message_tag
     }
 }
 
@@ -71,12 +79,17 @@ impl Actor for RemoteActor {
     type Msg = RemoteActorMessage;
     type State = RemoteActorState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
-        Self::State::default()
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+        Ok(Self::State::default())
     }
 
-    async fn handle(&self, _myself: ActorRef<Self>, _message: Self::Msg, _state: &mut Self::State) {
-        panic!("Remote actors cannot handle local messages!");
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self>,
+        _message: Self::Msg,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        Err(From::from("`RemoteActor`s cannot handle local messages!"))
     }
 
     async fn handle_serialized(
@@ -84,15 +97,15 @@ impl Actor for RemoteActor {
         myself: ActorRef<Self>,
         message: SerializedMessage,
         state: &mut Self::State,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
         // get the local pid on the remote system
         let to = myself.get_id().pid();
         // messages should be forwarded over the network link (i.e. sent through the node session) to the intended
         // target node's relevant actor. The receiving runtime NodeSession will decode the message and pass it up
-        // to the parent
+        // to the parent. However `SerializedMessage::CallReply` is a network reply to a send call request
         match message {
             SerializedMessage::Call(args, reply) => {
-                let tag = state.next_tag();
+                let tag = state.get_and_increment_mtag();
                 let node_msg = crate::protocol::node::NodeMessage {
                     msg: Some(crate::protocol::node::node_message::Msg::Call(
                         crate::protocol::node::Call {
@@ -120,5 +133,6 @@ impl Actor for RemoteActor {
                 }
             }
         }
+        Ok(())
     }
 }

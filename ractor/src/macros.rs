@@ -25,7 +25,7 @@ macro_rules! cast {
 /// Returns [Ok(_)] with the result on successful RPC or [Err(crate::RactorErr)] on failure
 /// Example usage (without the `cluster` feature)
 /// ```no_run
-/// use ractor::{call, Actor, RpcReplyPort, ActorRef};
+/// use ractor::{call, Actor, RpcReplyPort, ActorRef, ActorProcessingErr};
 /// struct TestActor;
 /// enum MessageFormat {
 ///     TestRpc(String, RpcReplyPort<String>),
@@ -39,14 +39,16 @@ macro_rules! cast {
 ///
 ///     type State = ();
 ///
-///     async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+///     async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+///         Ok(())
+///     }
 ///
 ///     async fn handle(
 ///         &self,
 ///         _this_actor: ActorRef<Self>,
 ///         message: Self::Msg,
 ///         _state: &mut Self::State,
-///     ) {
+///     ) -> Result<(), ActorProcessingErr> {
 ///         match message {
 ///             Self::Msg::TestRpc(arg, reply) => {
 ///                 // An error sending means no one is listening anymore (the receiver was dropped),
@@ -56,6 +58,7 @@ macro_rules! cast {
 ///                 }
 ///             }
 ///         }
+///         Ok(())
 ///     }
 /// }
 ///
@@ -103,7 +106,7 @@ macro_rules! call {
 ///
 /// Example usage
 /// ```rust
-/// use ractor::{call_t, Actor, ActorRef, RpcReplyPort};
+/// use ractor::{call_t, Actor, ActorRef, RpcReplyPort, ActorProcessingErr};
 /// struct TestActor;
 /// enum MessageFormat {
 ///     TestRpc(String, RpcReplyPort<String>),
@@ -117,14 +120,16 @@ macro_rules! call {
 ///
 ///     type State = ();
 ///
-///     async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+///     async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+///         Ok(())
+///     }
 ///
 ///     async fn handle(
 ///         &self,
 ///         _this_actor: ActorRef<Self>,
 ///         message: Self::Msg,
 ///         _state: &mut Self::State,
-///     ) {
+///     ) -> Result<(), ActorProcessingErr> {
 ///         match message {
 ///             Self::Msg::TestRpc(arg, reply) => {
 ///                 // An error sending means no one is listening anymore (the receiver was dropped),
@@ -134,6 +139,7 @@ macro_rules! call {
 ///                 }
 ///             }
 ///         }
+///         Ok(())
 ///     }
 /// }
 ///

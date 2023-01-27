@@ -196,7 +196,7 @@ impl ActorCell {
         TActor: Actor,
     {
         if id.is_local() {
-            return Err(SpawnErr::StartupPanic("Cannot create a new remote actor handler without the actor id being marked as a remote actor!".to_string()));
+            return Err(SpawnErr::StartupPanic(From::from("Cannot create a new remote actor handler without the actor id being marked as a remote actor!")));
         }
 
         let (props, rx1, rx2, rx3, rx4) = ActorProperties::new_remote::<TActor>(name, id);

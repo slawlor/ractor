@@ -14,6 +14,13 @@ use crate::RpcReplyPort;
 /// An error downcasting a boxed item to a strong type
 #[derive(Debug)]
 pub struct BoxedDowncastErr;
+impl std::fmt::Display for BoxedDowncastErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "An error occurred de-boxing a message")
+    }
+}
+
+impl std::error::Error for BoxedDowncastErr {}
 
 /// Represents a serialized call or cast message
 #[cfg(feature = "cluster")]

@@ -5,7 +5,7 @@
 
 //! A ping-pong actor implementation
 
-use ractor::{Actor, ActorRef};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
 pub struct PingPong;
 
@@ -38,24 +38,39 @@ impl Actor for PingPong {
 
     type State = u8;
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         println!("pre_start called");
         // startup the event processing
         myself.send_message(Message::Ping).unwrap();
         // create the initial state
-        0u8
+        Ok(0u8)
     }
 
-    async fn post_start(&self, _this_actor: ActorRef<Self>, _state: &mut Self::State) {
+    async fn post_start(
+        &self,
+        _this_actor: ActorRef<Self>,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         println!("post_start called");
+        Ok(())
     }
 
     /// Invoked after an actor has been stopped.
-    async fn post_stop(&self, _this_actor: ActorRef<Self>, _state: &mut Self::State) {
+    async fn post_stop(
+        &self,
+        _this_actor: ActorRef<Self>,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         println!("post_stop called");
+        Ok(())
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         if *state < 10u8 {
             message.print();
             myself.send_message(message.next()).unwrap();
@@ -65,6 +80,7 @@ impl Actor for PingPong {
             myself.stop(None);
             // don't send another message, rather stop the agent after 10 iterations
         }
+        Ok(())
     }
 }
 

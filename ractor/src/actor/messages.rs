@@ -15,6 +15,8 @@ use std::fmt::Debug;
 use crate::message::BoxedDowncastErr;
 use crate::State;
 
+use super::errors::ActorProcessingErr;
+
 /// A "boxed" message denoting a strong-type message
 /// but generic so it can be passed around without type
 /// constraints
@@ -90,7 +92,7 @@ pub enum SupervisionEvent {
         Option<String>,
     ),
     /// An actor panicked
-    ActorPanicked(super::actor_cell::ActorCell, String),
+    ActorPanicked(super::actor_cell::ActorCell, ActorProcessingErr),
 
     /// A subscribed process group changed
     ProcessGroupChanged(crate::pg::GroupChangeMessage),

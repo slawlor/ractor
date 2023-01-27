@@ -20,7 +20,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use ractor::{cast, Actor, ActorId, ActorName, ActorRef, RpcReplyPort};
+use ractor::{cast, Actor, ActorId, ActorName, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::time::{Duration, Instant};
 
 // ============================ Fork Actor ============================ //
@@ -113,15 +113,20 @@ impl Fork {
 impl Actor for Fork {
     type Msg = ForkMessage;
     type State = ForkState;
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
-        Self::State {
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+        Ok(Self::State {
             clean: false,
             owned_by: None,
             backlog: VecDeque::new(),
-        }
+        })
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         let mut maybe_unhandled = self.handle_internal(&myself, message, state);
         if let Some(message) = maybe_unhandled {
             state.backlog.push_back(message);
@@ -136,6 +141,7 @@ impl Actor for Fork {
                 state.backlog.push_front(msg);
             }
         }
+        Ok(())
     }
 }
 
@@ -302,13 +308,18 @@ impl Philosopher {
 impl Actor for Philosopher {
     type Msg = PhilosopherMessage;
     type State = PhilosopherState;
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         // initialize the simulation by making the philosopher's hungry
         let _ = cast!(myself, Self::Msg::BecomeHungry(0));
-        Self::State::new(self.left.clone(), self.right.clone())
+        Ok(Self::State::new(self.left.clone(), self.right.clone()))
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             PhilosopherMessage::SendMetrics(reply) => {
                 let _ = reply.send(state.metrics.clone());
@@ -418,6 +429,7 @@ impl Actor for Philosopher {
                 }
             }
         }
+        Ok(())
     }
 }
 
