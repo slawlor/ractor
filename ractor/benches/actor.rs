@@ -9,7 +9,7 @@ extern crate criterion;
 use criterion::{BatchSize, Criterion};
 #[cfg(feature = "cluster")]
 use ractor::Message;
-use ractor::{Actor, ActorRef};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
 struct BenchActor;
 
@@ -23,12 +23,19 @@ impl Actor for BenchActor {
 
     type State = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         let _ = myself.cast(BenchActorMessage);
+        Ok(())
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, _message: Self::Msg, _state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        _message: Self::Msg,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         myself.stop(None);
+        Ok(())
     }
 }
 
@@ -145,9 +152,12 @@ fn process_messages(c: &mut Criterion) {
 
         type State = u64;
 
-        async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+        async fn pre_start(
+            &self,
+            myself: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
             let _ = myself.cast(BenchActorMessage);
-            0u64
+            Ok(0u64)
         }
 
         async fn handle(
@@ -155,13 +165,14 @@ fn process_messages(c: &mut Criterion) {
             myself: ActorRef<Self>,
             _message: Self::Msg,
             state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             *state += 1;
             if *state >= self.num_msgs {
                 myself.stop(None);
             } else {
                 let _ = myself.cast(BenchActorMessage);
             }
+            Ok(())
         }
     }
 

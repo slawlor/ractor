@@ -121,7 +121,9 @@ impl ActorProperties {
             return Err(MessagingErr::InvalidActorType);
         }
 
-        let boxed = message.box_message(&self.id);
+        let boxed = message
+            .box_message(&self.id)
+            .map_err(|_e| MessagingErr::InvalidActorType)?;
         self.message.send(boxed).map_err(|e| e.into())
     }
 

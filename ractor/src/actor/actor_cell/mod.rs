@@ -186,7 +186,7 @@ impl ActorCell {
         ))
     }
 
-    /// Create a new remote actor, to be called from the `ractor-cluster` crate
+    /// Create a new remote actor, to be called from the `ractor_cluster` crate
     #[cfg(feature = "cluster")]
     pub(crate) fn new_remote<TActor>(
         name: Option<ActorName>,
@@ -196,7 +196,7 @@ impl ActorCell {
         TActor: Actor,
     {
         if id.is_local() {
-            return Err(SpawnErr::StartupPanic("Cannot create a new remote actor handler without the actor id being marked as a remote actor!".to_string()));
+            return Err(SpawnErr::StartupPanic(From::from("Cannot create a new remote actor handler without the actor id being marked as a remote actor!")));
         }
 
         let (props, rx1, rx2, rx3, rx4) = ActorProperties::new_remote::<TActor>(name, id);

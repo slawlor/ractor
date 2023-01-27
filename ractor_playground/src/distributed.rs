@@ -34,7 +34,7 @@ pub(crate) async fn test_auth_handshake(port_a: u16, port_b: u16, valid_cookies:
         .expect("Failed to start NodeServer B");
 
     if let Err(error) =
-        ractor_cluster::node::client::connect(actor_b.clone(), "127.0.0.1", port_a).await
+        ractor_cluster::node::client::connect(actor_b.clone(), format!("127.0.0.1:{port_a}")).await
     {
         log::error!("Failed to connect with error {error}")
     } else {

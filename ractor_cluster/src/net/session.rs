@@ -13,7 +13,7 @@ use std::net::SocketAddr;
 
 use bytes::Bytes;
 use prost::Message;
-use ractor::{Actor, ActorCell, ActorRef};
+use ractor::{Actor, ActorCell, ActorProcessingErr, ActorRef};
 use ractor::{SpawnErr, SupervisionEvent};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -112,7 +112,7 @@ impl Actor for Session {
     type Msg = SessionMessage;
     type State = SessionState;
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         // spawn writer + reader child actors
         let (writer, _) = Actor::spawn_linked(
             None,
@@ -121,8 +121,7 @@ impl Actor for Session {
             },
             myself.get_cell(),
         )
-        .await
-        .expect("Failed to start session writer");
+        .await?;
         let (reader, _) = Actor::spawn_linked(
             None,
             SessionReader {
@@ -130,17 +129,26 @@ impl Actor for Session {
             },
             myself.get_cell(),
         )
-        .await
-        .expect("Failed to start session reader");
+        .await?;
 
-        Self::State { writer, reader }
+        Ok(Self::State { writer, reader })
     }
 
-    async fn post_stop(&self, _myself: ActorRef<Self>, _state: &mut Self::State) {
+    async fn post_stop(
+        &self,
+        _myself: ActorRef<Self>,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         log::info!("TCP Session closed for {}", self.peer_addr);
+        Ok(())
     }
 
-    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             Self::Msg::SetStream(stream) => {
                 let (read, write) = stream.into_split();
@@ -169,6 +177,7 @@ impl Actor for Session {
                     .cast(crate::node::SessionMessage::MessageReceived(msg));
             }
         }
+        Ok(())
     }
 
     async fn handle_supervisor_evt(
@@ -176,7 +185,7 @@ impl Actor for Session {
         myself: ActorRef<Self>,
         message: SupervisionEvent,
         state: &mut Self::State,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
         // sockets open, they close, the world goes round... If a reader or writer exits for any reason, we'll start the shutdown procedure
         // which requires that all actors exit
         match message {
@@ -204,6 +213,7 @@ impl Actor for Session {
                 // all ok
             }
         }
+        Ok(())
     }
 }
 
@@ -242,18 +252,28 @@ where
 
     type State = SessionWriterState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         // OK we've established connection, now we can process requests
 
-        Self::State { writer: None }
+        Ok(Self::State { writer: None })
     }
 
-    async fn post_stop(&self, _myself: ActorRef<Self>, state: &mut Self::State) {
+    async fn post_stop(
+        &self,
+        _myself: ActorRef<Self>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         // drop the channel to close it should we be exiting
         drop(state.writer.take());
+        Ok(())
     }
 
-    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             SessionWriterMessage::SetStream(stream) if state.writer.is_none() => {
                 state.writer = Some(stream);
@@ -273,6 +293,8 @@ where
                         // now send the object
                         if let Err(write_err) = stream.write_all(&encoded_data).await {
                             log::warn!("Error writing to the stream '{}'", write_err);
+                            myself.stop(Some("channel_closed".to_string()));
+                            return Ok(());
                         }
                         // flush the stream
                         stream.flush().await.unwrap();
@@ -283,6 +305,7 @@ where
                 // no-op, wait for next send request
             }
         }
+        Ok(())
     }
 }
 
@@ -317,16 +340,26 @@ impl Actor for SessionReader {
 
     type State = SessionReaderState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
-        Self::State { reader: None }
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+        Ok(Self::State { reader: None })
     }
 
-    async fn post_stop(&self, _myself: ActorRef<Self>, state: &mut Self::State) {
+    async fn post_stop(
+        &self,
+        _myself: ActorRef<Self>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         // drop the channel to close it should we be exiting
         drop(state.reader.take());
+        Ok(())
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             Self::Msg::SetStream(stream) if state.reader.is_none() => {
                 state.reader = Some(stream);
@@ -340,7 +373,7 @@ impl Actor for SessionReader {
                             let length = u64::from_be_bytes(buf.try_into().unwrap());
                             log::trace!("Payload length message ({}) received", length);
                             let _ = myself.cast(SessionReaderMessage::ReadObject(length));
-                            return;
+                            return Ok(());
                         }
                         Err(err) if err.kind() == ErrorKind::UnexpectedEof => {
                             log::trace!("Error (EOF) on stream");
@@ -385,7 +418,7 @@ impl Actor for SessionReader {
                             // EOF, close the stream by dropping the stream
                             drop(state.reader.take());
                             myself.stop(Some("channel_closed".to_string()));
-                            return;
+                            return Ok(());
                         }
                         Err(_other_err) => {
                             // TODO: some other TCP error, more handling necessary
@@ -401,5 +434,6 @@ impl Actor for SessionReader {
                 let _ = myself.cast(SessionReaderMessage::WaitForObject);
             }
         }
+        Ok(())
     }
 }

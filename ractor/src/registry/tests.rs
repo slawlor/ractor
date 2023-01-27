@@ -7,7 +7,7 @@
 
 use crate::concurrency::Duration;
 
-use crate::{Actor, SpawnErr};
+use crate::{Actor, ActorProcessingErr, SpawnErr};
 
 #[crate::concurrency::test]
 async fn test_basic_registation() {
@@ -19,7 +19,12 @@ async fn test_basic_registation() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     let (actor, handle) = Actor::spawn(Some("my_actor".to_string()), EmptyActor)
@@ -42,7 +47,12 @@ async fn test_duplicate_registration() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     let (actor, handle) = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor)
@@ -75,7 +85,12 @@ async fn test_actor_registry_unenrollment() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     let (actor, handle) = Actor::spawn(Some("unenrollment".to_string()), EmptyActor)
@@ -105,7 +120,7 @@ mod pid_registry_tests {
     use dashmap::DashMap;
 
     use super::super::pid_registry::*;
-    use crate::{concurrency::Duration, Actor, ActorId, SupervisionEvent};
+    use crate::{concurrency::Duration, Actor, ActorId, ActorProcessingErr, SupervisionEvent};
 
     struct RemoteActor;
     struct RemoteActorMessage;
@@ -114,7 +129,12 @@ mod pid_registry_tests {
     impl Actor for RemoteActor {
         type Msg = RemoteActorMessage;
         type State = ();
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     #[crate::concurrency::test]
@@ -124,7 +144,12 @@ mod pid_registry_tests {
         impl Actor for EmptyActor {
             type Msg = ();
             type State = ();
-            async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+            async fn pre_start(
+                &self,
+                _this_actor: crate::ActorRef<Self>,
+            ) -> Result<Self::State, ActorProcessingErr> {
+                Ok(())
+            }
         }
         let remote_pid = ActorId::Remote { node_id: 1, pid: 1 };
 
@@ -164,7 +189,12 @@ mod pid_registry_tests {
 
             type State = ();
 
-            async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+            async fn pre_start(
+                &self,
+                _this_actor: crate::ActorRef<Self>,
+            ) -> Result<Self::State, ActorProcessingErr> {
+                Ok(())
+            }
         }
 
         let (actor, handle) = Actor::spawn(None, EmptyActor)
@@ -187,7 +217,12 @@ mod pid_registry_tests {
 
             type State = ();
 
-            async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+            async fn pre_start(
+                &self,
+                _this_actor: crate::ActorRef<Self>,
+            ) -> Result<Self::State, ActorProcessingErr> {
+                Ok(())
+            }
         }
 
         let (actor, handle) = Actor::spawn(None, EmptyActor)
@@ -224,7 +259,12 @@ mod pid_registry_tests {
 
             type State = ();
 
-            async fn pre_start(&self, _myself: crate::ActorRef<Self>) -> Self::State {}
+            async fn pre_start(
+                &self,
+                _myself: crate::ActorRef<Self>,
+            ) -> Result<Self::State, ActorProcessingErr> {
+                Ok(())
+            }
         }
 
         struct NotificationMonitor {
@@ -237,8 +277,12 @@ mod pid_registry_tests {
 
             type State = ();
 
-            async fn pre_start(&self, myself: crate::ActorRef<Self>) -> Self::State {
+            async fn pre_start(
+                &self,
+                myself: crate::ActorRef<Self>,
+            ) -> Result<Self::State, ActorProcessingErr> {
                 monitor(myself.into());
+                Ok(())
             }
 
             async fn handle_supervisor_evt(
@@ -246,7 +290,7 @@ mod pid_registry_tests {
                 _myself: crate::ActorRef<Self>,
                 message: SupervisionEvent,
                 _state: &mut Self::State,
-            ) {
+            ) -> Result<(), ActorProcessingErr> {
                 if let SupervisionEvent::PidLifecycleEvent(change) = message {
                     match change {
                         PidLifecycleEvent::Spawn(who) => {
@@ -260,6 +304,7 @@ mod pid_registry_tests {
                         }
                     }
                 }
+                Ok(())
             }
         }
         let (monitor_actor, monitor_handle) = Actor::spawn(

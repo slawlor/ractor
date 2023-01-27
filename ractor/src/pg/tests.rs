@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::concurrency::Duration;
 use ::function_name::named;
 
-use crate::{Actor, GroupName, SupervisionEvent};
+use crate::{Actor, ActorProcessingErr, GroupName, SupervisionEvent};
 
 use crate::pg;
 
@@ -21,7 +21,12 @@ impl Actor for TestActor {
 
     type State = ();
 
-    async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+    async fn pre_start(
+        &self,
+        _this_actor: crate::ActorRef<Self>,
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
 }
 
 #[named]
@@ -200,8 +205,12 @@ async fn test_pg_monitoring() {
 
         type State = ();
 
-        async fn pre_start(&self, myself: crate::ActorRef<Self>) -> Self::State {
+        async fn pre_start(
+            &self,
+            myself: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
             pg::join(self.pg_group.clone(), vec![myself.into()]);
+            Ok(())
         }
     }
 
@@ -216,8 +225,12 @@ async fn test_pg_monitoring() {
 
         type State = ();
 
-        async fn pre_start(&self, myself: crate::ActorRef<Self>) -> Self::State {
+        async fn pre_start(
+            &self,
+            myself: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
             pg::monitor(self.pg_group.clone(), myself.into());
+            Ok(())
         }
 
         async fn handle_supervisor_evt(
@@ -225,7 +238,7 @@ async fn test_pg_monitoring() {
             _myself: crate::ActorRef<Self>,
             message: SupervisionEvent,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             if let SupervisionEvent::ProcessGroupChanged(change) = message {
                 match change {
                     pg::GroupChangeMessage::Join(_which, who) => {
@@ -236,6 +249,7 @@ async fn test_pg_monitoring() {
                     }
                 }
             }
+            Ok(())
         }
     }
     let (monitor_actor, monitor_handle) = Actor::spawn(
@@ -283,7 +297,12 @@ async fn local_vs_remote_pg_members() {
     impl Actor for TestRemoteActor {
         type Msg = TestRemoteActorMessage;
         type State = ();
-        async fn pre_start(&self, _this_actor: crate::ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
     }
 
     let remote_pid = crate::ActorId::Remote { node_id: 1, pid: 1 };

@@ -14,7 +14,7 @@
 
 extern crate ractor;
 
-use ractor::{call_t, Actor, ActorRef, RpcReplyPort};
+use ractor::{call_t, Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 
 struct Counter;
 
@@ -37,12 +37,17 @@ impl Actor for Counter {
 
     type State = CounterState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         // create the initial state
-        CounterState { count: 0 }
+        Ok(CounterState { count: 0 })
     }
 
-    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) {
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             CounterMessage::Increment(how_much) => {
                 state.count += how_much;
@@ -56,6 +61,7 @@ impl Actor for Counter {
                 }
             }
         }
+        Ok(())
     }
 }
 

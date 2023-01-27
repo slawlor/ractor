@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use crate::concurrency::Duration;
 
-use crate::rpc;
 use crate::{call, call_t, cast, forward, Actor, ActorRef};
+use crate::{rpc, ActorProcessingErr};
 
 #[crate::concurrency::test]
 async fn test_rpc_cast() {
@@ -27,15 +27,21 @@ async fn test_rpc_cast() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _this_actor: ActorRef<Self>,
             _message: Self::Msg,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             self.counter.fetch_add(1u8, Ordering::Relaxed);
+            Ok(())
         }
     }
 
@@ -79,14 +85,19 @@ async fn test_rpc_call() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _this_actor: ActorRef<Self>,
             message: Self::Msg,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             match message {
                 Self::Msg::Rpc(reply) => {
                     // An error sending means no one is listening anymore (the receiver was dropped),
@@ -103,6 +114,7 @@ async fn test_rpc_call() {
                     let _ = reply.send(format!("{message}-{count}"));
                 }
             }
+            Ok(())
         }
     }
 
@@ -165,14 +177,19 @@ async fn test_rpc_call_forwarding() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _this_actor: ActorRef<Self>,
             message: Self::Msg,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             match message {
                 Self::Msg::TestRpc(reply) => {
                     // An error sending means no one is listening anymore (the receiver was dropped),
@@ -182,6 +199,7 @@ async fn test_rpc_call_forwarding() {
                     }
                 }
             }
+            Ok(())
         }
     }
 
@@ -202,20 +220,26 @@ async fn test_rpc_call_forwarding() {
 
         type State = ();
 
-        async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Self::State {}
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
 
         async fn handle(
             &self,
             _this_actor: ActorRef<Self>,
             message: Self::Msg,
             _state: &mut Self::State,
-        ) {
+        ) -> Result<(), ActorProcessingErr> {
             match message {
                 Self::Msg::ForwardResult(s) if s == *"howdy" => {
                     self.counter.fetch_add(1, Ordering::Relaxed);
                 }
                 _ => {}
             }
+            Ok(())
         }
     }
 

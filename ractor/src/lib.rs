@@ -20,7 +20,7 @@
 //! An example "ping-pong" actor might be the following
 //!
 //! ```rust
-//! use ractor::{Actor, ActorRef};
+//! use ractor::{Actor, ActorRef, ActorProcessingErr};
 //!
 //! /// [PingPong] is a basic actor that will print
 //! /// ping..pong.. repeatedly until some exit
@@ -65,10 +65,10 @@
 //!     // Initially we need to create our state, and potentially
 //!     // start some internal processing (by posting a message for
 //!     // example)
-//!     async fn pre_start(&self, myself: ActorRef<Self>) -> Self::State {
+//!     async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
 //!         // startup the event processing
 //!         myself.send_message(Message::Ping).unwrap();
-//!         0u8
+//!         Ok(0u8)
 //!     }
 //!
 //!     // This is our main message handler
@@ -77,7 +77,7 @@
 //!         myself: ActorRef<Self>,
 //!         message: Self::Msg,
 //!         state: &mut Self::State,
-//!     ) {
+//!     ) -> Result<(), ActorProcessingErr> {
 //!         if *state < 10u8 {
 //!             message.print();
 //!             myself.send_message(message.next()).unwrap();
@@ -86,6 +86,7 @@
 //!             myself.stop(None);
 //!             // don't send another message, rather stop the agent after 10 iterations
 //!         }
+//!         Ok(())
 //!     }
 //! }
 //!
@@ -164,7 +165,7 @@ use rand as _;
 
 // re-exports
 pub use actor::actor_cell::{ActorCell, ActorRef, ActorStatus, ACTIVE_STATES};
-pub use actor::errors::{ActorErr, MessagingErr, SpawnErr};
+pub use actor::errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
 pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorRuntime};
 pub use actor_id::ActorId;

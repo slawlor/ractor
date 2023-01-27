@@ -15,7 +15,7 @@ extern crate ractor;
 
 use std::sync::Arc;
 
-use ractor::{Actor, ActorRef, OutputPort};
+use ractor::{Actor, ActorProcessingErr, ActorRef, OutputPort};
 use tokio::time::{timeout, Duration};
 
 enum PublisherMessage {
@@ -39,15 +39,23 @@ impl Actor for Publisher {
 
     type State = ();
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
 
-    async fn handle(&self, _myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self>,
+        message: Self::Msg,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             Self::Msg::Publish(msg) => {
                 println!("Publishing {msg}");
                 self.output.send(Output(format!("Published: {msg}")));
             }
         }
+        Ok(())
     }
 }
 
@@ -65,14 +73,22 @@ impl Actor for Subscriber {
 
     type State = ();
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Self::State {}
+    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, _state: &mut Self::State) {
+    async fn handle(
+        &self,
+        myself: ActorRef<Self>,
+        message: Self::Msg,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
         match message {
             Self::Msg::Published(msg) => {
                 println!("Subscriber ({myself:?}) received published message '{msg}'");
             }
         }
+        Ok(())
     }
 }
 

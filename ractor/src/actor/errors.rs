@@ -9,11 +9,14 @@ use std::fmt::Display;
 
 use crate::ActorName;
 
+/// Represents an actor's internal processing error
+pub type ActorProcessingErr = Box<dyn std::error::Error + Send + Sync + 'static>;
+
 /// Spawn errors starting an actor
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)] // TODO: why Eq, PartialEq?
 pub enum SpawnErr {
     /// Actor panic'd during startup
-    StartupPanic(String),
+    StartupPanic(ActorProcessingErr),
     /// Actor failed to startup because the startup task was cancelled
     StartupCancelled,
     /// An actor cannot be started > 1 time
@@ -21,6 +24,8 @@ pub enum SpawnErr {
     /// The named actor is already registered in the registry
     ActorAlreadyRegistered(ActorName),
 }
+
+impl std::error::Error for SpawnErr {}
 
 impl Display for SpawnErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -63,8 +68,10 @@ pub enum ActorErr {
     /// Actor had a task cancelled internally during processing
     Cancelled,
     /// Actor had an internal panic
-    Panic(String),
+    Panic(ActorProcessingErr),
 }
+
+impl std::error::Error for ActorErr {}
 
 impl Display for ActorErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -92,6 +99,8 @@ pub enum MessagingErr {
     /// handler and you try to use an alternate handler to send a message
     InvalidActorType,
 }
+
+impl std::error::Error for MessagingErr {}
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for MessagingErr {
     fn from(_: tokio::sync::mpsc::error::SendError<T>) -> Self {
