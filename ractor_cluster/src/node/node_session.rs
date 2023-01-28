@@ -433,6 +433,8 @@ impl NodeSession {
                             .await
                         {
                             log::error!("Failed to spawn remote actor with {}", spawn_err);
+                        } else {
+                            log::debug!("Spawned remote actor");
                         }
                     }
                 }
@@ -500,6 +502,11 @@ impl NodeSession {
                     }
                     // join the remote actors to the local PG group
                     if !cells.is_empty() {
+                        log::debug!(
+                            "PG Join group '{}' for {} remote actors",
+                            join.group,
+                            cells.len()
+                        );
                         ractor::pg::join(join.group, cells);
                     }
                 }
@@ -520,6 +527,11 @@ impl NodeSession {
                     }
                     // join the remote actors to the local PG group
                     if !cells.is_empty() {
+                        log::debug!(
+                            "PG Leave group '{}' for {} remote actors",
+                            leave.group,
+                            cells.len()
+                        );
                         ractor::pg::leave(leave.group, cells);
                     }
                 }

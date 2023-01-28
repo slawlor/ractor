@@ -190,6 +190,8 @@ pub enum RactorErr {
     Timeout,
 }
 
+impl std::error::Error for RactorErr {}
+
 impl From<SpawnErr> for RactorErr {
     fn from(value: SpawnErr) -> Self {
         RactorErr::Spawn(value)

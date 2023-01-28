@@ -23,6 +23,14 @@ enum Cli {
         /// Flag indicating if the cookies between the hosts match
         valid_cookies: Option<bool>,
     },
+
+    /// Represents a "remote" cluster based ping-pong using paging groups
+    RemotePingPong {
+        /// The host port for this NodeServer
+        port: u16,
+        /// The remote server port to connect to (if Some)
+        remote_port: Option<u16>,
+    },
 }
 
 // MAIN //
@@ -47,6 +55,9 @@ async fn main() {
             valid_cookies,
         } => {
             distributed::test_auth_handshake(port_a, port_b, valid_cookies.unwrap_or(true)).await;
+        }
+        Cli::RemotePingPong { port, remote_port } => {
+            distributed::startup_ping_pong_test_node(port, remote_port).await;
         }
     }
 }
