@@ -39,7 +39,9 @@
 //! This means that you need to specify the implementation of the [ractor::Message] trait on all message types, and when
 //! they're not network supported messages, this is just a default empty implementation. When they **are** potentially
 //! sent over a network in a dist protocol, then you need to fill out the implementation details for how the message
-//! serialization is handled. See the documentation of [crate::serialized_rpc_forward] for an example.
+//! serialization is handled. There however is a procedural macro in `ractor_cluster_derive` to facilitate this, which is
+//! re-exposed on this crate under the same naming. Simply derive [RactorMessage] or [RactorClusterMessage] if you want local or
+//! remote-supporting messages, respectively.
 
 #![deny(warnings)]
 #![warn(unused_imports)]
@@ -55,6 +57,7 @@ mod remote_actor;
 
 pub mod macros;
 pub mod node;
+pub mod serialization;
 
 /// Node's are representing by an integer id
 pub type NodeId = u64;
@@ -62,5 +65,11 @@ pub type NodeId = u64;
 // ============== Re-exports ============== //
 pub use node::client::connect as client_connect;
 pub use node::{
-    client::ClientConnectErr, NodeServer, NodeSession, SessionManagerMessage, SessionMessage,
+    client::ClientConnectErr, NodeServer, NodeServerMessage, NodeSession, NodeSessionMessage,
 };
+
+// Re-export the procedural macros so people don't need to reference them directly
+pub use ractor_cluster_derive::RactorClusterMessage;
+pub use ractor_cluster_derive::RactorMessage;
+
+pub use serialization::*;

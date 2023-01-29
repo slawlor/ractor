@@ -22,6 +22,7 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
 use super::NetworkMessage;
+use crate::RactorMessage;
 
 /// Helper method to read exactly `len` bytes from the stream into a pre-allocated buffer
 /// of bytes
@@ -89,6 +90,7 @@ impl Session {
 }
 
 /// The node connection messages
+#[derive(RactorMessage)]
 pub enum SessionMessage {
     /// Set the session's tcp stream, which initializes all underlying states
     SetStream(TcpStream),
@@ -99,7 +101,6 @@ pub enum SessionMessage {
     /// An object was received on the channel
     ObjectAvailable(crate::protocol::NetworkMessage),
 }
-impl ractor::Message for SessionMessage {}
 
 /// The node session's state
 pub struct SessionState {
@@ -174,7 +175,7 @@ impl Actor for Session {
                 );
                 let _ = self
                     .handler
-                    .cast(crate::node::SessionMessage::MessageReceived(msg));
+                    .cast(crate::node::NodeSessionMessage::MessageReceived(msg));
             }
         }
         Ok(())

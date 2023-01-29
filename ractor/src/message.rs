@@ -26,10 +26,22 @@ impl std::error::Error for BoxedDowncastErr {}
 #[cfg(feature = "cluster")]
 pub enum SerializedMessage {
     /// A cast (one-way) with the serialized payload
-    Cast(Vec<u8>),
+    Cast {
+        /// The index into to variant. Helpful for enum serialization
+        variant: String,
+        /// The payload of data
+        data: Vec<u8>,
+    },
     /// A call (remote procedure call, waiting on a reply) with the
     /// serialized arguments and reply channel
-    Call(Vec<u8>, RpcReplyPort<Vec<u8>>),
+    Call {
+        /// The index into to variant. Helpful for enum serialization
+        variant: String,
+        /// The argument payload data
+        args: Vec<u8>,
+        /// The binary reply channel
+        reply: RpcReplyPort<Vec<u8>>,
+    },
     /// A serialized reply from a call operation. Format is
     /// (`message_tag`, `reply_data`). It should not be the output
     /// of [Message::serialize] function, and is only generated

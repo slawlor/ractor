@@ -357,7 +357,10 @@ async fn test_serialized_cast() {
             Ok(TestMessage)
         }
         fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
-            Ok(crate::message::SerializedMessage::Cast(vec![]))
+            Ok(crate::message::SerializedMessage::Cast {
+                variant: "Cast".to_string(),
+                data: vec![],
+            })
         }
     }
 
@@ -463,7 +466,7 @@ async fn test_serialized_rpc() {
         }
         fn deserialize(bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
             match bytes {
-                SerializedMessage::Call(_args, reply) => {
+                SerializedMessage::Call { reply, .. } => {
                     let tx = port_forward(reply, |data: String| data.into_bytes());
                     Ok(Self::Rpc(tx))
                 }
@@ -474,7 +477,11 @@ async fn test_serialized_rpc() {
             match self {
                 Self::Rpc(port) => {
                     let tx = port_forward(port, |data| String::from_utf8(data).unwrap());
-                    Ok(SerializedMessage::Call(vec![], tx))
+                    Ok(SerializedMessage::Call {
+                        args: vec![],
+                        reply: tx,
+                        variant: "Call".to_string(),
+                    })
                 }
             }
         }
@@ -573,7 +580,10 @@ async fn test_remote_actor() {
             Ok(TestRemoteMessage)
         }
         fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
-            Ok(crate::message::SerializedMessage::Cast(vec![]))
+            Ok(crate::message::SerializedMessage::Cast {
+                data: vec![],
+                variant: "Cast".to_string(),
+            })
         }
     }
 

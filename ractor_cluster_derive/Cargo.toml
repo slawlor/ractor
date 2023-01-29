@@ -1,0 +1,21 @@
+[package]
+name = "ractor_cluster_derive"
+version = "0.5.1"
+authors = ["Sean Lawlor <seanlawlor@fb.com>"]
+description = "Derives for ractor_cluster"
+license = "MIT"
+edition = "2018"
+keywords = ["actor", "ractor"]
+repository = "https://github.com/slawlor/ractor"
+readme = "../README.md"
+publish = false
+
+[lib]
+name = "ractor_cluster_derive"
+path = "src/lib.rs"
+proc-macro = true
+
+[dependencies]
+quote = "*"
+syn = { version = "*", features = ["extra-traits"] }
+proc-macro2 = "*"
