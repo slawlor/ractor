@@ -7,3 +7,4 @@ ignore:
   - "ractor/examples"
   - "ractor/benches"
   - "ractor_cluster" # for now
+  - "ractor_cluster_derive"

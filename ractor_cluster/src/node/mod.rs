@@ -56,10 +56,11 @@ use std::{cmp::Ordering, collections::hash_map::Entry};
 use ractor::{cast, Actor, ActorId, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
 
 use crate::protocol::auth as auth_protocol;
+use crate::RactorMessage;
 
 const PROTOCOL_VERSION: u32 = 1;
 
-/// Reply to a [SessionManagerMessage::CheckSession] message
+/// Reply to a [NodeServerMessage::CheckSession] message
 pub enum SessionCheckReply {
     /// There is no other connection with this peer
     NoOtherConnection,
@@ -89,7 +90,8 @@ impl From<SessionCheckReply> for auth_protocol::server_status::Status {
 }
 
 /// Messages to/from the session manager
-pub enum SessionManagerMessage {
+#[derive(RactorMessage)]
+pub enum NodeServerMessage {
     /// Notifies the session manager that a new incoming (`is_server = true`) or outgoing (`is_server = false`)
     /// [TcpStream] was accepted
     ConnectionOpened {
@@ -119,11 +121,11 @@ pub enum SessionManagerMessage {
         name: auth_protocol::NameMessage,
     },
 }
-impl ractor::Message for SessionManagerMessage {}
 
 /// Message from the TCP `ractor_cluster::net::session::Session` actor and the
 /// monitoring Sesson actor
-pub enum SessionMessage {
+#[derive(RactorMessage)]
+pub enum NodeSessionMessage {
     /// The Session actor is setting it's handle
     SetTcpStream(TcpStream),
 
@@ -133,7 +135,6 @@ pub enum SessionMessage {
     /// Send a message over the node channel to the remote `node()`
     SendMessage(crate::protocol::node::NodeMessage),
 }
-impl ractor::Message for SessionMessage {}
 
 /// Represents the server which is managing all node session instances
 ///
@@ -228,7 +229,7 @@ impl NodeServerState {
 
 #[async_trait::async_trait]
 impl Actor for NodeServer {
-    type Msg = SessionManagerMessage;
+    type Msg = NodeServerMessage;
     type State = NodeServerState;
     async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         let listener = crate::net::listener::Listener::new(self.port, myself.clone());
@@ -270,7 +271,7 @@ impl Actor for NodeServer {
                 )
                 .await
                 {
-                    let _ = cast!(actor, SessionMessage::SetTcpStream(stream));
+                    let _ = cast!(actor, NodeSessionMessage::SetTcpStream(stream));
                     state.node_sessions.insert(
                         actor.get_id(),
                         NodeServerSessionInformation::new(actor.clone(), is_server),

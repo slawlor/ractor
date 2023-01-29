@@ -173,12 +173,12 @@ impl NodeSession {
                             flags: server_challenge_value.flags.clone(),
                         });
                         // tell the node server that we now know this peer's name information
-                        let _ =
-                            self.node_server
-                                .cast(super::SessionManagerMessage::UpdateSession {
-                                    actor_id: myself.get_id(),
-                                    name: self.node_name.clone(),
-                                });
+                        let _ = self
+                            .node_server
+                            .cast(super::NodeServerMessage::UpdateSession {
+                                actor_id: myself.get_id(),
+                                name: self.node_name.clone(),
+                            });
                         // send the client challenge to the server
                         let reply = auth_protocol::AuthenticationMessage {
                             msg: Some(auth_protocol::authentication_message::Msg::ClientChallenge(
@@ -220,7 +220,7 @@ impl NodeSession {
                         let server_status_result = self
                             .node_server
                             .call(
-                                |tx| super::SessionManagerMessage::CheckSession {
+                                |tx| super::NodeServerMessage::CheckSession {
                                     peer_name: peer_name.clone(),
                                     reply: tx,
                                 },
@@ -331,7 +331,10 @@ impl NodeSession {
                     if let Some(actor) =
                         ractor::registry::where_is_pid(ActorId::Local(cast_args.to))
                     {
-                        let _ = actor.send_serialized(SerializedMessage::Cast(cast_args.what));
+                        let _ = actor.send_serialized(SerializedMessage::Cast {
+                            variant: cast_args.variant,
+                            data: cast_args.what,
+                        });
                     }
                 }
                 node_protocol::node_message::Msg::Call(call_args) => {
@@ -346,15 +349,17 @@ impl NodeSession {
                         // the conversion
                         let maybe_timeout = call_args.timeout_ms.map(Duration::from_millis);
                         if let Some(timeout) = maybe_timeout {
-                            let _ = actor.send_serialized(SerializedMessage::Call(
-                                call_args.what,
-                                (tx, timeout).into(),
-                            ));
+                            let _ = actor.send_serialized(SerializedMessage::Call {
+                                args: call_args.what,
+                                reply: (tx, timeout).into(),
+                                variant: call_args.variant,
+                            });
                         } else {
-                            let _ = actor.send_serialized(SerializedMessage::Call(
-                                call_args.what,
-                                tx.into(),
-                            ));
+                            let _ = actor.send_serialized(SerializedMessage::Call {
+                                args: call_args.what,
+                                reply: tx.into(),
+                                variant: call_args.variant,
+                            });
                         }
 
                         // kick off a background task to reply to the channel request, threading the tag and who to reply to
@@ -373,7 +378,7 @@ impl NodeSession {
                                     );
                                     let _ = ractor::cast!(
                                         myself,
-                                        super::SessionMessage::SendMessage(
+                                        super::NodeSessionMessage::SendMessage(
                                             node_protocol::NodeMessage { msg: Some(reply) }
                                         )
                                     );
@@ -388,7 +393,7 @@ impl NodeSession {
                                 );
                                 let _ = ractor::cast!(
                                     myself,
-                                    super::SessionMessage::SendMessage(
+                                    super::NodeSessionMessage::SendMessage(
                                         node_protocol::NodeMessage { msg: Some(reply) }
                                     )
                                 );
@@ -706,7 +711,7 @@ impl NodeSessionState {
 
 #[async_trait::async_trait]
 impl Actor for NodeSession {
-    type Msg = super::SessionMessage;
+    type Msg = super::NodeSessionMessage;
     type State = NodeSessionState;
 
     async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
@@ -746,7 +751,7 @@ impl Actor for NodeSession {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            super::SessionMessage::SetTcpStream(stream) if state.tcp.is_none() => {
+            super::NodeSessionMessage::SetTcpStream(stream) if state.tcp.is_none() => {
                 let peer_addr = stream.peer_addr()?;
                 let my_addr = stream.local_addr()?;
                 // startup the TCP socket handler for message write + reading

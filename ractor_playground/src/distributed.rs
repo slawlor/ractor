@@ -5,9 +5,9 @@
 
 //! Distributed cluster playground
 
-use ractor::message::{BoxedDowncastErr, SerializedMessage};
 use ractor::RpcReplyPort;
-use ractor::{concurrency::Duration, Actor, ActorProcessingErr, ActorRef, Message};
+use ractor::{concurrency::Duration, Actor, ActorProcessingErr, ActorRef};
+use ractor_cluster::RactorClusterMessage;
 
 /// Run test with
 ///
@@ -57,43 +57,11 @@ pub(crate) async fn test_auth_handshake(port_a: u16, port_b: u16, valid_cookies:
 
 struct PingPongActor;
 
+#[derive(RactorClusterMessage)]
 enum PingPongActorMessage {
     Ping,
+    #[rpc]
     Rpc(String, RpcReplyPort<String>),
-}
-
-impl Message for PingPongActorMessage {
-    fn serializable() -> bool {
-        true
-    }
-
-    fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
-        match self {
-            Self::Ping => Ok(SerializedMessage::Cast(vec![])),
-            Self::Rpc(args, reply) => {
-                let tx = ractor_cluster::serialized_rpc_forward!(reply, |bytes| String::from_utf8(
-                    bytes
-                )
-                .unwrap());
-                Ok(SerializedMessage::Call(args.into_bytes(), tx))
-            }
-        }
-    }
-
-    fn deserialize(data: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
-        match data {
-            SerializedMessage::Cast(_bytes) => Ok(Self::Ping),
-            SerializedMessage::Call(arg_bytes, reply) => {
-                let tx = ractor_cluster::serialized_rpc_forward!(reply, |string: String| string
-                    .into_bytes());
-                Ok(Self::Rpc(
-                    String::from_utf8(arg_bytes).map_err(|_| BoxedDowncastErr)?,
-                    tx,
-                ))
-            }
-            _ => Err(BoxedDowncastErr),
-        }
-    }
 }
 
 #[async_trait::async_trait]
@@ -116,7 +84,7 @@ impl Actor for PingPongActor {
         let remote_actors = ractor::pg::get_members(&group)
             .into_iter()
             .filter(|actor| !actor.get_id().is_local())
-            .map(|a| ActorRef::<Self>::from(a))
+            .map(ActorRef::<Self>::from)
             .collect::<Vec<_>>();
         match message {
             Self::Msg::Ping => {
@@ -134,7 +102,7 @@ impl Actor for PingPongActor {
                     request,
                     remote_actors.len()
                 );
-                let reply_msg = format!("{}.", request);
+                let reply_msg = format!("{request}.");
                 reply.send(reply_msg.clone())?;
                 for act in remote_actors {
                     let _reply =

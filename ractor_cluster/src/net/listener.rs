@@ -5,11 +5,12 @@
 
 //! TCP Server to accept incoming sessions
 
-use ractor::{cast, ActorProcessingErr, Message};
+use ractor::{cast, ActorProcessingErr};
 use ractor::{Actor, ActorRef};
 use tokio::net::TcpListener;
 
-use crate::node::SessionManagerMessage;
+use crate::node::NodeServerMessage;
+use crate::RactorMessage;
 
 /// A Tcp Socket [Listener] responsible for accepting new connections and spawning [super::session::Session]s
 /// which handle the message sending and receiving over the socket.
@@ -39,8 +40,8 @@ pub struct ListenerState {
     listener: Option<TcpListener>,
 }
 
+#[derive(RactorMessage)]
 pub struct ListenerMessage;
-impl Message for ListenerMessage {}
 
 #[async_trait::async_trait]
 impl Actor for Listener {
@@ -88,7 +89,7 @@ impl Actor for Listener {
                 Ok((stream, addr)) => {
                     let _ = cast!(
                         self.session_manager,
-                        SessionManagerMessage::ConnectionOpened {
+                        NodeServerMessage::ConnectionOpened {
                             stream,
                             is_server: true
                         }

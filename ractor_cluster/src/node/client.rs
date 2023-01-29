@@ -68,7 +68,7 @@ where
     // Startup the TCP handler, linked to the newly created `NodeSession`
     let addr = stream.peer_addr()?;
 
-    node_server.cast(super::SessionManagerMessage::ConnectionOpened {
+    node_server.cast(super::NodeServerMessage::ConnectionOpened {
         stream,
         is_server: false,
     })?;

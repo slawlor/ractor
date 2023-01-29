@@ -13,8 +13,9 @@ use ractor::concurrency::JoinHandle;
 use ractor::message::SerializedMessage;
 use ractor::{cast, ActorProcessingErr};
 use ractor::{Actor, ActorCell, ActorId, ActorName, ActorRef, RpcReplyPort, SpawnErr};
+use ractor_cluster_derive::RactorMessage;
 
-use crate::node::SessionMessage;
+use crate::node::NodeSessionMessage;
 use crate::NodeId;
 
 /// A [RemoteActor] is an actor which represents an actor on another node
@@ -71,8 +72,8 @@ impl RemoteActorState {
 
 // Placeholder message for a remote actor, as we won't actually
 // handle anything but serialized messages on this channel
+#[derive(RactorMessage)]
 pub(crate) struct RemoteActorMessage;
-impl ractor::Message for RemoteActorMessage {}
 
 #[async_trait::async_trait]
 impl Actor for RemoteActor {
@@ -104,7 +105,12 @@ impl Actor for RemoteActor {
         // target node's relevant actor. The receiving runtime NodeSession will decode the message and pass it up
         // to the parent. However `SerializedMessage::CallReply` is a network reply to a send call request
         match message {
-            SerializedMessage::Call(args, reply) => {
+            SerializedMessage::Call {
+                args,
+                reply,
+                variant,
+            } => {
+                // Handle Call
                 let tag = state.get_and_increment_mtag();
                 let node_msg = crate::protocol::node::NodeMessage {
                     msg: Some(crate::protocol::node::node_message::Msg::Call(
@@ -113,21 +119,31 @@ impl Actor for RemoteActor {
                             tag,
                             what: args,
                             timeout_ms: reply.get_timeout().map(|t| t.as_millis() as u64),
+                            variant,
                         },
                     )),
                 };
                 state.pending_requests.insert(tag, reply);
-                let _ = cast!(self.session, SessionMessage::SendMessage(node_msg));
+                let _ = cast!(self.session, NodeSessionMessage::SendMessage(node_msg));
             }
-            SerializedMessage::Cast(args) => {
+            SerializedMessage::Cast {
+                data: args,
+                variant,
+            } => {
+                // Handle Cast
                 let node_msg = crate::protocol::node::NodeMessage {
                     msg: Some(crate::protocol::node::node_message::Msg::Cast(
-                        crate::protocol::node::Cast { to, what: args },
+                        crate::protocol::node::Cast {
+                            to,
+                            what: args,
+                            variant,
+                        },
                     )),
                 };
-                let _ = cast!(self.session, SessionMessage::SendMessage(node_msg));
+                let _ = cast!(self.session, NodeSessionMessage::SendMessage(node_msg));
             }
             SerializedMessage::CallReply(message_tag, reply_data) => {
+                // Handle the reply to a "Call" message
                 if let Some(port) = state.pending_requests.remove(&message_tag) {
                     let _ = port.send(reply_data);
                 }

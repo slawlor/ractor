@@ -17,5 +17,6 @@ env_logger = "0.10"
 log = "0.4"
 ractor = { path="../ractor", features = ["cluster"] }
 ractor_cluster = { path = "../ractor_cluster" }
+# ractor_cluster_derive = { path = "../ractor_cluster_derive" }
 # rustyrepl = "0.1"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal"] }

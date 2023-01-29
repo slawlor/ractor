@@ -17,6 +17,8 @@ message Cast {
     uint64 to = 1;
     // `what` is the payload for the cast operation
     bytes what = 2;
+    // Index into the variant
+    string variant = 3;
 }
 
 // An outgoing remote procedure call
@@ -30,6 +32,8 @@ message Call {
     uint64 tag = 3;
     // `timeout_ms` is the timeout in milliseconds for the call to complete
     optional uint64 timeout_ms = 4;
+    // Index into the variant
+    string variant = 5;
 }
 
 // A reply to a remote procedure call
