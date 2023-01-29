@@ -1,6 +1,6 @@
 [package]
 name = "ractor_cluster"
-version = "0.1.0"
+version = "0.5.1"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "Distributed cluster environment of Ractor actors"
 documentation = "https://docs.rs/ractor"
@@ -24,8 +24,8 @@ bytes = { version = "1" }
 log = "0.4"
 prost = { version = "0.11" }
 prost-types = { version = "0.11" }
-ractor = { version = "0.5", features = ["cluster"], path = "../ractor" }
-ractor_cluster_derive = { version = "0.1", path = "../ractor_cluster_derive" }
+ractor = { version = "0.5.1", features = ["cluster"], path = "../ractor" }
+ractor_cluster_derive = { version = "0.5.1", path = "../ractor_cluster_derive" }
 rand = "0.8"
 sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "io-util"]}
