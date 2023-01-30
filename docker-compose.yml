@@ -1,0 +1,31 @@
+version: '3.3'
+services:
+  node-a:
+    container_name: "node-a"
+    build:
+      context: .
+      dockerfile: ractor_cluster_integration_tests/Dockerfile
+    image: ractor_cluster_tests:latest
+    networks:
+      - test-net
+    entrypoint: ''
+    command: ractor_cluster_integration_tests test ${A_TEST}
+    environment:
+      RUST_LOG: debug
+  node-b:
+    depends_on: 
+      - node-a
+    container_name: "node-b"
+    build:
+      context: .
+      dockerfile: ractor_cluster_integration_tests/Dockerfile
+    image: ractor_cluster_tests:latest
+    networks:
+      - test-net
+    entrypoint: ''
+    command: ractor_cluster_integration_tests test ${B_TEST}
+    environment:
+      RUST_LOG: debug
+networks:
+  test-net:
+    external: false

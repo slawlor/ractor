@@ -1,0 +1,23 @@
+[package]
+name = "ractor_cluster_integration_tests"
+version = "0.0.0"
+authors = ["Sean Lawlor <seanlawlor@fb.com>"]
+description = "Integration tests for ractor_cluster"
+license = "MIT"
+edition = "2018"
+keywords = ["actor", "ractor"]
+repository = "https://github.com/slawlor/ractor"
+readme = "../README.md"
+publish = false
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.10"
+log = "0.4"
+ractor = { path = "../ractor" }
+ractor_cluster = { path = "../ractor_cluster" }
+rand = "0.8"
+rustyrepl = { version = "0.2", features = ["async"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal"] }

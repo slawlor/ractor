@@ -10,7 +10,7 @@
 //! DO NOT implement it for arch-specific types [isize] or [usize] because the may encode at one size
 //! on one host and decode at the wrong size at the other host.
 //!
-//! We additionally do [String] and [Vec<`u8`>].
+//! We additionally provide implementations for [String], [Vec<`char`>], and [Vec<_>] of all numeric values.
 
 /// Trait for use with `ractor_cluster_derive::RactorClusterMessage`
 /// derive macro. It defines argument and reply message types which
@@ -22,6 +22,8 @@ pub trait BytesConvertable {
     /// Deserialize this type from a vector of bytes. Panics are acceptable
     fn from_bytes(bytes: Vec<u8>) -> Self;
 }
+
+// ==================== Primitive implementations ==================== //
 
 macro_rules! implement_numeric {
     {$ty: ty} => {
@@ -53,12 +55,27 @@ implement_numeric! {u128}
 implement_numeric! {f32}
 implement_numeric! {f64}
 
-impl BytesConvertable for Vec<u8> {
+impl BytesConvertable for bool {
     fn into_bytes(self) -> Vec<u8> {
-        self
+        if self {
+            vec![1u8]
+        } else {
+            vec![0u8]
+        }
     }
     fn from_bytes(bytes: Vec<u8>) -> Self {
-        bytes
+        bytes[0] == 1u8
+    }
+}
+
+impl BytesConvertable for char {
+    fn into_bytes(self) -> Vec<u8> {
+        let u = self as u32;
+        u.into_bytes()
+    }
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        let u = u32::from_bytes(bytes);
+        Self::from_u32(u).unwrap()
     }
 }
 
@@ -69,4 +86,174 @@ impl BytesConvertable for String {
     fn from_bytes(bytes: Vec<u8>) -> Self {
         String::from_utf8(bytes).unwrap()
     }
+}
+
+// ==================== Vectorized implementations ==================== //
+
+macro_rules! implement_vectorized_numeric {
+    {$ty: ty} => {
+        impl BytesConvertable for Vec<$ty> {
+            fn into_bytes(self) -> Vec<u8> {
+                let mut result = vec![0u8; self.len() * std::mem::size_of::<$ty>()];
+                for (offset, item) in self.into_iter().enumerate() {
+                    result[offset * std::mem::size_of::<$ty>() .. offset * std::mem::size_of::<$ty>() + std::mem::size_of::<$ty>()].copy_from_slice(&item.to_be_bytes());
+                }
+                result
+            }
+            fn from_bytes(bytes: Vec<u8>) -> Self {
+                let num_el = bytes.len() / std::mem::size_of::<$ty>();
+                let mut result = vec![<$ty>::MIN; num_el];
+
+                let mut data = [0u8; std::mem::size_of::<$ty>()];
+                for offset in 0..num_el {
+                    data.copy_from_slice(&bytes[offset * std::mem::size_of::<$ty>() .. offset * std::mem::size_of::<$ty>() + std::mem::size_of::<$ty>()]);
+                    result[offset] = <$ty>::from_be_bytes(data);
+                }
+
+                result
+            }
+        }
+    };
+}
+
+implement_vectorized_numeric! {i8}
+implement_vectorized_numeric! {i16}
+implement_vectorized_numeric! {i32}
+implement_vectorized_numeric! {i64}
+implement_vectorized_numeric! {i128}
+
+// We explicitely skip u8, as it has a more
+// optimized definition
+impl BytesConvertable for Vec<u8> {
+    fn into_bytes(self) -> Vec<u8> {
+        self
+    }
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        bytes
+    }
+}
+implement_vectorized_numeric! {u16}
+implement_vectorized_numeric! {u32}
+implement_vectorized_numeric! {u64}
+implement_vectorized_numeric! {u128}
+
+implement_vectorized_numeric! {f32}
+implement_vectorized_numeric! {f64}
+
+impl BytesConvertable for Vec<bool> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut result = vec![0u8; self.len()];
+        for (ptr, item) in self.into_iter().enumerate() {
+            let byte = if item { [1u8] } else { [0u8] };
+            result[ptr..ptr + 1].copy_from_slice(&byte);
+        }
+        result
+    }
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        let num_el = bytes.len();
+        let mut result = vec![false; num_el];
+        for (ptr, byte) in bytes.into_iter().enumerate() {
+            result[ptr] = byte == 1u8;
+        }
+
+        result
+    }
+}
+
+impl BytesConvertable for Vec<char> {
+    fn into_bytes(self) -> Vec<u8> {
+        let data = self.into_iter().map(|c| c as u32).collect::<Vec<_>>();
+        data.into_bytes()
+    }
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        let u32s = <Vec<u32>>::from_bytes(bytes);
+        u32s.into_iter()
+            .map(|u| char::from_u32(u).unwrap())
+            .collect::<Vec<_>>()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BytesConvertable;
+    use rand::{distributions::Alphanumeric, thread_rng, Rng};
+
+    fn random_string() -> String {
+        thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(30)
+            .map(char::from)
+            .collect()
+    }
+
+    macro_rules! run_basic_type_test {
+        {$ty: ty} => {
+            paste::item! {
+                #[test]
+                fn [< test_bytes_conversion_ $ty >] () {
+                    let test_data: $ty = rand::thread_rng().gen();
+                    let bytes = test_data.clone().into_bytes();
+                    let back = <$ty as BytesConvertable>::from_bytes(bytes);
+                    assert_eq!(test_data, back);
+                }
+            }
+        };
+    }
+
+    macro_rules! run_vector_type_test {
+        {$ty: ty} => {
+            paste::item! {
+                #[test]
+                fn [< test_bytes_conversion_vec_ $ty >] () {
+                    let mut rng = rand::thread_rng();
+                    let num_pts: usize = rng.gen_range(10..50);
+                    let test_data = (0..num_pts).into_iter().map(|_| rng.gen()).collect::<Vec<$ty>>();
+
+                    let bytes = test_data.clone().into_bytes();
+                    let back = <Vec<$ty> as BytesConvertable>::from_bytes(bytes);
+
+                    assert_eq!(test_data, back);
+                }
+            }
+        };
+    }
+
+    run_basic_type_test! {i8}
+    run_basic_type_test! {i16}
+    run_basic_type_test! {i32}
+    run_basic_type_test! {i64}
+    run_basic_type_test! {i128}
+    run_basic_type_test! {u8}
+    run_basic_type_test! {u16}
+    run_basic_type_test! {u32}
+    run_basic_type_test! {u64}
+    run_basic_type_test! {u128}
+    run_basic_type_test! {f32}
+    run_basic_type_test! {f64}
+    run_basic_type_test! {char}
+    run_basic_type_test! {bool}
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn test_bytes_conversion_String() {
+        let test_data: String = random_string();
+        let bytes = test_data.clone().into_bytes();
+        let back = <String as BytesConvertable>::from_bytes(bytes);
+        assert_eq!(test_data, back);
+    }
+
+    run_vector_type_test! {i8}
+    run_vector_type_test! {i16}
+    run_vector_type_test! {i32}
+    run_vector_type_test! {i64}
+    run_vector_type_test! {i128}
+    run_vector_type_test! {u8}
+    run_vector_type_test! {u16}
+    run_vector_type_test! {u32}
+    run_vector_type_test! {u64}
+    run_vector_type_test! {u128}
+    run_vector_type_test! {f32}
+    run_vector_type_test! {f64}
+    run_vector_type_test! {char}
+    run_vector_type_test! {bool}
 }

@@ -1,0 +1,40 @@
+name: Ractor Cluster integration tests
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'ractor_cluster*/**'
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - 'ractor_cluster*/**'
+
+jobs:
+  test:
+    name: Test ractor_cluster with Docker based networked images
+    runs-on: ${{matrix.os}}-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable]
+        os: [ubuntu]
+
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Build the docker image
+        working-directory: .
+        run: |
+          docker compose build
+
+      - name: Authentication Handshake
+        working-directory: .
+        run: |
+          docker compose --env-file ./ractor_cluster_integration_tests/envs/auth-handshake.env up --exit-code-from node-b
+
+      - name: Process Groups
+        working-directory: .
+        run: |
+          docker compose --env-file ./ractor_cluster_integration_tests/envs/pg-groups.env up --exit-code-from node-b
+      

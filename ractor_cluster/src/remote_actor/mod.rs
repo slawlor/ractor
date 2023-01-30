@@ -25,7 +25,15 @@ use crate::NodeId;
 /// Therefore [RemoteActor]s can be thought of as a "shim" to a real actor on a remote system
 pub(crate) struct RemoteActor {
     /// The owning node session
-    pub(crate) session: ActorRef<crate::node::NodeSession>,
+    session: ActorRef<crate::node::NodeSession>,
+}
+
+impl From<&ActorRef<super::node::NodeSession>> for RemoteActor {
+    fn from(value: &ActorRef<super::node::NodeSession>) -> Self {
+        RemoteActor {
+            session: value.clone(),
+        }
+    }
 }
 
 impl RemoteActor {

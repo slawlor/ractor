@@ -10,7 +10,6 @@ use ractor::{Actor, ActorRef};
 use tokio::net::TcpListener;
 
 use crate::node::NodeServerMessage;
-use crate::RactorMessage;
 
 /// A Tcp Socket [Listener] responsible for accepting new connections and spawning [super::session::Session]s
 /// which handle the message sending and receiving over the socket.
@@ -40,7 +39,7 @@ pub struct ListenerState {
     listener: Option<TcpListener>,
 }
 
-#[derive(RactorMessage)]
+#[derive(crate::RactorMessage)]
 pub struct ListenerMessage;
 
 #[async_trait::async_trait]
