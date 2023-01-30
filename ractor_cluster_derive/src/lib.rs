@@ -27,9 +27,8 @@
 
 extern crate proc_macro;
 use proc_macro::TokenStream;
-use proc_macro2::Ident;
 use quote::{format_ident, quote, ToTokens};
-use syn::{self, DeriveInput, Fields, Variant};
+use syn::{self, DeriveInput, Fields, Ident, Variant};
 
 /// Derive `ractor::Message` for messages that are local-only
 #[proc_macro_derive(RactorMessage)]

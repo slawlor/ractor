@@ -15,6 +15,5 @@ path = "src/lib.rs"
 proc-macro = true
 
 [dependencies]
-quote = "*"
-syn = { version = "*", features = ["extra-traits"] }
-proc-macro2 = "*"
+quote = "1"
+syn = { version = "1", features = ["extra-traits"] }
