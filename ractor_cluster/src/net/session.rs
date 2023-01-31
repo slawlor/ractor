@@ -8,7 +8,6 @@
 // TODO: RUSTLS + Tokio : https://github.com/tokio-rs/tls/blob/master/tokio-rustls/examples/server/src/main.rs
 
 use std::convert::TryInto;
-use std::marker::PhantomData;
 use std::net::SocketAddr;
 
 use bytes::Bytes;
@@ -21,7 +20,6 @@ use tokio::io::ErrorKind;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
-use super::NetworkMessage;
 use crate::RactorMessage;
 
 /// Helper method to read exactly `len` bytes from the stream into a pre-allocated buffer
@@ -104,7 +102,7 @@ pub enum SessionMessage {
 
 /// The node session's state
 pub struct SessionState {
-    writer: ActorRef<SessionWriter<crate::protocol::NetworkMessage>>,
+    writer: ActorRef<SessionWriter>,
     reader: ActorRef<SessionReader>,
 }
 
@@ -115,14 +113,7 @@ impl Actor for Session {
 
     async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
         // spawn writer + reader child actors
-        let (writer, _) = Actor::spawn_linked(
-            None,
-            SessionWriter::<crate::protocol::NetworkMessage> {
-                _phantom: PhantomData,
-            },
-            myself.get_cell(),
-        )
-        .await?;
+        let (writer, _) = Actor::spawn_linked(None, SessionWriter, myself.get_cell()).await?;
         let (reader, _) = Actor::spawn_linked(
             None,
             SessionReader {
@@ -220,36 +211,25 @@ impl Actor for Session {
 
 // ========================= Node Session writer ========================= //
 
-struct SessionWriter<TMsg>
-where
-    TMsg: NetworkMessage,
-{
-    _phantom: PhantomData<TMsg>,
-}
+struct SessionWriter;
 
 struct SessionWriterState {
     writer: Option<OwnedWriteHalf>,
 }
 
-enum SessionWriterMessage<TMsg>
-where
-    TMsg: NetworkMessage,
-{
+#[derive(crate::RactorMessage)]
+enum SessionWriterMessage {
     /// Set the stream, providing a [TcpStream], which
     /// to utilize for this node's connection
     SetStream(OwnedWriteHalf),
 
     /// Write an object over the wire
-    WriteObject(TMsg),
+    WriteObject(crate::protocol::NetworkMessage),
 }
-impl<TMsg> ractor::Message for SessionWriterMessage<TMsg> where TMsg: NetworkMessage {}
 
 #[async_trait::async_trait]
-impl<TMsg> Actor for SessionWriter<TMsg>
-where
-    TMsg: NetworkMessage,
-{
-    type Msg = SessionWriterMessage<TMsg>;
+impl Actor for SessionWriter {
+    type Msg = SessionWriterMessage;
 
     type State = SessionWriterState;
 

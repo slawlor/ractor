@@ -5,7 +5,6 @@
 
 mod distributed;
 mod ping_pong;
-pub mod proc_macros;
 
 use std::env;
 

@@ -39,6 +39,11 @@ jobs:
           command: test
           args: --package ${{matrix.package}} ${{matrix.flags}}
 
+      - name: Test everything
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest

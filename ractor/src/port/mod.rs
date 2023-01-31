@@ -22,6 +22,7 @@ pub use output::*;
 
 /// A remote procedure call's reply port. Wrapper of [concurrency::OneshotSender] with a
 /// consistent error type
+#[derive(Debug)]
 pub struct RpcReplyPort<TMsg> {
     port: concurrency::OneshotSender<TMsg>,
     timeout: Option<concurrency::Duration>,

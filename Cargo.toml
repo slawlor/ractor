@@ -5,5 +5,6 @@ members = [
     "ractor_cluster",
     "ractor_cluster_derive",
     "ractor_playground",
+    "ractor_cluster_integration_tests",
     "xtask"
 ]

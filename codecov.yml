@@ -2,9 +2,15 @@ codecov:
   require_ci_to_pass: false
 
 ignore:
-  - "ractor_playground"
+  # This is the code coverage tool.
   - "xtask"
+  # Tests are not covered
+  - "ractor_playground"
+  # Tests are not covered
   - "ractor/examples"
+  # Tests are not covered
   - "ractor/benches"
-  - "ractor_cluster" # for now
-  - "ractor_cluster_derive"
+  # Tests are not covered
+  - "ractor_cluster_integration_tests"
+  # Protocol is all generated code and should be excluded from code coverage
+  - "ractor_cluster/src/protocol"

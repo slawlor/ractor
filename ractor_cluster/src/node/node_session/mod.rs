@@ -29,6 +29,10 @@ use crate::remote_actor::RemoteActor;
 const MIN_PING_LATENCY_MS: u64 = 1000;
 const MAX_PING_LATENCY_MS: u64 = 5000;
 
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug)]
 enum AuthenticationState {
     AsClient(auth::ClientAuthenticationProcess),
     AsServer(auth::ServerAuthenticationProcess),
@@ -620,11 +624,10 @@ impl NodeSession {
         match state.remote_actors.get(&actor_pid) {
             Some(actor) => Ok(actor.clone()),
             _ => {
-                let (remote_actor, _) = crate::remote_actor::RemoteActor {
-                    session: myself.clone(),
-                }
-                .spawn_linked(actor_name, actor_pid, self.node_id, myself.get_cell())
-                .await?;
+                let remote_actor_s: RemoteActor = myself.into();
+                let (remote_actor, _) = remote_actor_s
+                    .spawn_linked(actor_name, actor_pid, self.node_id, myself.get_cell())
+                    .await?;
                 state.remote_actors.insert(actor_pid, remote_actor.clone());
                 Ok(remote_actor)
             }
@@ -802,6 +805,9 @@ impl Actor for NodeSession {
             Self::Msg::SendMessage(node_message) if state.tcp.is_some() => {
                 state.tcp_send_node(node_message);
             }
+            Self::Msg::GetAuthenticationState(reply) => {
+                let _ = reply.send(state.auth.is_ok());
+            }
             _ => {
                 // no-op, ignore
             }
@@ -835,7 +841,8 @@ impl Actor for NodeSession {
                     actor.kill();
 
                     // NOTE: This is a legitimate panic of the `RemoteActor`, not the actor on the remote machine panicking (which
-                    // is handled by the remote actor's supervisor). Therefore we should re-spawn the actor
+                    // is handled by the remote actor's supervisor). Therefore we should re-spawn the actor, and if we can't we
+                    // should ourself die. Something is seriously wrong...
                     let pid = actor.get_id().get_pid();
                     let name = actor.get_name();
                     let _ = self
@@ -853,6 +860,7 @@ impl Actor for NodeSession {
                 if state.is_tcp_actor(actor.get_id()) {
                     log::info!("NodeSession {:?} connection closed", state.name);
                     myself.stop(Some("tcp_session_closed".to_string()));
+                    // TODO: resilient connection?
                 } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().get_pid()) {
                     log::debug!(
                         "NodeSession {:?} received a child exit with reason '{:?}'",

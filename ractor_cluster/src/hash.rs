@@ -23,3 +23,25 @@ pub(crate) fn challenge_digest(secret: &'_ str, challenge: u32) -> Digest {
 
     hash.into()
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::challenge_digest;
+    use super::DIGEST_BYTES;
+
+    #[test]
+    fn test_challenge_digest_generation() {
+        let secret = "cookie";
+        let challenge: u32 = 42;
+        let digest = challenge_digest(secret, challenge);
+        assert_eq!(DIGEST_BYTES, digest.len());
+        assert_eq!(
+            digest,
+            [
+                20, 62, 0, 217, 211, 179, 29, 157, 36, 69, 47, 133, 172, 4, 68, 137, 83, 8, 26, 2,
+                237, 2, 39, 46, 89, 44, 91, 19, 205, 66, 46, 247
+            ]
+        );
+    }
+}

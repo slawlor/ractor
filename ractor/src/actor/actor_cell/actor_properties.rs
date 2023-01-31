@@ -77,7 +77,7 @@ impl ActorProperties {
                 supervision: tx_supervision,
                 message: tx_message,
                 tree: SupervisionTree::default(),
-                type_id: std::any::TypeId::of::<TActor>(),
+                type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
             },
@@ -117,7 +117,7 @@ impl ActorProperties {
     {
         // Only type-check messages of local actors, remote actors send serialized
         // payloads
-        if self.id.is_local() && self.type_id != std::any::TypeId::of::<TActor>() {
+        if self.id.is_local() && self.type_id != std::any::TypeId::of::<TActor::Msg>() {
             return Err(MessagingErr::InvalidActorType);
         }
 

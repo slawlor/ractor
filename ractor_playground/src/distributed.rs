@@ -36,7 +36,7 @@ pub(crate) async fn test_auth_handshake(port_a: u16, port_b: u16, valid_cookies:
         .expect("Failed to start NodeServer B");
 
     if let Err(error) =
-        ractor_cluster::node::client::connect(actor_b.clone(), format!("127.0.0.1:{port_a}")).await
+        ractor_cluster::node::client::connect(&actor_b, format!("127.0.0.1:{port_a}")).await
     {
         log::error!("Failed to connect with error {error}")
     } else {
@@ -131,7 +131,7 @@ pub(crate) async fn startup_ping_pong_test_node(port: u16, connect_client: Optio
 
     if let Some(cport) = connect_client {
         if let Err(error) =
-            ractor_cluster::node::client::connect(actor.clone(), format!("127.0.0.1:{cport}")).await
+            ractor_cluster::node::client::connect(&actor, format!("127.0.0.1:{cport}")).await
         {
             log::error!("Failed to connect with error {error}")
         } else {

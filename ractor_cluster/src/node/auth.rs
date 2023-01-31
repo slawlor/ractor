@@ -168,3 +168,208 @@ impl ClientAuthenticationProcess {
         Self::Close
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::auth::NodeFlags;
+
+    use super::*;
+
+    #[test]
+    fn server_auth_state() {
+        let cookie = "cookie";
+
+        let other_message = proto::AuthenticationMessage {
+            msg: Some(proto::authentication_message::Msg::ServerStatus(
+                proto::ServerStatus {
+                    status: proto::server_status::Status::Ok as i32,
+                },
+            )),
+        };
+
+        let init = ServerAuthenticationProcess::init();
+        assert!(matches!(
+            init,
+            ServerAuthenticationProcess::WaitingOnPeerName
+        ));
+
+        // out-of-order message should close at any point
+        assert!(matches!(
+            init.next(
+                proto::AuthenticationMessage {
+                    msg: Some(proto::authentication_message::Msg::ClientStatus(
+                        proto::ClientStatus { status: false }
+                    ))
+                },
+                cookie
+            ),
+            ServerAuthenticationProcess::Close
+        ));
+        let next = init.next(
+            proto::AuthenticationMessage {
+                msg: Some(proto::authentication_message::Msg::Name(
+                    proto::NameMessage {
+                        name: "howdy".to_string(),
+                        flags: Some(NodeFlags { version: 1 }),
+                    },
+                )),
+            },
+            cookie,
+        );
+        assert!(matches!(next, ServerAuthenticationProcess::HavePeerName(_)));
+
+        // out-of-order message should close at any point
+        assert!(matches!(
+            next.next(other_message.clone(), cookie),
+            ServerAuthenticationProcess::Close
+        ));
+
+        // we retrieved the peer name, stored it, and now are waiting on the client status
+        // bad message should close at any point
+        let next = ServerAuthenticationProcess::WaitingOnClientStatus;
+
+        // out-of-order message should close at any point
+        assert!(matches!(
+            next.next(other_message.clone(), cookie),
+            ServerAuthenticationProcess::Close
+        ));
+
+        let next = next.next(
+            proto::AuthenticationMessage {
+                msg: Some(proto::authentication_message::Msg::ClientStatus(
+                    proto::ClientStatus { status: true },
+                )),
+            },
+            cookie,
+        );
+        assert!(matches!(
+            next,
+            ServerAuthenticationProcess::WaitingOnClientChallengeReply(_, _)
+        ));
+        let digest = if let ServerAuthenticationProcess::WaitingOnClientChallengeReply(_, d) = &next
+        {
+            *d
+        } else {
+            panic!("C'est impossible!");
+        };
+
+        // out-of-order message should close at any point
+        assert!(matches!(
+            next.next(other_message, cookie),
+            ServerAuthenticationProcess::Close
+        ));
+
+        // client sends their challenge reply, we need to check the challenge against our provided cookie hash
+        let next = next.next(
+            proto::AuthenticationMessage {
+                msg: Some(proto::authentication_message::Msg::ClientChallenge(
+                    proto::ChallengeReply {
+                        challenge: 1u32,
+                        digest: digest.to_vec(),
+                    },
+                )),
+            },
+            cookie,
+        );
+        assert!(matches!(next, ServerAuthenticationProcess::Ok(_)));
+    }
+
+    #[test]
+    fn client_auth_state() {
+        let cookie = "cookie";
+
+        let other_message = proto::AuthenticationMessage {
+            msg: Some(proto::authentication_message::Msg::ClientStatus(
+                proto::ClientStatus { status: false },
+            )),
+        };
+
+        let init = ClientAuthenticationProcess::init();
+        assert!(matches!(
+            init,
+            ClientAuthenticationProcess::WaitingForServerStatus
+        ));
+
+        // out-of-order message should close at any point
+        assert!(matches!(
+            init.next(other_message.clone(), cookie),
+            ClientAuthenticationProcess::Close
+        ));
+
+        let next = init.next(
+            proto::AuthenticationMessage {
+                msg: Some(proto::authentication_message::Msg::ServerStatus(
+                    proto::ServerStatus {
+                        status: proto::server_status::Status::Ok as i32,
+                    },
+                )),
+            },
+            cookie,
+        );
+        assert!(matches!(
+            next,
+            ClientAuthenticationProcess::WaitingForServerChallenge(_)
+        ));
+
+        // out-of-order message should close at any point
+        assert!(matches!(
+            next.next(other_message.clone(), cookie),
+            ClientAuthenticationProcess::Close
+        ));
+
+        let next = next.next(
+            proto::AuthenticationMessage {
+                msg: Some(proto::authentication_message::Msg::ServerChallenge(
+                    proto::Challenge {
+                        name: "challenger".to_string(),
+                        flags: Some(NodeFlags { version: 1 }),
+                        challenge: 123,
+                    },
+                )),
+            },
+            cookie,
+        );
+        assert!(matches!(
+            next,
+            ClientAuthenticationProcess::WaitingForServerChallengeAck(_, _, _, _)
+        ));
+        let (
+            _server_challenge_msg,
+            _server_challenge_digest,
+            _client_challenge,
+            client_challenge_digest,
+        ) = if let ClientAuthenticationProcess::WaitingForServerChallengeAck(
+            server_challenge_msg,
+            server_challenge_digest,
+            client_challenge,
+            client_challenge_digest,
+        ) = &next
+        {
+            (
+                server_challenge_msg.clone(),
+                *server_challenge_digest,
+                *client_challenge,
+                *client_challenge_digest,
+            )
+        } else {
+            panic!("C'est impossible!");
+        };
+
+        assert!(matches!(
+            next.next(other_message, cookie),
+            ClientAuthenticationProcess::Close
+        ));
+
+        let next = next.next(
+            proto::AuthenticationMessage {
+                msg: Some(proto::authentication_message::Msg::ServerAck(
+                    proto::ChallengeAck {
+                        digest: client_challenge_digest.to_vec(),
+                    },
+                )),
+            },
+            cookie,
+        );
+        assert!(matches!(next, ClientAuthenticationProcess::Ok));
+    }
+}

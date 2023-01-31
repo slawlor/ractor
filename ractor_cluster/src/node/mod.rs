@@ -56,7 +56,7 @@ use std::{cmp::Ordering, collections::hash_map::Entry};
 use ractor::{cast, Actor, ActorId, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
 
 use crate::protocol::auth as auth_protocol;
-use crate::RactorMessage;
+use crate::{NodeId, RactorMessage};
 
 const PROTOCOL_VERSION: u32 = 1;
 
@@ -120,6 +120,9 @@ pub enum NodeServerMessage {
         /// The node's name (now that we've received it)
         name: auth_protocol::NameMessage,
     },
+
+    /// Retrieve the current status of the node server, listing the node sessions
+    GetSessions(RpcReplyPort<HashMap<NodeId, ActorRef<NodeSession>>>),
 }
 
 /// Message from the TCP `ractor_cluster::net::session::Session` actor and the
@@ -134,6 +137,9 @@ pub enum NodeSessionMessage {
 
     /// Send a message over the node channel to the remote `node()`
     SendMessage(crate::protocol::node::NodeMessage),
+
+    /// Retrieve whether the session is authenticated or not
+    GetAuthenticationState(RpcReplyPort<bool>),
 }
 
 /// Represents the server which is managing all node session instances
@@ -170,14 +176,16 @@ struct NodeServerSessionInformation {
     actor: ActorRef<NodeSession>,
     peer_name: Option<auth_protocol::NameMessage>,
     is_server: bool,
+    node_id: NodeId,
 }
 
 impl NodeServerSessionInformation {
-    fn new(actor: ActorRef<NodeSession>, is_server: bool) -> Self {
+    fn new(actor: ActorRef<NodeSession>, is_server: bool, node_id: NodeId) -> Self {
         Self {
             actor,
             peer_name: None,
             is_server,
+            node_id,
         }
     }
 
@@ -190,7 +198,7 @@ impl NodeServerSessionInformation {
 pub struct NodeServerState {
     listener: ActorRef<crate::net::listener::Listener>,
     node_sessions: HashMap<ActorId, NodeServerSessionInformation>,
-    node_id_counter: u64,
+    node_id_counter: NodeId,
     this_node_name: auth_protocol::NameMessage,
 }
 
@@ -274,7 +282,7 @@ impl Actor for NodeServer {
                     let _ = cast!(actor, NodeSessionMessage::SetTcpStream(stream));
                     state.node_sessions.insert(
                         actor.get_id(),
-                        NodeServerSessionInformation::new(actor.clone(), is_server),
+                        NodeServerSessionInformation::new(actor.clone(), is_server, node_id),
                     );
                     state.node_id_counter += 1;
                 } else {
@@ -290,6 +298,13 @@ impl Actor for NodeServer {
             }
             Self::Msg::CheckSession { peer_name, reply } => {
                 let _ = reply.send(state.check_peers(peer_name));
+            }
+            Self::Msg::GetSessions(reply) => {
+                let mut map = HashMap::new();
+                for value in state.node_sessions.values() {
+                    map.insert(value.node_id, value.actor.clone());
+                }
+                let _ = reply.send(map);
             }
         }
         Ok(())

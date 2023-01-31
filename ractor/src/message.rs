@@ -134,7 +134,8 @@ pub trait Message: Any + Send + Sized + 'static {
 
     /// Convert this message to a [BoxedMessage]
     #[cfg(not(feature = "cluster"))]
-    fn box_message(self, _pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
+    #[allow(unused_variables)]
+    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
         Ok(BoxedMessage {
             msg: Some(Box::new(self)),
         })
@@ -154,7 +155,8 @@ pub trait Message: Any + Send + Sized + 'static {
 
     /// Deserialize binary data to this message type
     #[cfg(feature = "cluster")]
-    fn deserialize(_bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+    #[allow(unused_variables)]
+    fn deserialize(bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
         Err(BoxedDowncastErr)
     }
 }

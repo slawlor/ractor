@@ -28,7 +28,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote, ToTokens};
-use syn::{self, DeriveInput, Fields, Ident, Variant};
+use syn::{self, AngleBracketedGenericArguments, DeriveInput, Fields, Ident, TypePath, Variant};
 
 /// Derive `ractor::Message` for messages that are local-only
 #[proc_macro_derive(RactorMessage)]
@@ -95,8 +95,6 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
         });
 
         (quote! {
-            use ractor_cluster::BytesConvertable;
-
             impl ractor::Message for #name {
                 fn serializable() -> bool {
                     // Network serializable message
@@ -104,12 +102,14 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
                 }
 
                 fn serialize(self) -> Result<ractor::message::SerializedMessage, ractor::message::BoxedDowncastErr> {
+                    use ::ractor_cluster::BytesConvertable;
                     match self {
                         #( #serialized_variants ),*
                     }
                 }
 
                 fn deserialize(bytes: ractor::message::SerializedMessage) -> Result<Self, ractor::message::BoxedDowncastErr> {
+                    use ::ractor_cluster::BytesConvertable;
                     match bytes {
                         ractor::message::SerializedMessage::Cast {variant, data} => {
                             match variant.as_str() {
@@ -159,25 +159,12 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                     .collect::<Vec<_>>();
                 // the last field is the port
                 let _ = fields.pop();
-
                 let port_type = if let syn::Type::Path(path_data) =
                     unnamed_fields.unnamed.last().unwrap().ty.clone()
                 {
-                    if let syn::PathArguments::AngleBracketed(generic_args) =
-                        &path_data.path.segments.first().unwrap().arguments
-                    {
-                        if let syn::GenericArgument::Type(syn::Type::Path(arg)) =
-                            &generic_args.args.first().unwrap()
-                        {
-                            arg.path.segments.first().unwrap().ident.clone()
-                        } else {
-                            panic!("RpcReplyPort failed to get generic arguments")
-                        }
-                    } else {
-                        panic!("RpcReplyPort failed to get generic args");
-                    }
+                    get_generic_reply_port_type(&path_data)
                 } else {
-                    panic!("RpcReplyPort is not a type path!");
+                    panic!("No generic arguments on path data!");
                 };
 
                 let port = format_ident!("reply");
@@ -304,22 +291,11 @@ fn impl_call_variant_deserialize(variant: &Variant) -> impl ToTokens {
             let port_type = if let syn::Type::Path(path_data) =
                 unnamed_fields.unnamed.last().unwrap().ty.clone()
             {
-                if let syn::PathArguments::AngleBracketed(generic_args) =
-                    &path_data.path.segments.first().unwrap().arguments
-                {
-                    if let syn::GenericArgument::Type(syn::Type::Path(arg)) =
-                        &generic_args.args.first().unwrap()
-                    {
-                        arg.path.segments.first().unwrap().ident.clone()
-                    } else {
-                        panic!("RpcReplyPort failed to get generic arguments")
-                    }
-                } else {
-                    panic!("RpcReplyPort failed to get generic args");
-                }
+                get_generic_reply_port_type(&path_data)
             } else {
-                panic!("RpcReplyPort is not a type path!");
+                panic!("No generic arguments on path data!");
             };
+
             let target_port = convert_deserialize_port(&port, &port_type);
 
             // the last field is the port, pop it off
@@ -375,11 +351,14 @@ fn unpack_arg(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
     }
 }
 
-fn convert_deserialize_port(the_port: &Ident, port_type: &Ident) -> impl ToTokens {
+fn convert_deserialize_port(
+    the_port: &Ident,
+    port_type: &AngleBracketedGenericArguments,
+) -> impl ToTokens {
     // TODO: catch unwind for the conversion? returning Err(BoxedDowncastErr)
     quote! {
         {
-            let (tx, rx) = ractor::concurrency::oneshot::<#port_type>();
+            let (tx, rx) = ractor::concurrency::oneshot::#port_type();
             let o_timeout = #the_port.get_timeout();
             ractor::concurrency::spawn(async move {
                 if let Some(timeout) = o_timeout {
@@ -401,8 +380,12 @@ fn convert_deserialize_port(the_port: &Ident, port_type: &Ident) -> impl ToToken
     }
 }
 
-fn convert_serialize_port(the_port: &Ident, target_type: &Ident) -> impl ToTokens {
+fn convert_serialize_port(
+    the_port: &Ident,
+    target_type: &AngleBracketedGenericArguments,
+) -> impl ToTokens {
     // TODO: catch unwind for the conversion? returning Err(BoxedDowncastErr)
+    let generic_args = &target_type.args;
     quote! {
         {
             let (tx, rx) = ractor::concurrency::oneshot();
@@ -410,12 +393,12 @@ fn convert_serialize_port(the_port: &Ident, target_type: &Ident) -> impl ToToken
             ractor::concurrency::spawn(async move {
                 if let Some(timeout) = o_timeout {
                     if let Ok(Ok(result)) = ractor::concurrency::timeout(timeout, rx).await {
-                        let typed_result = <#target_type as ractor_cluster::BytesConvertable>::from_bytes(result);
+                        let typed_result = <#generic_args as ractor_cluster::BytesConvertable>::from_bytes(result);
                         let _ = #the_port.send(typed_result);
                     }
                 } else {
                     if let Ok(result) = rx.await {
-                        let typed_result = <#target_type as ractor_cluster::BytesConvertable>::from_bytes(result);
+                        let typed_result = <#generic_args as ractor_cluster::BytesConvertable>::from_bytes(result);
                         let _ = #the_port.send(typed_result);
                     }
                 }
@@ -426,5 +409,15 @@ fn convert_serialize_port(the_port: &Ident, target_type: &Ident) -> impl ToToken
                 ractor::RpcReplyPort::<_>::from(tx)
             }
         }
+    }
+}
+
+fn get_generic_reply_port_type(path_data: &TypePath) -> AngleBracketedGenericArguments {
+    if let syn::PathArguments::AngleBracketed(generic_args) =
+        &path_data.path.segments.first().unwrap().arguments
+    {
+        generic_args.clone()
+    } else {
+        panic!("RpcReplyPort failed to get generic args");
     }
 }
