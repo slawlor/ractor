@@ -1,6 +1,6 @@
 [package]
 name = "ractor_cluster"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "Distributed cluster environment of Ractor actors"
 documentation = "https://docs.rs/ractor"
@@ -8,7 +8,7 @@ license = "MIT"
 edition = "2018"
 keywords = ["actor", "ractor", "cluster"]
 repository = "https://github.com/slawlor/ractor"
-readme = "../README.md"
+readme = "README.md"
 homepage = "https://github.com/slawlor/ractor"
 categories = ["actor", "erlang"]
 build = "src/build.rs"
