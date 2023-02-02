@@ -15,6 +15,16 @@ This crate contains extensions to `ractor`, a pure-Rust actor framework. Inspire
 
 `ractor_cluster` expands upon `ractor` actors to support transmission over a network link and synchronization of actors on remote systems.
 
+## Installation
+
+Install `ractor_cluster` by adding the following to your Cargo.toml dependencies
+
+```toml
+[dependencies]
+ractor = { version = "0.7", features = ["cluster"] }
+ractor_cluster = "0.7"
+```
+
 ## Ractor in distribucted clusters
 
 Ractor actors can be built in a network-distributed pool of actors, similar to [Erlang's EPMD](https://www.erlang.org/doc/man/epmd.html) which manages inter-node connections + node naming. In our implementation, we have [`ractor_cluster`](https://crates.io/crates/ractor_cluster) in order to facilitate distributed `ractor` actors.
