@@ -68,7 +68,13 @@ impl Actor for Game {
 
     type State = GameState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         Ok(GameState::default())
     }
 
@@ -141,8 +147,13 @@ impl Actor for GameManager {
     type Msg = GameManagerMessage;
 
     type State = GameManagerState;
+    type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         // This is the first code that will run in the actor. It spawns the Game actors,
         // registers them to its monitoring list, then sends them a message indicating
         // that they should start their games.
@@ -153,7 +164,7 @@ impl Actor for GameManager {
         println!("Rounds per game: {}", game_conditions.total_rounds);
         println!("Running simulations...");
         for _ in 0..self.num_games {
-            let (actor, _) = Actor::spawn_linked(None, Game, myself.clone().into())
+            let (actor, _) = Actor::spawn_linked(None, Game, (), myself.clone().into())
                 .await
                 .expect("Failed to start game");
             cast!(actor, GameMessage(myself.clone())).expect("Failed to send message");
@@ -200,7 +211,7 @@ async fn main() {
         num_games: NUM_GAMES,
     };
     // spawn it off and wait for it to complete/exit
-    let (_actor, handle) = Actor::spawn(None, manager)
+    let (_actor, handle) = Actor::spawn(None, manager, ())
         .await
         .expect("Failed to start game manager");
 

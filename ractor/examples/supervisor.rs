@@ -19,7 +19,7 @@ use tokio::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    let (root, handle) = Actor::spawn(Some("root".to_string()), RootActor)
+    let (root, handle) = Actor::spawn(Some("root".to_string()), RootActor, ())
         .await
         .expect("Failed to start root actor");
     let mid_level = root
@@ -72,7 +72,12 @@ impl ractor::Message for LeafActorMessage {}
 impl Actor for LeafActor {
     type Msg = LeafActorMessage;
     type State = LeafActorState;
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         Ok(LeafActorState {})
     }
 
@@ -130,10 +135,15 @@ impl ractor::Message for MidLevelActorMessage {}
 impl Actor for MidLevelActor {
     type Msg = MidLevelActorMessage;
     type State = MidLevelActorState;
+    type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         let (leaf_actor, _) =
-            Actor::spawn_linked(Some("leaf".to_string()), LeafActor, myself.into()).await?;
+            Actor::spawn_linked(Some("leaf".to_string()), LeafActor, (), myself.into()).await?;
         Ok(MidLevelActorState { leaf_actor })
     }
 
@@ -205,12 +215,21 @@ impl ractor::Message for RootActorMessage {}
 impl Actor for RootActor {
     type Msg = RootActorMessage;
     type State = RootActorState;
+    type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         println!("RootActor: Started {myself:?}");
-        let (mid_level_actor, _) =
-            Actor::spawn_linked(Some("mid-level".to_string()), MidLevelActor, myself.into())
-                .await?;
+        let (mid_level_actor, _) = Actor::spawn_linked(
+            Some("mid-level".to_string()),
+            MidLevelActor,
+            (),
+            myself.into(),
+        )
+        .await?;
         Ok(RootActorState { mid_level_actor })
     }
 

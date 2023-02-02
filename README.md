@@ -48,7 +48,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies
 
 ```toml
 [dependencies]
-ractor = "0.4"
+ractor = "0.6"
 ```
 
 ## Features
@@ -104,11 +104,13 @@ impl Actor for PingPong {
     type Msg = Message;
     // and (optionally) internal state
     type State = u8;
+    // Startup initialization args
+    type Arguments = ();
 
     // Initially we need to create our state, and potentially
     // start some internal processing (by posting a message for
     // example)
-    async fn pre_start(&self, myself: ActorCell) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(&self, myself: ActorCell, _: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
         // startup the event processing
         myself.cast(Message::Ping)?;
         Ok(0u8)

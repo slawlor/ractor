@@ -70,6 +70,9 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// The type of state this actor manages internally
     type State: State;
 
+    /// Initialization arguments
+    type Arguments: State;
+
     /// Invoked when an actor is being started by the system.
     ///
     /// Any initialization inherent to the actor's role should be
@@ -80,9 +83,15 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// will return an error to the caller
     ///
     /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `args` - Arguments that are passed in the spawning of the actor which might
+    /// be necessary to construct the initial state
     ///
     /// Returns an initial [Actor::State] to bootstrap the actor
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr>;
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        args: Self::Arguments,
+    ) -> Result<Self::State, ActorProcessingErr>;
 
     /// Invoked after an actor has started.
     ///
@@ -173,6 +182,8 @@ pub trait Actor: Sized + Sync + Send + 'static {
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
+    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -180,14 +191,17 @@ pub trait Actor: Sized + Sync + Send + 'static {
     async fn spawn(
         name: Option<ActorName>,
         handler: Self,
+        startup_args: Self::Arguments,
     ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
-        ActorRuntime::<Self::Msg, Self::State, Self>::spawn(name, handler).await
+        ActorRuntime::<Self::Msg, Self::State, Self>::spawn(name, handler, startup_args).await
     }
 
     /// Spawn an actor of this type with a supervisor, automatically starting the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
+    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -196,9 +210,16 @@ pub trait Actor: Sized + Sync + Send + 'static {
     async fn spawn_linked(
         name: Option<ActorName>,
         handler: Self,
+        startup_args: Self::Arguments,
         supervisor: ActorCell,
     ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
-        ActorRuntime::<Self::Msg, Self::State, Self>::spawn_linked(name, handler, supervisor).await
+        ActorRuntime::<Self::Msg, Self::State, Self>::spawn_linked(
+            name,
+            handler,
+            startup_args,
+            supervisor,
+        )
+        .await
     }
 }
 
@@ -224,6 +245,8 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
+    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -231,15 +254,18 @@ where
     pub async fn spawn(
         name: Option<ActorName>,
         handler: THandler,
+        startup_args: THandler::Arguments,
     ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
-        actor.start(ports, None).await
+        actor.start(ports, startup_args, None).await
     }
 
     /// Spawn an actor with a supervisor, automatically starting the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
+    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -248,17 +274,20 @@ where
     pub async fn spawn_linked(
         name: Option<ActorName>,
         handler: THandler,
+        startup_args: THandler::Arguments,
         supervisor: ActorCell,
     ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
-        actor.start(ports, Some(supervisor)).await
+        actor.start(ports, startup_args, Some(supervisor)).await
     }
 
     /// Spawn a REMOTE actor with a supervisor, automatically starting the actor. Only for use
     /// by `ractor_cluster::node::NodeSession`
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
-    /// * `handler` The [Actor] defining the logic for this actor
+    /// * `handler`: The [Actor] defining the logic for this actor
+    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -269,6 +298,7 @@ where
         name: Option<ActorName>,
         handler: THandler,
         id: ActorId,
+        startup_args: THandler::Arguments,
         supervisor: ActorCell,
     ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         if id.is_local() {
@@ -285,7 +315,7 @@ where
                 },
                 ports,
             );
-            actor.start(ports, Some(supervisor)).await
+            actor.start(ports, startup_args, Some(supervisor)).await
         }
     }
 
@@ -321,6 +351,7 @@ where
     async fn start(
         self,
         ports: ActorPortSet,
+        startup_args: THandler::Arguments,
         supervisor: Option<ActorCell>,
     ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
         // cannot start an actor more than once
@@ -331,7 +362,7 @@ where
         self.base.set_status(ActorStatus::Starting);
 
         // Perform the pre-start routine, crashing immediately if we fail to start
-        let mut state = Self::do_pre_start(self.base.clone(), self.handler.clone())
+        let mut state = Self::do_pre_start(self.base.clone(), self.handler.clone(), startup_args)
             .await?
             .map_err(SpawnErr::StartupPanic)?;
 
@@ -562,8 +593,9 @@ where
     async fn do_pre_start(
         myself: ActorRef<THandler>,
         handler: Arc<THandler>,
+        arguments: THandler::Arguments,
     ) -> Result<Result<TState, ActorProcessingErr>, SpawnErr> {
-        let future = handler.pre_start(myself);
+        let future = handler.pre_start(myself, arguments);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
             .map_err(|err| SpawnErr::StartupPanic(get_panic_string(err)))

@@ -38,8 +38,13 @@ impl Actor for Publisher {
     type Msg = PublisherMessage;
 
     type State = ();
+    type Arguments = ();
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
     }
 
@@ -72,8 +77,13 @@ impl Actor for Subscriber {
     type Msg = SubscriberMessage;
 
     type State = ();
+    type Arguments = ();
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
     }
 
@@ -101,6 +111,7 @@ async fn main() {
         Publisher {
             output: port.clone(),
         },
+        (),
     )
     .await
     .expect("Failed to start publisher");
@@ -110,7 +121,7 @@ async fn main() {
 
     // spawn + setup the subscribers (NOT SUPERVISION LINKAGE)
     for _ in 0..10 {
-        let (actor_ref, actor_handle) = Actor::spawn(None, Subscriber)
+        let (actor_ref, actor_handle) = Actor::spawn(None, Subscriber, ())
             .await
             .expect("Failed to start subscriber");
 

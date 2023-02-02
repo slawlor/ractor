@@ -18,12 +18,13 @@ struct TestActor;
 #[async_trait::async_trait]
 impl Actor for TestActor {
     type Msg = ();
-
+    type Arguments = ();
     type State = ();
 
     async fn pre_start(
         &self,
         _this_actor: crate::ActorRef<Self>,
+        _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
     }
@@ -32,7 +33,7 @@ impl Actor for TestActor {
 #[named]
 #[crate::concurrency::test]
 async fn test_basic_group() {
-    let (actor, handle) = Actor::spawn(None, TestActor)
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
         .expect("Failed to spawn test actor");
 
@@ -57,7 +58,7 @@ async fn test_multiple_members_in_group() {
     let mut actors = vec![];
     let mut handles = vec![];
     for _ in 0..10 {
-        let (actor, handle) = Actor::spawn(None, TestActor)
+        let (actor, handle) = Actor::spawn(None, TestActor, ())
             .await
             .expect("Failed to spawn test actor");
         actors.push(actor);
@@ -94,7 +95,7 @@ async fn test_multiple_groups() {
     let mut actors = vec![];
     let mut handles = vec![];
     for _ in 0..10 {
-        let (actor, handle) = Actor::spawn(None, TestActor)
+        let (actor, handle) = Actor::spawn(None, TestActor, ())
             .await
             .expect("Failed to spawn test actor");
         actors.push(actor);
@@ -132,7 +133,7 @@ async fn test_multiple_groups() {
 #[named]
 #[crate::concurrency::test]
 async fn test_actor_leaves_pg_group_on_shutdown() {
-    let (actor, handle) = Actor::spawn(None, TestActor)
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
         .expect("Failed to spawn test actor");
 
@@ -158,7 +159,7 @@ async fn test_actor_leaves_pg_group_on_shutdown() {
 async fn test_actor_leaves_pg_group_manually() {
     let group = function_name!().to_string();
 
-    let (actor, handle) = Actor::spawn(None, TestActor)
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
         .expect("Failed to spawn test actor");
 
@@ -202,12 +203,13 @@ async fn test_pg_monitoring() {
     #[async_trait::async_trait]
     impl Actor for AutoJoinActor {
         type Msg = ();
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             myself: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             pg::join(self.pg_group.clone(), vec![myself.into()]);
             Ok(())
@@ -222,12 +224,13 @@ async fn test_pg_monitoring() {
     #[async_trait::async_trait]
     impl Actor for NotificationMonitor {
         type Msg = ();
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             myself: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             pg::monitor(self.pg_group.clone(), myself.into());
             Ok(())
@@ -258,12 +261,13 @@ async fn test_pg_monitoring() {
             pg_group: group.clone(),
             counter: counter.clone(),
         },
+        (),
     )
     .await
     .expect("Failed to start monitor actor");
 
     // this actor's startup should "monitor" for PG changes
-    let (test_actor, test_handle) = Actor::spawn(None, AutoJoinActor { pg_group: group })
+    let (test_actor, test_handle) = Actor::spawn(None, AutoJoinActor { pg_group: group }, ())
         .await
         .expect("Failed to start test actor");
 
@@ -297,9 +301,11 @@ async fn local_vs_remote_pg_members() {
     impl Actor for TestRemoteActor {
         type Msg = TestRemoteActorMessage;
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -310,7 +316,7 @@ async fn local_vs_remote_pg_members() {
     let mut actors: Vec<crate::ActorCell> = vec![];
     let mut handles = vec![];
     for _ in 0..10 {
-        let (actor, handle) = Actor::spawn(None, TestActor)
+        let (actor, handle) = Actor::spawn(None, TestActor, ())
             .await
             .expect("Failed to spawn test actor");
         actors.push(actor.into());
@@ -320,6 +326,7 @@ async fn local_vs_remote_pg_members() {
         None,
         TestRemoteActor,
         remote_pid,
+        (),
         actors.first().unwrap().clone(),
     )
     .await

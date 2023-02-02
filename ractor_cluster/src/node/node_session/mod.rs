@@ -481,13 +481,10 @@ impl NodeSession {
                         .as_millis();
                     log::debug!("Ping -> Pong took {}ms", delta_ms);
                     if delta_ms > 50 {
-                        let default = || {
-                            SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0)
-                        };
                         log::warn!(
                             "Super long ping detected {} - {} ({}ms)",
-                            state.local_addr.unwrap_or_else(default),
-                            state.peer_addr.unwrap_or_else(default),
+                            state.local_addr,
+                            state.peer_addr,
                             delta_ms
                         );
                     }
@@ -638,8 +635,8 @@ impl NodeSession {
 /// The state of the node session
 pub struct NodeSessionState {
     tcp: Option<ActorRef<crate::net::session::Session>>,
-    peer_addr: Option<SocketAddr>,
-    local_addr: Option<SocketAddr>,
+    peer_addr: SocketAddr,
+    local_addr: SocketAddr,
     name: Option<auth_protocol::NameMessage>,
     auth: AuthenticationState,
     remote_actors: HashMap<u64, ActorRef<RemoteActor>>,
@@ -715,11 +712,28 @@ impl NodeSessionState {
 #[async_trait::async_trait]
 impl Actor for NodeSession {
     type Msg = super::NodeSessionMessage;
+    type Arguments = tokio::net::TcpStream;
     type State = NodeSessionState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
-        Ok(Self::State {
-            tcp: None,
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        stream: Self::Arguments,
+    ) -> Result<Self::State, ActorProcessingErr> {
+        let peer_addr = stream.peer_addr()?;
+        let local_addr = stream.local_addr()?;
+        // startup the TCP socket handler for message write + reading
+        let actor = crate::net::session::Session::spawn_linked(
+            myself.clone(),
+            stream,
+            peer_addr,
+            local_addr,
+            myself.get_cell(),
+        )
+        .await?;
+
+        let state = Self::State {
+            tcp: Some(actor),
             name: None,
             auth: if self.is_server {
                 AuthenticationState::AsServer(auth::ServerAuthenticationProcess::init())
@@ -727,9 +741,20 @@ impl Actor for NodeSession {
                 AuthenticationState::AsClient(auth::ClientAuthenticationProcess::init())
             },
             remote_actors: HashMap::new(),
-            peer_addr: None,
-            local_addr: None,
-        })
+            peer_addr,
+            local_addr,
+        };
+
+        // If a client-connection, startup the handshake
+        if !self.is_server {
+            state.tcp_send_auth(auth_protocol::AuthenticationMessage {
+                msg: Some(auth_protocol::authentication_message::Msg::Name(
+                    self.node_name.clone(),
+                )),
+            });
+        }
+
+        Ok(state)
     }
 
     async fn post_stop(
@@ -754,32 +779,6 @@ impl Actor for NodeSession {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            super::NodeSessionMessage::SetTcpStream(stream) if state.tcp.is_none() => {
-                let peer_addr = stream.peer_addr()?;
-                let my_addr = stream.local_addr()?;
-                // startup the TCP socket handler for message write + reading
-                let actor = crate::net::session::Session::spawn_linked(
-                    myself.clone(),
-                    stream,
-                    peer_addr,
-                    my_addr,
-                    myself.get_cell(),
-                )
-                .await?;
-
-                state.tcp = Some(actor);
-                state.peer_addr = Some(peer_addr);
-                state.local_addr = Some(my_addr);
-
-                // If a client-connection, startup the handshake
-                if !self.is_server {
-                    state.tcp_send_auth(auth_protocol::AuthenticationMessage {
-                        msg: Some(auth_protocol::authentication_message::Msg::Name(
-                            self.node_name.clone(),
-                        )),
-                    });
-                }
-            }
             Self::Msg::MessageReceived(maybe_network_message) if state.tcp.is_some() => {
                 if let Some(network_message) = maybe_network_message.message {
                     match network_message {

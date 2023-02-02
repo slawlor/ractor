@@ -28,10 +28,10 @@ pub(crate) async fn test_auth_handshake(port_a: u16, port_b: u16, valid_cookies:
     let server_b =
         ractor_cluster::NodeServer::new(port_b, cookie_b, "node_b".to_string(), hostname);
 
-    let (actor_a, handle_a) = Actor::spawn(None, server_a)
+    let (actor_a, handle_a) = Actor::spawn(None, server_a, ())
         .await
         .expect("Failed to start NodeServer A");
-    let (actor_b, handle_b) = Actor::spawn(None, server_b)
+    let (actor_b, handle_b) = Actor::spawn(None, server_b, ())
         .await
         .expect("Failed to start NodeServer B");
 
@@ -68,8 +68,13 @@ enum PingPongActorMessage {
 impl Actor for PingPongActor {
     type Msg = PingPongActorMessage;
     type State = ();
+    type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         ractor::pg::join("test".to_string(), vec![myself.get_cell()]);
         Ok(())
     }
@@ -121,11 +126,11 @@ pub(crate) async fn startup_ping_pong_test_node(port: u16, connect_client: Optio
 
     let server = ractor_cluster::NodeServer::new(port, cookie, "node_a".to_string(), hostname);
 
-    let (actor, handle) = Actor::spawn(None, server)
+    let (actor, handle) = Actor::spawn(None, server, ())
         .await
         .expect("Failed to start NodeServer A");
 
-    let (test_actor, test_handle) = Actor::spawn(None, PingPongActor)
+    let (test_actor, test_handle) = Actor::spawn(None, PingPongActor, ())
         .await
         .expect("Ping pong actor failed to start up!");
 

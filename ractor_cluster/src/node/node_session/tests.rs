@@ -3,6 +3,8 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
+use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
@@ -17,7 +19,12 @@ struct DummyNodeServer;
 impl Actor for DummyNodeServer {
     type Msg = crate::node::NodeServerMessage;
     type State = ();
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
     }
     async fn handle(
@@ -51,7 +58,12 @@ struct DummyNodeSession;
 impl Actor for DummyNodeSession {
     type Msg = crate::node::NodeSessionMessage;
     type State = ();
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
     }
     async fn handle(
@@ -66,10 +78,10 @@ impl Actor for DummyNodeSession {
 
 #[ractor::concurrency::test]
 async fn node_session_server_auth_success() {
-    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer)
+    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
         .await
         .expect("Failed to start dummy node server");
-    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession)
+    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession, ())
         .await
         .expect("Failed to start dummy node session");
 
@@ -89,10 +101,11 @@ async fn node_session_server_auth_success() {
         node_server: server_ref.clone(),
     };
 
+    // let addr = SocketAddr::
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsServer(auth::ServerAuthenticationProcess::init()),
-        local_addr: None,
-        peer_addr: None,
+        local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
@@ -156,10 +169,10 @@ async fn node_session_server_auth_success() {
 
 #[ractor::concurrency::test]
 async fn node_session_server_auth_session_state_failures() {
-    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer)
+    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
         .await
         .expect("Failed to start dummy node server");
-    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession)
+    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession, ())
         .await
         .expect("Failed to start dummy node session");
 
@@ -181,8 +194,8 @@ async fn node_session_server_auth_session_state_failures() {
 
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsServer(auth::ServerAuthenticationProcess::init()),
-        local_addr: None,
-        peer_addr: None,
+        local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
@@ -249,9 +262,11 @@ async fn node_session_handle_node_msg() {
     impl Actor for DummyRemoteActor {
         type Msg = crate::remote_actor::RemoteActorMessage;
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _myself: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -280,10 +295,10 @@ async fn node_session_handle_node_msg() {
         }
     }
 
-    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer)
+    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
         .await
         .expect("Failed to start dummy node server");
-    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession)
+    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession, ())
         .await
         .expect("Failed to start dummy node session");
 
@@ -302,6 +317,7 @@ async fn node_session_handle_node_msg() {
             call_replies: call_replies.clone(),
         },
         test_pid,
+        (),
         session_ref.get_cell(),
     )
     .await
@@ -322,8 +338,8 @@ async fn node_session_handle_node_msg() {
 
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsServer(auth::ServerAuthenticationProcess::Ok([0u8; 32])),
-        local_addr: None,
-        peer_addr: None,
+        local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
@@ -381,6 +397,152 @@ async fn node_session_handle_node_msg() {
     );
     sleep(Duration::from_millis(100)).await;
     assert_eq!(1, call_replies.load(Ordering::Relaxed));
+
+    // cleanup
+    dummy_server.stop(None);
+    dummy_session.stop(None);
+    dummy_shandle.await.unwrap();
+    dummy_chandle.await.unwrap();
+}
+
+#[ractor::concurrency::test]
+async fn node_session_handle_control() {
+    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
+        .await
+        .expect("Failed to start dummy node server");
+    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession, ())
+        .await
+        .expect("Failed to start dummy node session");
+
+    let server_ref: ActorRef<super::NodeServer> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<super::NodeSession> = dummy_session.get_cell().into();
+
+    // Do NOT do what we do here, converting the ActorRef -> ActorCell -> ActorRef on wrong struct but with correct message type. This will work
+    // but is very dangerous outside of tests
+    let session = NodeSession {
+        cookie: "cookie".to_string(),
+        is_server: true,
+        node_id: 1,
+        node_name: auth_protocol::NameMessage {
+            name: "myself".to_string(),
+            flags: Some(auth_protocol::NodeFlags { version: 1 }),
+        },
+        node_server: server_ref.clone(),
+    };
+
+    let mut state = NodeSessionState {
+        auth: AuthenticationState::AsClient(auth::ClientAuthenticationProcess::Ok),
+        local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        name: None,
+        remote_actors: HashMap::new(),
+        tcp: None,
+    };
+
+    // check spawn creates a remote actor
+    session
+        .handle_control(
+            &mut state,
+            control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::Spawn(
+                    control_protocol::Spawn {
+                        actors: vec![control_protocol::Actor {
+                            name: None,
+                            pid: 42,
+                        }],
+                    },
+                )),
+            },
+            session_ref.clone(),
+        )
+        .await;
+    assert_eq!(1, state.remote_actors.len());
+
+    // check terminate cleans up a remote actor
+    session
+        .handle_control(
+            &mut state,
+            control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::Terminate(
+                    control_protocol::Terminate { ids: vec![42] },
+                )),
+            },
+            session_ref.clone(),
+        )
+        .await;
+    assert_eq!(0, state.remote_actors.len());
+
+    let group_name = "node_session_handle_control";
+
+    // check pg join spawns + joins to a pg group
+    session
+        .handle_control(
+            &mut state,
+            control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::PgJoin(
+                    control_protocol::PgJoin {
+                        group: group_name.to_string(),
+                        actors: vec![control_protocol::Actor {
+                            name: None,
+                            pid: 43,
+                        }],
+                    },
+                )),
+            },
+            session_ref.clone(),
+        )
+        .await;
+    assert_eq!(1, state.remote_actors.len());
+    let id_set = ractor::pg::get_members(&group_name.to_string())
+        .into_iter()
+        .map(|a| a.get_id())
+        .collect::<HashSet<_>>();
+    assert!(id_set.contains(&ActorId::Remote {
+        node_id: 1,
+        pid: 43
+    }));
+
+    // check pg leave leaves the pg group
+    session
+        .handle_control(
+            &mut state,
+            control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::PgLeave(
+                    control_protocol::PgLeave {
+                        group: group_name.to_string(),
+                        actors: vec![control_protocol::Actor {
+                            name: None,
+                            pid: 43,
+                        }],
+                    },
+                )),
+            },
+            session_ref.clone(),
+        )
+        .await;
+    assert_eq!(1, state.remote_actors.len());
+    let id_set = ractor::pg::get_members(&group_name.to_string())
+        .into_iter()
+        .map(|a| a.get_id())
+        .collect::<HashSet<_>>();
+    assert!(!id_set.contains(&ActorId::Remote {
+        node_id: 1,
+        pid: 43
+    }));
+    // cleanup that test actor
+    session
+        .handle_control(
+            &mut state,
+            control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::Terminate(
+                    control_protocol::Terminate { ids: vec![43] },
+                )),
+            },
+            session_ref.clone(),
+        )
+        .await;
+
+    // TODO: ping? for healthchecks
 
     // cleanup
     dummy_server.stop(None);

@@ -45,10 +45,14 @@ pub struct ListenerMessage;
 #[async_trait::async_trait]
 impl Actor for Listener {
     type Msg = ListenerMessage;
-
+    type Arguments = ();
     type State = ListenerState;
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         let addr = format!("0.0.0.0:{}", self.port);
         let listener = match TcpListener::bind(&addr).await {
             Ok(l) => l,

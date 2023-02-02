@@ -26,9 +26,11 @@ async fn test_intervals() {
     impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(self.counter.clone())
         }
@@ -49,6 +51,7 @@ async fn test_intervals() {
         TestActor {
             counter: counter.clone(),
         },
+        (),
     )
     .await
     .expect("Failed to create test actor");
@@ -85,9 +88,11 @@ async fn test_send_after() {
     impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(self.counter.clone())
         }
@@ -108,6 +113,7 @@ async fn test_send_after() {
         TestActor {
             counter: counter.clone(),
         },
+        (),
     )
     .await
     .expect("Failed to create test actor");
@@ -140,15 +146,17 @@ async fn test_exit_after() {
     impl Actor for TestActor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
     }
 
-    let (actor_ref, actor_handle) = Actor::spawn(None, TestActor)
+    let (actor_ref, actor_handle) = Actor::spawn(None, TestActor, ())
         .await
         .expect("Failed to create test actor");
 
@@ -168,9 +176,11 @@ async fn test_kill_after() {
     impl Actor for TestActor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -185,7 +195,7 @@ async fn test_kill_after() {
         }
     }
 
-    let (actor_ref, actor_handle) = Actor::spawn(None, TestActor)
+    let (actor_ref, actor_handle) = Actor::spawn(None, TestActor, ())
         .await
         .expect("Failed to create test actor");
 

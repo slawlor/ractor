@@ -36,8 +36,13 @@ impl Actor for Counter {
     type Msg = CounterMessage;
 
     type State = CounterState;
+    type Arguments = ();
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         // create the initial state
         Ok(CounterState { count: 0 })
     }
@@ -67,7 +72,7 @@ impl Actor for Counter {
 
 #[tokio::main]
 async fn main() {
-    let (actor, handle) = Actor::spawn(None, Counter)
+    let (actor, handle) = Actor::spawn(None, Counter, ())
         .await
         .expect("Failed to start actor!");
 
