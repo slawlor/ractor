@@ -12,7 +12,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ractor = "0.4"
+//! ractor = "0.6"
 //! ```
 //!
 //! ## Getting started
@@ -61,11 +61,13 @@
 //!     type Msg = Message;
 //!     // and (optionally) internal state
 //!     type State = u8;
+//!     // Startup arguments for actor initialization
+//!     type Arguments = ();
 //!
 //!     // Initially we need to create our state, and potentially
 //!     // start some internal processing (by posting a message for
 //!     // example)
-//!     async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+//!     async fn pre_start(&self, myself: ActorRef<Self>, _: ()) -> Result<Self::State, ActorProcessingErr> {
 //!         // startup the event processing
 //!         myself.send_message(Message::Ping).unwrap();
 //!         Ok(0u8)
@@ -91,7 +93,7 @@
 //! }
 //!
 //! async fn run() {
-//!     let (_, actor_handle) = Actor::spawn(None, PingPong).await.expect("Failed to start actor");
+//!     let (_, actor_handle) = Actor::spawn(None, PingPong, ()).await.expect("Failed to start actor");
 //!     actor_handle.await.expect("Actor failed to exit cleanly");
 //! }
 //! ```

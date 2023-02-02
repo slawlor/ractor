@@ -113,7 +113,12 @@ impl Fork {
 impl Actor for Fork {
     type Msg = ForkMessage;
     type State = ForkState;
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         Ok(Self::State {
             clean: false,
             owned_by: None,
@@ -308,7 +313,12 @@ impl Philosopher {
 impl Actor for Philosopher {
     type Msg = PhilosopherMessage;
     type State = PhilosopherState;
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         // initialize the simulation by making the philosopher's hungry
         let _ = cast!(myself, Self::Msg::BecomeHungry(0));
         Ok(Self::State::new(self.left.clone(), self.right.clone()))
@@ -461,7 +471,7 @@ async fn main() {
 
     // create the forks
     for _i in 0..philosopher_names.len() {
-        let (fork, handle) = Actor::spawn(None, Fork)
+        let (fork, handle) = Actor::spawn(None, Fork, ())
             .await
             .expect("Failed to create fork!");
         forks.push(fork);
@@ -480,7 +490,7 @@ async fn main() {
             left: forks[left].clone(),
             right: forks[right].clone(),
         };
-        let (philosopher, handle) = Actor::spawn(Some(philosopher_names[left].to_string()), p)
+        let (philosopher, handle) = Actor::spawn(Some(philosopher_names[left].to_string()), p, ())
             .await
             .expect("Failed to create philosopher!");
         results.insert(philosopher_names[left].to_string(), None);

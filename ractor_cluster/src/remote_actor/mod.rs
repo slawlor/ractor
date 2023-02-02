@@ -57,8 +57,14 @@ impl RemoteActor {
         supervisor: ActorCell,
     ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
         let actor_id = ActorId::Remote { node_id, pid };
-        ractor::ActorRuntime::<_, _, Self>::spawn_linked_remote(name, self, actor_id, supervisor)
-            .await
+        ractor::ActorRuntime::<_, _, Self>::spawn_linked_remote(
+            name,
+            self,
+            actor_id,
+            (),
+            supervisor,
+        )
+        .await
     }
 }
 
@@ -87,8 +93,12 @@ pub(crate) struct RemoteActorMessage;
 impl Actor for RemoteActor {
     type Msg = RemoteActorMessage;
     type State = RemoteActorState;
-
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         Ok(Self::State::default())
     }
 

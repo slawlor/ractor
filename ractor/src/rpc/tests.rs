@@ -24,12 +24,13 @@ async fn test_rpc_cast() {
     #[async_trait::async_trait]
     impl Actor for TestActor {
         type Msg = ();
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -50,6 +51,7 @@ async fn test_rpc_cast() {
         TestActor {
             counter: counter.clone(),
         },
+        (),
     )
     .await
     .expect("Failed to start test actor");
@@ -82,12 +84,13 @@ async fn test_rpc_call() {
     #[async_trait::async_trait]
     impl Actor for TestActor {
         type Msg = MessageFormat;
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -118,7 +121,7 @@ async fn test_rpc_call() {
         }
     }
 
-    let (actor_ref, handle) = Actor::spawn(None, TestActor)
+    let (actor_ref, handle) = Actor::spawn(None, TestActor, ())
         .await
         .expect("Failed to start test actor");
 
@@ -174,12 +177,13 @@ async fn test_rpc_call_forwarding() {
     #[async_trait::async_trait]
     impl Actor for Worker {
         type Msg = WorkerMessage;
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -217,12 +221,13 @@ async fn test_rpc_call_forwarding() {
     #[async_trait::async_trait]
     impl Actor for Forwarder {
         type Msg = ForwarderMessage;
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -243,7 +248,7 @@ async fn test_rpc_call_forwarding() {
         }
     }
 
-    let (worker_ref, worker_handle) = Actor::spawn(None, Worker)
+    let (worker_ref, worker_handle) = Actor::spawn(None, Worker, ())
         .await
         .expect("Failed to start worker actor");
 
@@ -252,6 +257,7 @@ async fn test_rpc_call_forwarding() {
         Forwarder {
             counter: counter.clone(),
         },
+        (),
     )
     .await
     .expect("Failed to start forwarder actor");

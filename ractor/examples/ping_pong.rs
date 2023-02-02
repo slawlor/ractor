@@ -47,8 +47,13 @@ impl Actor for PingPong {
     type Msg = Message;
 
     type State = u8;
+    type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         // startup the event processing
         cast!(myself, Message::Ping).unwrap();
         // create the initial state
@@ -75,7 +80,7 @@ impl Actor for PingPong {
 
 #[tokio::main]
 async fn main() {
-    let (_actor, handle) = Actor::spawn(None, PingPong)
+    let (_actor, handle) = Actor::spawn(None, PingPong, ())
         .await
         .expect("Failed to start ping-pong actor");
     handle

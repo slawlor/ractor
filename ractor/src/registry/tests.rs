@@ -16,18 +16,19 @@ async fn test_basic_registation() {
     #[async_trait::async_trait]
     impl Actor for EmptyActor {
         type Msg = ();
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             _this_actor: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
     }
 
-    let (actor, handle) = Actor::spawn(Some("my_actor".to_string()), EmptyActor)
+    let (actor, handle) = Actor::spawn(Some("my_actor".to_string()), EmptyActor, ())
         .await
         .expect("Actor failed to start");
 
@@ -44,24 +45,25 @@ async fn test_duplicate_registration() {
     #[async_trait::async_trait]
     impl Actor for EmptyActor {
         type Msg = ();
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             _this_actor: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
     }
 
-    let (actor, handle) = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor)
+    let (actor, handle) = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor, ())
         .await
         .expect("Actor failed to start");
 
     assert!(crate::registry::where_is("my_second_actor".to_string()).is_some());
 
-    let second_actor = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor).await;
+    let second_actor = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor, ()).await;
     // fails to spawn the second actor due to name err
     assert!(matches!(
         second_actor,
@@ -82,18 +84,19 @@ async fn test_actor_registry_unenrollment() {
     #[async_trait::async_trait]
     impl Actor for EmptyActor {
         type Msg = ();
-
+        type Arguments = ();
         type State = ();
 
         async fn pre_start(
             &self,
             _this_actor: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
     }
 
-    let (actor, handle) = Actor::spawn(Some("unenrollment".to_string()), EmptyActor)
+    let (actor, handle) = Actor::spawn(Some("unenrollment".to_string()), EmptyActor, ())
         .await
         .expect("Actor failed to start");
 
@@ -129,9 +132,11 @@ mod pid_registry_tests {
     impl Actor for RemoteActor {
         type Msg = RemoteActorMessage;
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -144,16 +149,18 @@ mod pid_registry_tests {
         impl Actor for EmptyActor {
             type Msg = ();
             type State = ();
+            type Arguments = ();
             async fn pre_start(
                 &self,
                 _this_actor: crate::ActorRef<Self>,
+                _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 Ok(())
             }
         }
         let remote_pid = ActorId::Remote { node_id: 1, pid: 1 };
 
-        let (actor, handle) = Actor::spawn(None, EmptyActor)
+        let (actor, handle) = Actor::spawn(None, EmptyActor, ())
             .await
             .expect("Actor failed to start");
 
@@ -161,6 +168,7 @@ mod pid_registry_tests {
             None,
             RemoteActor,
             remote_pid,
+            (),
             actor.get_cell(),
         )
         .await
@@ -186,18 +194,19 @@ mod pid_registry_tests {
         #[async_trait::async_trait]
         impl Actor for EmptyActor {
             type Msg = ();
-
+            type Arguments = ();
             type State = ();
 
             async fn pre_start(
                 &self,
                 _this_actor: crate::ActorRef<Self>,
+                _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 Ok(())
             }
         }
 
-        let (actor, handle) = Actor::spawn(None, EmptyActor)
+        let (actor, handle) = Actor::spawn(None, EmptyActor, ())
             .await
             .expect("Actor failed to start");
 
@@ -214,18 +223,19 @@ mod pid_registry_tests {
         #[async_trait::async_trait]
         impl Actor for EmptyActor {
             type Msg = ();
-
+            type Arguments = ();
             type State = ();
 
             async fn pre_start(
                 &self,
                 _this_actor: crate::ActorRef<Self>,
+                _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 Ok(())
             }
         }
 
-        let (actor, handle) = Actor::spawn(None, EmptyActor)
+        let (actor, handle) = Actor::spawn(None, EmptyActor, ())
             .await
             .expect("Actor failed to start");
 
@@ -256,12 +266,13 @@ mod pid_registry_tests {
         #[async_trait::async_trait]
         impl Actor for AutoJoinActor {
             type Msg = ();
-
+            type Arguments = ();
             type State = ();
 
             async fn pre_start(
                 &self,
                 _myself: crate::ActorRef<Self>,
+                _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 Ok(())
             }
@@ -274,12 +285,13 @@ mod pid_registry_tests {
         #[async_trait::async_trait]
         impl Actor for NotificationMonitor {
             type Msg = ();
-
+            type Arguments = ();
             type State = ();
 
             async fn pre_start(
                 &self,
                 myself: crate::ActorRef<Self>,
+                _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 monitor(myself.into());
                 Ok(())
@@ -312,12 +324,13 @@ mod pid_registry_tests {
             NotificationMonitor {
                 counter: counter.clone(),
             },
+            (),
         )
         .await
         .expect("Failed to start monitor actor");
 
         // this actor's startup should "monitor" for PG changes
-        let (test_actor, test_handle) = Actor::spawn(None, AutoJoinActor)
+        let (test_actor, test_handle) = Actor::spawn(None, AutoJoinActor, ())
             .await
             .expect("Failed to start test actor");
 

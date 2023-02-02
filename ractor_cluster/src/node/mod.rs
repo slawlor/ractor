@@ -53,7 +53,7 @@ use tokio::net::TcpStream;
 use std::collections::HashMap;
 use std::{cmp::Ordering, collections::hash_map::Entry};
 
-use ractor::{cast, Actor, ActorId, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
+use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
 
 use crate::protocol::auth as auth_protocol;
 use crate::{NodeId, RactorMessage};
@@ -129,9 +129,6 @@ pub enum NodeServerMessage {
 /// monitoring Sesson actor
 #[derive(RactorMessage)]
 pub enum NodeSessionMessage {
-    /// The Session actor is setting it's handle
-    SetTcpStream(TcpStream),
-
     /// A network message was received from the network
     MessageReceived(crate::protocol::NetworkMessage),
 
@@ -239,10 +236,15 @@ impl NodeServerState {
 impl Actor for NodeServer {
     type Msg = NodeServerMessage;
     type State = NodeServerState;
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         let listener = crate::net::listener::Listener::new(self.port, myself.clone());
 
-        let (actor_ref, _) = Actor::spawn_linked(None, listener, myself.get_cell()).await?;
+        let (actor_ref, _) = Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
 
         Ok(Self::State {
             node_sessions: HashMap::new(),
@@ -275,11 +277,11 @@ impl Actor for NodeServer {
                         myself.clone(),
                         state.this_node_name.clone(),
                     ),
+                    stream,
                     myself.get_cell(),
                 )
                 .await
                 {
-                    let _ = cast!(actor, NodeSessionMessage::SetTcpStream(stream));
                     state.node_sessions.insert(
                         actor.get_id(),
                         NodeServerSessionInformation::new(actor.clone(), is_server, node_id),
@@ -288,7 +290,6 @@ impl Actor for NodeServer {
                 } else {
                     // failed to startup actor, drop the socket
                     log::warn!("Failed to startup `NodeSession`, dropping connection");
-                    drop(stream);
                 }
             }
             Self::Msg::UpdateSession { actor_id, name } => {
@@ -329,7 +330,7 @@ impl Actor for NodeServer {
                     let listener = crate::net::listener::Listener::new(self.port, myself.clone());
 
                     let (actor_ref, _) =
-                        Actor::spawn_linked(None, listener, myself.get_cell()).await?;
+                        Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
                     state.listener = actor_ref;
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
@@ -363,7 +364,7 @@ impl Actor for NodeServer {
                     let listener = crate::net::listener::Listener::new(self.port, myself.clone());
 
                     let (actor_ref, _) =
-                        Actor::spawn_linked(None, listener, myself.get_cell()).await?;
+                        Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
                     state.listener = actor_ref;
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {

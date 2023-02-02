@@ -36,10 +36,10 @@ macro_rules! cast {
 /// #[async_trait::async_trait]
 /// impl Actor for TestActor {
 ///     type Msg = MessageFormat;
-///
+///     type Arguments = ();
 ///     type State = ();
 ///
-///     async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+///     async fn pre_start(&self, _this_actor: ActorRef<Self>, _: ()) -> Result<Self::State, ActorProcessingErr> {
 ///         Ok(())
 ///     }
 ///
@@ -63,7 +63,7 @@ macro_rules! cast {
 /// }
 ///
 /// async fn test() {
-///     let (actor, _handle) = Actor::spawn(None, TestActor).await.unwrap();
+///     let (actor, _handle) = Actor::spawn(None, TestActor, ()).await.unwrap();
 ///     let result = call!(actor, MessageFormat::TestRpc, "Something".to_string()).unwrap();
 ///     assert_eq!(result, "Something".to_string())
 /// }
@@ -117,10 +117,10 @@ macro_rules! call {
 /// #[async_trait::async_trait]
 /// impl Actor for TestActor {
 ///     type Msg = MessageFormat;
-///
+///     type Arguments = ();
 ///     type State = ();
 ///
-///     async fn pre_start(&self, _this_actor: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+///     async fn pre_start(&self, _this_actor: ActorRef<Self>, _: ()) -> Result<Self::State, ActorProcessingErr> {
 ///         Ok(())
 ///     }
 ///
@@ -144,7 +144,7 @@ macro_rules! call {
 /// }
 ///
 /// async fn test() {
-///     let (actor, _handle) = Actor::spawn(None, TestActor).await.unwrap();
+///     let (actor, _handle) = Actor::spawn(None, TestActor, ()).await.unwrap();
 ///     let result = call_t!(actor, MessageFormat::TestRpc, 50, "Something".to_string()).unwrap();
 ///     assert_eq!(result, "Something".to_string())
 /// }

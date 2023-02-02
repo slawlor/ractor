@@ -69,6 +69,7 @@ impl Session {
                 peer_addr,
                 local_addr,
             },
+            stream,
             supervisor,
         )
         .await
@@ -78,8 +79,6 @@ impl Session {
                 Err(err)
             }
             Ok((a, _)) => {
-                // intiialize this actor & its children
-                let _ = a.cast(SessionMessage::SetStream(stream));
                 // return the actor handle
                 Ok(a)
             }
@@ -90,9 +89,6 @@ impl Session {
 /// The node connection messages
 #[derive(RactorMessage)]
 pub enum SessionMessage {
-    /// Set the session's tcp stream, which initializes all underlying states
-    SetStream(TcpStream),
-
     /// Send a message over the channel
     Send(crate::protocol::NetworkMessage),
 
@@ -109,16 +105,24 @@ pub struct SessionState {
 #[async_trait::async_trait]
 impl Actor for Session {
     type Msg = SessionMessage;
+    type Arguments = TcpStream;
     type State = SessionState;
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        stream: TcpStream,
+    ) -> Result<Self::State, ActorProcessingErr> {
+        let (read, write) = stream.into_split();
         // spawn writer + reader child actors
-        let (writer, _) = Actor::spawn_linked(None, SessionWriter, myself.get_cell()).await?;
+        let (writer, _) =
+            Actor::spawn_linked(None, SessionWriter, write, myself.get_cell()).await?;
         let (reader, _) = Actor::spawn_linked(
             None,
             SessionReader {
                 session: myself.clone(),
             },
+            read,
             myself.get_cell(),
         )
         .await?;
@@ -142,12 +146,6 @@ impl Actor for Session {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            Self::Msg::SetStream(stream) => {
-                let (read, write) = stream.into_split();
-                // initialize the writer & reader state's
-                let _ = state.writer.cast(SessionWriterMessage::SetStream(write));
-                let _ = state.reader.cast(SessionReaderMessage::SetStream(read));
-            }
             Self::Msg::Send(msg) => {
                 log::debug!(
                     "SEND: {} -> {} - '{:?}'",
@@ -219,10 +217,6 @@ struct SessionWriterState {
 
 #[derive(crate::RactorMessage)]
 enum SessionWriterMessage {
-    /// Set the stream, providing a [TcpStream], which
-    /// to utilize for this node's connection
-    SetStream(OwnedWriteHalf),
-
     /// Write an object over the wire
     WriteObject(crate::protocol::NetworkMessage),
 }
@@ -230,13 +224,19 @@ enum SessionWriterMessage {
 #[async_trait::async_trait]
 impl Actor for SessionWriter {
     type Msg = SessionWriterMessage;
-
+    type Arguments = OwnedWriteHalf;
     type State = SessionWriterState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        writer: OwnedWriteHalf,
+    ) -> Result<Self::State, ActorProcessingErr> {
         // OK we've established connection, now we can process requests
 
-        Ok(Self::State { writer: None })
+        Ok(Self::State {
+            writer: Some(writer),
+        })
     }
 
     async fn post_stop(
@@ -256,9 +256,6 @@ impl Actor for SessionWriter {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            SessionWriterMessage::SetStream(stream) if state.writer.is_none() => {
-                state.writer = Some(stream);
-            }
             SessionWriterMessage::WriteObject(msg) if state.writer.is_some() => {
                 if let Some(stream) = &mut state.writer {
                     stream.writable().await.unwrap();
@@ -298,10 +295,6 @@ struct SessionReader {
 
 /// The node connection messages
 pub enum SessionReaderMessage {
-    /// Set the stream, providing a [TcpStream], which
-    /// to utilize for this node's connection
-    SetStream(OwnedReadHalf),
-
     /// Wait for an object from the stream
     WaitForObject,
 
@@ -318,11 +311,19 @@ struct SessionReaderState {
 #[async_trait::async_trait]
 impl Actor for SessionReader {
     type Msg = SessionReaderMessage;
-
+    type Arguments = OwnedReadHalf;
     type State = SessionReaderState;
 
-    async fn pre_start(&self, _myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
-        Ok(Self::State { reader: None })
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        reader: OwnedReadHalf,
+    ) -> Result<Self::State, ActorProcessingErr> {
+        // start waiting for the first object on the network
+        let _ = myself.cast(SessionReaderMessage::WaitForObject);
+        Ok(Self::State {
+            reader: Some(reader),
+        })
     }
 
     async fn post_stop(
@@ -342,11 +343,6 @@ impl Actor for SessionReader {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            Self::Msg::SetStream(stream) if state.reader.is_none() => {
-                state.reader = Some(stream);
-                // wait for an incoming object
-                let _ = myself.cast(SessionReaderMessage::WaitForObject);
-            }
             Self::Msg::WaitForObject if state.reader.is_some() => {
                 if let Some(stream) = &mut state.reader {
                     match read_n_bytes(stream, 8).await {

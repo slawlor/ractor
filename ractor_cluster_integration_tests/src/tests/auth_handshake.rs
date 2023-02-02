@@ -37,7 +37,7 @@ pub async fn test(config: AuthHandshakeConfig) -> i32 {
 
     log::info!("Starting NodeServer on port {}", config.server_port);
 
-    let (actor, handle) = Actor::spawn(None, server)
+    let (actor, handle) = Actor::spawn(None, server, ())
         .await
         .expect("Failed to start NodeServer");
 

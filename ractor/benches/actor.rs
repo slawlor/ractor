@@ -23,7 +23,13 @@ impl Actor for BenchActor {
 
     type State = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    type Arguments = ();
+
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         let _ = myself.cast(BenchActorMessage);
         Ok(())
     }
@@ -52,7 +58,7 @@ fn create_actors(c: &mut Criterion) {
                 runtime.block_on(async move {
                     let mut handles = vec![];
                     for _ in 0..small {
-                        let (_, handler) = Actor::spawn(None, BenchActor)
+                        let (_, handler) = Actor::spawn(None, BenchActor, ())
                             .await
                             .expect("Failed to create test agent");
                         handles.push(handler);
@@ -73,7 +79,7 @@ fn create_actors(c: &mut Criterion) {
                 runtime.block_on(async move {
                     let mut handles = vec![];
                     for _ in 0..large {
-                        let (_, handler) = Actor::spawn(None, BenchActor)
+                        let (_, handler) = Actor::spawn(None, BenchActor, ())
                             .await
                             .expect("Failed to create test agent");
                         handles.push(handler);
@@ -99,7 +105,7 @@ fn schedule_work(c: &mut Criterion) {
                     let mut join_set = tokio::task::JoinSet::new();
 
                     for _ in 0..small {
-                        let (_, handler) = Actor::spawn(None, BenchActor)
+                        let (_, handler) = Actor::spawn(None, BenchActor, ())
                             .await
                             .expect("Failed to create test agent");
                         join_set.spawn(handler);
@@ -122,7 +128,7 @@ fn schedule_work(c: &mut Criterion) {
                 runtime.block_on(async move {
                     let mut join_set = tokio::task::JoinSet::new();
                     for _ in 0..large {
-                        let (_, handler) = Actor::spawn(None, BenchActor)
+                        let (_, handler) = Actor::spawn(None, BenchActor, ())
                             .await
                             .expect("Failed to create test agent");
                         join_set.spawn(handler);
@@ -152,9 +158,12 @@ fn process_messages(c: &mut Criterion) {
 
         type State = u64;
 
+        type Arguments = ();
+
         async fn pre_start(
             &self,
             myself: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             let _ = myself.cast(BenchActorMessage);
             Ok(0u64)
@@ -182,7 +191,7 @@ fn process_messages(c: &mut Criterion) {
         b.iter_batched(
             || {
                 runtime.block_on(async move {
-                    let (_, handle) = Actor::spawn(None, MessagingActor { num_msgs: NUM_MSGS })
+                    let (_, handle) = Actor::spawn(None, MessagingActor { num_msgs: NUM_MSGS }, ())
                         .await
                         .expect("Failed to create test actor");
                     handle

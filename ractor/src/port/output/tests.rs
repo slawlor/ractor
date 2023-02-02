@@ -25,12 +25,13 @@ async fn test_single_forward() {
     #[async_trait::async_trait]
     impl Actor for TestActor {
         type Msg = TestActorMessage;
-
+        type Arguments = ();
         type State = u8;
 
         async fn pre_start(
             &self,
             _this_actor: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(0u8)
         }
@@ -54,7 +55,7 @@ async fn test_single_forward() {
         }
     }
 
-    let (actor, handle) = Actor::spawn(None, TestActor)
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
         .expect("failed to start test actor");
 
@@ -87,12 +88,13 @@ async fn test_50_receivers() {
     #[async_trait::async_trait]
     impl Actor for TestActor {
         type Msg = TestActorMessage;
-
+        type Arguments = ();
         type State = u8;
 
         async fn pre_start(
             &self,
             _this_actor: crate::ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(0u8)
         }
@@ -117,8 +119,8 @@ async fn test_50_receivers() {
     }
 
     let handles: Vec<(ActorRef<TestActor>, JoinHandle<()>)> =
-        join_all((0..50).into_iter().map(|_| async move {
-            Actor::spawn(None, TestActor)
+        join_all((0..50).map(|_| async move {
+            Actor::spawn(None, TestActor, ())
                 .await
                 .expect("Failed to start test actor")
         }))

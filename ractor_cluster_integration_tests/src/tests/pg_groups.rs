@@ -41,8 +41,13 @@ struct PingPongActorState {
 impl Actor for PingPongActor {
     type Msg = PingPongActorMessage;
     type State = PingPongActorState;
+    type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         ractor::pg::join("test".to_string(), vec![myself.get_cell()]);
         Ok(PingPongActorState {
             count: 0,
@@ -104,11 +109,11 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
     let server =
         ractor_cluster::NodeServer::new(config.server_port, cookie, super::random_name(), hostname);
 
-    let (actor, handle) = Actor::spawn(None, server)
+    let (actor, handle) = Actor::spawn(None, server, ())
         .await
         .expect("Failed to start NodeServer A");
 
-    let (test_actor, test_handle) = Actor::spawn(None, PingPongActor)
+    let (test_actor, test_handle) = Actor::spawn(None, PingPongActor, ())
         .await
         .expect("Ping pong actor failed to start up!");
 

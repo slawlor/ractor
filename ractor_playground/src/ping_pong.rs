@@ -35,10 +35,14 @@ impl Message {
 #[async_trait::async_trait]
 impl Actor for PingPong {
     type Msg = Message;
-
+    type Arguments = ();
     type State = u8;
 
-    async fn pre_start(&self, myself: ActorRef<Self>) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         println!("pre_start called");
         // startup the event processing
         myself.send_message(Message::Ping).unwrap();
@@ -90,7 +94,7 @@ impl Actor for PingPong {
 /// cargo run -p ractor-playground -- ping-pong
 /// ```
 pub(crate) async fn run_ping_pong() {
-    let (_, actor_handle) = Actor::spawn(None, PingPong)
+    let (_, actor_handle) = Actor::spawn(None, PingPong, ())
         .await
         .expect("Failed to start actor");
     actor_handle.await.expect("Actor failed to exit cleanly");

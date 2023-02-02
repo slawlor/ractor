@@ -28,9 +28,11 @@ async fn test_supervision_panic_in_post_startup() {
     impl Actor for Child {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -47,9 +49,11 @@ async fn test_supervision_panic_in_post_startup() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -82,13 +86,13 @@ async fn test_supervision_panic_in_post_startup() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_cell)
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_cell)
         .await
         .expect("Child panicked on startup");
 
@@ -111,9 +115,11 @@ async fn test_supervision_error_in_post_startup() {
     impl Actor for Child {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -130,9 +136,11 @@ async fn test_supervision_error_in_post_startup() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -165,13 +173,13 @@ async fn test_supervision_error_in_post_startup() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_cell)
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_cell)
         .await
         .expect("Child panicked on startup");
 
@@ -194,9 +202,11 @@ async fn test_supervision_panic_in_handle() {
     impl Actor for Child {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -214,9 +224,11 @@ async fn test_supervision_panic_in_handle() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -249,13 +261,13 @@ async fn test_supervision_panic_in_handle() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_cell)
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_cell)
         .await
         .expect("Child panicked on startup");
 
@@ -286,9 +298,11 @@ async fn test_supervision_error_in_handle() {
     impl Actor for Child {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -306,9 +320,11 @@ async fn test_supervision_error_in_handle() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -341,13 +357,13 @@ async fn test_supervision_error_in_handle() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_cell)
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_cell)
         .await
         .expect("Child panicked on startup");
 
@@ -378,9 +394,11 @@ async fn test_supervision_panic_in_post_stop() {
     impl Actor for Child {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             myself: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             // trigger stop, which starts shutdown
             myself.stop(None);
@@ -399,9 +417,11 @@ async fn test_supervision_panic_in_post_stop() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -426,11 +446,11 @@ async fn test_supervision_panic_in_post_stop() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref.clone().into())
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_ref.clone().into())
         .await
         .expect("Child panicked on startup");
 
@@ -454,9 +474,11 @@ async fn test_supervision_error_in_post_stop() {
     impl Actor for Child {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             myself: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             // trigger stop, which starts shutdown
             myself.stop(None);
@@ -475,9 +497,11 @@ async fn test_supervision_error_in_post_stop() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -502,11 +526,11 @@ async fn test_supervision_error_in_post_stop() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref.clone().into())
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_ref.clone().into())
         .await
         .expect("Child panicked on startup");
 
@@ -533,9 +557,11 @@ async fn test_supervision_panic_in_supervisor_handle() {
     impl Actor for Child {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -553,9 +579,11 @@ async fn test_supervision_panic_in_supervisor_handle() {
     impl Actor for Midpoint {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -576,9 +604,11 @@ async fn test_supervision_panic_in_supervisor_handle() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -611,20 +641,20 @@ async fn test_supervision_panic_in_supervisor_handle() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
-    let (midpoint_ref, m_handle) = Actor::spawn_linked(None, Midpoint, supervisor_cell)
+    let (midpoint_ref, m_handle) = Actor::spawn_linked(None, Midpoint, (), supervisor_cell)
         .await
         .expect("Midpoint actor failed to startup");
 
     let midpoint_cell: ActorCell = midpoint_ref.clone().into();
     let midpoint_ref_clone = midpoint_ref.clone();
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, midpoint_cell)
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), midpoint_cell)
         .await
         .expect("Child panicked on startup");
 
@@ -667,10 +697,12 @@ async fn test_supervision_error_in_supervisor_handle() {
     #[async_trait::async_trait]
     impl Actor for Child {
         type Msg = ();
+        type Arguments = ();
         type State = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -688,9 +720,11 @@ async fn test_supervision_error_in_supervisor_handle() {
     impl Actor for Midpoint {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -711,9 +745,11 @@ async fn test_supervision_error_in_supervisor_handle() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -746,20 +782,20 @@ async fn test_supervision_error_in_supervisor_handle() {
 
     let flag = Arc::new(AtomicU64::new(0));
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() })
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
     let supervisor_cell: ActorCell = supervisor_ref.clone().into();
 
-    let (midpoint_ref, m_handle) = Actor::spawn_linked(None, Midpoint, supervisor_cell)
+    let (midpoint_ref, m_handle) = Actor::spawn_linked(None, Midpoint, (), supervisor_cell)
         .await
         .expect("Midpoint actor failed to startup");
 
     let midpoint_cell: ActorCell = midpoint_ref.clone().into();
     let midpoint_ref_clone = midpoint_ref.clone();
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, midpoint_cell)
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), midpoint_cell)
         .await
         .expect("Child panicked on startup");
 
@@ -798,9 +834,11 @@ async fn test_killing_a_supervisor_terminates_children() {
     impl Actor for Child {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -810,9 +848,11 @@ async fn test_killing_a_supervisor_terminates_children() {
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
+        type Arguments = ();
         async fn pre_start(
             &self,
             _this_actor: ActorRef<Self>,
+            _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
@@ -828,11 +868,11 @@ async fn test_killing_a_supervisor_terminates_children() {
         }
     }
 
-    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor)
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor, ())
         .await
         .expect("Supervisor panicked on startup");
 
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, supervisor_ref.clone().into())
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_ref.clone().into())
         .await
         .expect("Child panicked on startup");
 
