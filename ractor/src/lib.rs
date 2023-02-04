@@ -149,6 +149,7 @@ pub type GroupName = String;
 pub mod actor;
 pub mod actor_id;
 pub mod concurrency;
+pub mod factory;
 pub mod macros;
 pub mod message;
 pub mod pg;
