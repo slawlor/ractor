@@ -42,6 +42,14 @@ We currently have full support for:
 
 On our roadmap is to add more of the Erlang functionality including potentially a distributed actor cluster.
 
+### Performance
+
+Actor's in `ractor` are generally quite lightweight and there are benchmarks which you are welcome to run on your own host system with
+
+```bash
+cargo bench -p ractor
+```
+
 ## Installation
 
 Install `ractor` by adding the following to your Cargo.toml dependencies

@@ -9,7 +9,7 @@
 //! [Actor]: The behavior definition for an actor's internal processing logic + state management
 //! [Actor]: Management structure processing the message handler, signals, and supervision events in a loop
 
-use std::{panic::AssertUnwindSafe, sync::Arc};
+use std::panic::AssertUnwindSafe;
 
 use futures::TryFutureExt;
 
@@ -193,7 +193,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         handler: Self,
         startup_args: Self::Arguments,
     ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
-        ActorRuntime::<Self::Msg, Self::State, Self>::spawn(name, handler, startup_args).await
+        ActorRuntime::<Self>::spawn(name, handler, startup_args).await
     }
 
     /// Spawn an actor of this type with a supervisor, automatically starting the actor
@@ -213,33 +213,23 @@ pub trait Actor: Sized + Sync + Send + 'static {
         startup_args: Self::Arguments,
         supervisor: ActorCell,
     ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
-        ActorRuntime::<Self::Msg, Self::State, Self>::spawn_linked(
-            name,
-            handler,
-            startup_args,
-            supervisor,
-        )
-        .await
+        ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor).await
     }
 }
 
 /// [ActorRuntime] is a struct which represents the actor. This struct is consumed by the
 /// `start` operation, but results in an [ActorRef] to communicate and operate with
-pub struct ActorRuntime<TMsg, TState, THandler>
+pub struct ActorRuntime<TActor>
 where
-    TMsg: Message,
-    TState: State,
-    THandler: Actor<Msg = TMsg, State = TState>,
+    TActor: Actor,
 {
-    base: ActorRef<THandler>,
-    handler: Arc<THandler>,
+    actor_ref: ActorRef<TActor>,
+    handler: TActor,
 }
 
-impl<TMsg, TState, THandler> ActorRuntime<TMsg, TState, THandler>
+impl<TActor> ActorRuntime<TActor>
 where
-    TMsg: Message,
-    TState: State,
-    THandler: Actor<Msg = TMsg, State = TState>,
+    TActor: Actor,
 {
     /// Spawn an actor, which is unsupervised, automatically starting the actor
     ///
@@ -253,9 +243,9 @@ where
     /// the actor failed to start
     pub async fn spawn(
         name: Option<ActorName>,
-        handler: THandler,
-        startup_args: THandler::Arguments,
-    ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
+        handler: TActor,
+        startup_args: TActor::Arguments,
+    ) -> Result<(ActorRef<TActor>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, startup_args, None).await
     }
@@ -273,10 +263,10 @@ where
     /// the actor failed to start
     pub async fn spawn_linked(
         name: Option<ActorName>,
-        handler: THandler,
-        startup_args: THandler::Arguments,
+        handler: TActor,
+        startup_args: TActor::Arguments,
         supervisor: ActorCell,
-    ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<TActor>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, startup_args, Some(supervisor)).await
     }
@@ -296,22 +286,22 @@ where
     #[cfg(feature = "cluster")]
     pub async fn spawn_linked_remote(
         name: Option<ActorName>,
-        handler: THandler,
+        handler: TActor,
         id: ActorId,
-        startup_args: THandler::Arguments,
+        startup_args: TActor::Arguments,
         supervisor: ActorCell,
-    ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<TActor>, JoinHandle<()>), SpawnErr> {
         if id.is_local() {
             Err(SpawnErr::StartupPanic(From::from(
                 "Cannot spawn a remote actor when the identifier is not remote!",
             )))
         } else {
-            let (actor_cell, ports) = actor_cell::ActorCell::new_remote::<THandler>(name, id)?;
+            let (actor_cell, ports) = actor_cell::ActorCell::new_remote::<TActor>(name, id)?;
 
             let (actor, ports) = (
                 Self {
-                    base: actor_cell.into(),
-                    handler: Arc::new(handler),
+                    actor_ref: actor_cell.into(),
+                    handler,
                 },
                 ports,
             );
@@ -325,12 +315,12 @@ where
     /// * `handler` The [Actor] defining the logic for this actor
     ///
     /// Returns A tuple [(Actor, ActorPortSet)] to be passed to the `start` function of [Actor]
-    fn new(name: Option<ActorName>, handler: THandler) -> Result<(Self, ActorPortSet), SpawnErr> {
-        let (actor_cell, ports) = actor_cell::ActorCell::new::<THandler>(name)?;
+    fn new(name: Option<ActorName>, handler: TActor) -> Result<(Self, ActorPortSet), SpawnErr> {
+        let (actor_cell, ports) = actor_cell::ActorCell::new::<TActor>(name)?;
         Ok((
             Self {
-                base: actor_cell.into(),
-                handler: Arc::new(handler),
+                actor_ref: actor_cell.into(),
+                handler,
             },
             ports,
         ))
@@ -351,52 +341,47 @@ where
     async fn start(
         self,
         ports: ActorPortSet,
-        startup_args: THandler::Arguments,
+        startup_args: TActor::Arguments,
         supervisor: Option<ActorCell>,
-    ) -> Result<(ActorRef<THandler>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<TActor>, JoinHandle<()>), SpawnErr> {
         // cannot start an actor more than once
-        if self.base.get_status() != ActorStatus::Unstarted {
+        if self.actor_ref.get_status() != ActorStatus::Unstarted {
             return Err(SpawnErr::ActorAlreadyStarted);
         }
 
-        self.base.set_status(ActorStatus::Starting);
+        self.actor_ref.set_status(ActorStatus::Starting);
 
         // Perform the pre-start routine, crashing immediately if we fail to start
-        let mut state = Self::do_pre_start(self.base.clone(), self.handler.clone(), startup_args)
+        let mut state = Self::do_pre_start(self.actor_ref.clone(), &self.handler, startup_args)
             .await?
             .map_err(SpawnErr::StartupPanic)?;
 
         // setup supervision
         if let Some(sup) = &supervisor {
-            self.base.link(sup.clone());
+            self.actor_ref.link(sup.clone());
         }
 
+        // Generate the ActorRef which will be returned
+        let myself_ret = self.actor_ref.clone();
+
         // run the processing loop, backgrounding the work
-        let myself = self.base.clone();
-        let myself_ret = self.base.clone();
         let handle = crate::concurrency::spawn(async move {
-            let evt = match Self::processing_loop(
-                ports,
-                &mut state,
-                self.handler.clone(),
-                self.base.clone(),
-            )
-            .await
+            let myself = self.actor_ref.clone();
+            let evt = match Self::processing_loop(ports, &mut state, &self.handler, self.actor_ref)
+                .await
             {
                 Ok(exit_reason) => SupervisionEvent::ActorTerminated(
-                    myself.clone().into(),
+                    myself.get_cell(),
                     Some(BoxedState::new(state)),
                     exit_reason,
                 ),
                 Err(actor_err) => match actor_err {
                     ActorErr::Cancelled => SupervisionEvent::ActorTerminated(
-                        myself.clone().into(),
+                        myself.get_cell(),
                         None,
                         Some("killed".to_string()),
                     ),
-                    ActorErr::Panic(msg) => {
-                        SupervisionEvent::ActorPanicked(myself.clone().into(), msg)
-                    }
+                    ActorErr::Panic(msg) => SupervisionEvent::ActorPanicked(myself.get_cell(), msg),
                 },
             };
 
@@ -419,53 +404,48 @@ where
     }
 
     async fn processing_loop(
-        ports: ActorPortSet,
-        state: &mut TState,
-        handler: Arc<THandler>,
-        myself: ActorRef<THandler>,
+        mut ports: ActorPortSet,
+        state: &mut TActor::State,
+        handler: &TActor,
+        myself: ActorRef<TActor>,
     ) -> Result<Option<String>, ActorErr> {
         // perform the post-start, with supervision enabled
-        Self::do_post_start(myself.clone(), handler.clone(), state)
+        Self::do_post_start(myself.clone(), handler, state)
             .await?
             .map_err(ActorErr::Panic)?;
 
         myself.set_status(ActorStatus::Running);
-        myself.notify_supervisor(SupervisionEvent::ActorStarted(myself.clone().into()));
+        myself.notify_supervisor(SupervisionEvent::ActorStarted(myself.get_cell()));
 
         let myself_clone = myself.clone();
-        let handler_clone = handler.clone();
 
         let future = async move {
-            let mut ports = ports;
-            // the message processing loop. If we get and exit flag, try and capture the exit reason if there
+            // the message processing loop. If we get an exit flag, try and capture the exit reason if there
             // is one
             loop {
-                let (should_exit, maybe_exit_reason) = Self::process_message(
-                    myself_clone.clone(),
-                    state,
-                    handler_clone.clone(),
-                    &mut ports,
-                )
-                .await
-                .map_err(ActorErr::Panic)?;
+                let (should_exit, maybe_exit_reason) =
+                    Self::process_message(myself.clone(), state, handler, &mut ports)
+                        .await
+                        .map_err(ActorErr::Panic)?;
                 // processing loop exit
                 if should_exit {
                     return Ok((state, maybe_exit_reason));
                 }
             }
         };
+
         // capture any panicks in this future and convert to an ActorErr
         let loop_done = futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .map_err(|err| ActorErr::Panic(get_panic_string(err)))
             .await;
 
         // set status to stopping
-        myself.set_status(ActorStatus::Stopping);
+        myself_clone.set_status(ActorStatus::Stopping);
 
-        let (nstate, exit_reason) = loop_done??;
+        let (exit_state, exit_reason) = loop_done??;
 
         // if we didn't exit in error mode, call `post_stop`
-        Self::do_post_stop(myself, handler, nstate)
+        Self::do_post_stop(myself_clone, handler, exit_state)
             .await?
             .map_err(ActorErr::Panic)?;
 
@@ -483,9 +463,9 @@ where
     /// Returns a tuple of the next [Actor::State] and a flag to denote if the processing
     /// loop is done
     async fn process_message(
-        myself: ActorRef<THandler>,
-        state: &mut TState,
-        handler: Arc<THandler>,
+        myself: ActorRef<TActor>,
+        state: &mut TActor::State,
+        handler: &TActor,
         ports: &mut ActorPortSet,
     ) -> Result<(bool, Option<String>), ActorProcessingErr> {
         match ports.listen_in_priority().await {
@@ -504,7 +484,7 @@ where
                     let new_state_future = Self::handle_supervision_message(
                         myself.clone(),
                         state,
-                        handler.clone(),
+                        handler,
                         supervision,
                     );
                     let new_state = ports.run_with_signal(new_state_future).await;
@@ -540,9 +520,9 @@ where
     }
 
     async fn handle_message(
-        myself: ActorRef<THandler>,
-        state: &mut TState,
-        handler: Arc<THandler>,
+        myself: ActorRef<TActor>,
+        state: &mut TActor::State,
+        handler: &TActor,
         msg: crate::message::BoxedMessage,
     ) -> Result<(), ActorProcessingErr> {
         // panic in order to kill the actor
@@ -568,11 +548,11 @@ where
         }
 
         // An error here will bubble up to terminate the actor
-        let typed_msg = TMsg::from_boxed(msg)?;
+        let typed_msg = TActor::Msg::from_boxed(msg)?;
         handler.handle(myself, typed_msg, state).await
     }
 
-    fn handle_signal(myself: ActorRef<THandler>, signal: Signal) -> Option<String> {
+    fn handle_signal(myself: ActorRef<TActor>, signal: Signal) -> Option<String> {
         match &signal {
             Signal::Kill => {
                 myself.terminate();
@@ -582,19 +562,19 @@ where
     }
 
     async fn handle_supervision_message(
-        myself: ActorRef<THandler>,
-        state: &mut TState,
-        handler: Arc<THandler>,
+        myself: ActorRef<TActor>,
+        state: &mut TActor::State,
+        handler: &TActor,
         message: SupervisionEvent,
     ) -> Result<(), ActorProcessingErr> {
         handler.handle_supervisor_evt(myself, message, state).await
     }
 
     async fn do_pre_start(
-        myself: ActorRef<THandler>,
-        handler: Arc<THandler>,
-        arguments: THandler::Arguments,
-    ) -> Result<Result<TState, ActorProcessingErr>, SpawnErr> {
+        myself: ActorRef<TActor>,
+        handler: &TActor,
+        arguments: TActor::Arguments,
+    ) -> Result<Result<TActor::State, ActorProcessingErr>, SpawnErr> {
         let future = handler.pre_start(myself, arguments);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
@@ -602,9 +582,9 @@ where
     }
 
     async fn do_post_start(
-        myself: ActorRef<THandler>,
-        handler: Arc<THandler>,
-        state: &mut TState,
+        myself: ActorRef<TActor>,
+        handler: &TActor,
+        state: &mut TActor::State,
     ) -> Result<Result<(), ActorProcessingErr>, ActorErr> {
         let future = handler.post_start(myself, state);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
@@ -613,9 +593,9 @@ where
     }
 
     async fn do_post_stop(
-        myself: ActorRef<THandler>,
-        handler: Arc<THandler>,
-        state: &mut TState,
+        myself: ActorRef<TActor>,
+        handler: &TActor,
+        state: &mut TActor::State,
     ) -> Result<Result<(), ActorProcessingErr>, ActorErr> {
         let future = handler.post_stop(myself, state);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
