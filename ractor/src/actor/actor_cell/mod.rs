@@ -66,6 +66,22 @@ pub(crate) struct ActorPortSet {
     pub(crate) message_rx: InputPortReceiver<BoxedMessage>,
 }
 
+impl Drop for ActorPortSet {
+    fn drop(&mut self) {
+        // Close all the message ports and flush all the message queue backlogs.
+        // See: https://docs.rs/tokio/0.1.22/tokio/sync/mpsc/index.html#clean-shutdown
+        self.signal_rx.close();
+        self.stop_rx.close();
+        self.supervisor_rx.close();
+        self.message_rx.close();
+
+        while self.signal_rx.try_recv().is_ok() {}
+        while self.stop_rx.try_recv().is_ok() {}
+        while self.supervisor_rx.try_recv().is_ok() {}
+        while self.message_rx.try_recv().is_ok() {}
+    }
+}
+
 /// Messages that come in off an actor's port, with associated priority
 pub(crate) enum ActorPortMessage {
     /// A signal message
