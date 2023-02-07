@@ -18,9 +18,9 @@
 //! 2. Serializable messages have to have a few formatting requirements.
 //!     a. All variants of the enum will be numbered based on their lexigraphical ordering, which is sent over-the-wire in order to decode which
 //!        variant was called. This is the `index` field on any variant of `ractor::message::SerializedMessage`
-//!     b. All properties of the message **MUST** implement the `ractor_cluster::BytesConvertable` trait which means they supply a `to_bytes` and `from_bytes` method. Many
+//!     b. All properties of the message **MUST** implement the `ractor::BytesConvertable` trait which means they supply a `to_bytes` and `from_bytes` method. Many
 //!        types are pre-done for you in `ractor`'s definition of the trait
-//!     c. For RPCs, the LAST argument **must** be the reply channel. Additionally the type of message the channel is expecting back must also implement `ractor_cluster::BytesConvertable`
+//!     c. For RPCs, the LAST argument **must** be the reply channel. Additionally the type of message the channel is expecting back must also implement `ractor::BytesConvertable`
 //!     d. Lastly, for RPCs, they should additionally be decorated with `#[rpc]` on each variant's definition. This helps the macro identify that it
 //!        is an RPC and will need port handler
 //!
@@ -48,9 +48,9 @@ pub fn ractor_message_derive_macro(input: TokenStream) -> TokenStream {
 /// Serializable messages have to have a few formatting requirements.
 /// 1. All variants of the enum will be tagged based on their variant name, which is sent over-the-wire in order to decode which
 ///    variant was called. This is the `variant` field on `ractor::message::SerializedMessage::Cast` and `Call`.
-/// 2. All properties of the message **MUST** implement the `ractor_cluster::BytesConvertable` trait which means they supply a `to_bytes` and `from_bytes` method. Many
+/// 2. All properties of the message **MUST** implement the `ractor::BytesConvertable` trait which means they supply a `to_bytes` and `from_bytes` method. Many
 ///    types are pre-done for you in `ractor`'s definition of the trait
-/// 3. For RPCs, the LAST argument **must** be the reply channel. Additionally the type of message the channel is expecting back must also implement `ractor_cluster::BytesConvertable`
+/// 3. For RPCs, the LAST argument **must** be the reply channel. Additionally the type of message the channel is expecting back must also implement `ractor::BytesConvertable`
 /// 4. Lastly, for RPCs, they should additionally be decorated with `#[rpc]` on each variant's definition. This helps the macro identify that it
 ///    is an RPC and will need port handler
 /// 5. For backwards compatability, you can add new variants as long as you don't rename variants until all nodes in the cluster are upgraded.
@@ -102,16 +102,16 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
                 }
 
                 fn serialize(self) -> Result<ractor::message::SerializedMessage, ractor::message::BoxedDowncastErr> {
-                    use ::ractor_cluster::BytesConvertable;
+                    use ::ractor::BytesConvertable;
                     match self {
                         #( #serialized_variants ),*
                     }
                 }
 
                 fn deserialize(bytes: ractor::message::SerializedMessage) -> Result<Self, ractor::message::BoxedDowncastErr> {
-                    use ::ractor_cluster::BytesConvertable;
+                    use ::ractor::BytesConvertable;
                     match bytes {
-                        ractor::message::SerializedMessage::Cast {variant, data} => {
+                        ractor::message::SerializedMessage::Cast {variant, args, metadata} => {
                             match variant.as_str() {
                                 #(#casts,)*
                                 _ => {
@@ -120,7 +120,7 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
                                 }
                             }
                         }
-                        ractor::message::SerializedMessage::Call {variant, args: data, reply} => {
+                        ractor::message::SerializedMessage::Call {variant, args, reply, metadata} => {
                             match variant.as_str() {
                                 #(#calls,)*
                                 _ => {
@@ -179,6 +179,7 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                                 variant: #variant_name.to_string(),
                                 args: vec![],
                                 reply: target_port,
+                                metadata: None,
                             })
                         }
                     }
@@ -193,6 +194,7 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                                 variant: #variant_name.to_string(),
                                 args: data,
                                 reply: target_port,
+                                metadata: None,
                             })
                         }
                     }
@@ -208,7 +210,8 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                     Self::#name => {
                         Ok(ractor::message::SerializedMessage::Cast {
                             variant: #variant_name.to_string(),
-                            data: vec![]
+                            args: vec![],
+                            metadata: None,
                         })
                     }
                 }
@@ -231,7 +234,8 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
 
                         Ok(ractor::message::SerializedMessage::Cast {
                             variant: #variant_name.to_string(),
-                            data: data
+                            args: data,
+                            metadata: None,
                         })
                     }
                 }
@@ -339,12 +343,12 @@ fn unpack_arg(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
     quote! {
         let #field = {
             let mut len_bytes = [0u8; 8];
-            len_bytes.copy_from_slice(&data[ptr..ptr+8]);
+            len_bytes.copy_from_slice(&args[ptr..ptr+8]);
             let len = u64::from_be_bytes(len_bytes) as usize;
 
             ptr += 8;
-            let data_bytes = data[ptr..ptr+len].to_vec();
-            let t_result = <#target_type as ractor_cluster::BytesConvertable>::from_bytes(data_bytes);
+            let data_bytes = args[ptr..ptr+len].to_vec();
+            let t_result = <#target_type as ractor::BytesConvertable>::from_bytes(data_bytes);
             ptr += len;
             t_result
         };
@@ -393,12 +397,12 @@ fn convert_serialize_port(
             ractor::concurrency::spawn(async move {
                 if let Some(timeout) = o_timeout {
                     if let Ok(Ok(result)) = ractor::concurrency::timeout(timeout, rx).await {
-                        let typed_result = <#generic_args as ractor_cluster::BytesConvertable>::from_bytes(result);
+                        let typed_result = <#generic_args as ractor::BytesConvertable>::from_bytes(result);
                         let _ = #the_port.send(typed_result);
                     }
                 } else {
                     if let Ok(result) = rx.await {
-                        let typed_result = <#generic_args as ractor_cluster::BytesConvertable>::from_bytes(result);
+                        let typed_result = <#generic_args as ractor::BytesConvertable>::from_bytes(result);
                         let _ = #the_port.send(typed_result);
                     }
                 }

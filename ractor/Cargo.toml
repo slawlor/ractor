@@ -36,6 +36,7 @@ tokio = { version = "1", features = ["sync", "time"] }
 [dev-dependencies]
 criterion = "0.3"
 function_name = "0.3"
+paste = "1"
 rand = "0.8"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread"] }
 

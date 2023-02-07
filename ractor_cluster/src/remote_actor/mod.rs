@@ -121,6 +121,7 @@ impl Actor for RemoteActor {
                 args,
                 reply,
                 variant,
+                metadata,
             } => {
                 // Handle Call
                 let tag = state.get_and_increment_mtag();
@@ -132,6 +133,7 @@ impl Actor for RemoteActor {
                             what: args,
                             timeout_ms: reply.get_timeout().map(|t| t.as_millis() as u64),
                             variant,
+                            metadata,
                         },
                     )),
                 };
@@ -139,8 +141,9 @@ impl Actor for RemoteActor {
                 let _ = cast!(self.session, NodeSessionMessage::SendMessage(node_msg));
             }
             SerializedMessage::Cast {
-                data: args,
+                args,
                 variant,
+                metadata,
             } => {
                 // Handle Cast
                 let node_msg = crate::protocol::node::NodeMessage {
@@ -149,6 +152,7 @@ impl Actor for RemoteActor {
                             to,
                             what: args,
                             variant,
+                            metadata,
                         },
                     )),
                 };

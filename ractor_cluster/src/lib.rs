@@ -57,7 +57,6 @@ mod remote_actor;
 
 pub mod macros;
 pub mod node;
-pub mod serialization;
 
 /// Node's are representing by an integer id
 pub type NodeId = u64;
@@ -72,4 +71,4 @@ pub use node::{
 pub use ractor_cluster_derive::RactorClusterMessage;
 pub use ractor_cluster_derive::RactorMessage;
 
-pub use serialization::*;
+pub use ractor::serialization::*;

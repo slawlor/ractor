@@ -19,6 +19,8 @@ message Cast {
     bytes what = 2;
     // Index into the variant
     string variant = 3;
+    // Optional metadata for the call (helps supported nested encodings)
+    optional bytes metadata = 6;
 }
 
 // An outgoing remote procedure call
@@ -34,6 +36,8 @@ message Call {
     optional uint64 timeout_ms = 4;
     // Index into the variant
     string variant = 5;
+    // Optional metadata for the call (helps supported nested encodings)
+    optional bytes metadata = 6;
 }
 
 // A reply to a remote procedure call

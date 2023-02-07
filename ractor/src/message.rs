@@ -30,7 +30,9 @@ pub enum SerializedMessage {
         /// The index into to variant. Helpful for enum serialization
         variant: String,
         /// The payload of data
-        data: Vec<u8>,
+        args: Vec<u8>,
+        /// Additional (optional) metadata
+        metadata: Option<Vec<u8>>,
     },
     /// A call (remote procedure call, waiting on a reply) with the
     /// serialized arguments and reply channel
@@ -41,6 +43,8 @@ pub enum SerializedMessage {
         args: Vec<u8>,
         /// The binary reply channel
         reply: RpcReplyPort<Vec<u8>>,
+        /// Additional (optional) metadata
+        metadata: Option<Vec<u8>>,
     },
     /// A serialized reply from a call operation. Format is
     /// (`message_tag`, `reply_data`). It should not be the output
