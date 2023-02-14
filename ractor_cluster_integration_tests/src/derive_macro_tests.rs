@@ -19,7 +19,8 @@ fn test_non_serializable_generation() {
     assert!(serialize.is_err());
     let data = SerializedMessage::Cast {
         variant: "A".to_string(),
-        data: vec![],
+        args: vec![],
+        metadata: None,
     };
     assert!(TheMessage::deserialize(data).is_err());
 }
@@ -37,7 +38,8 @@ fn test_serializable_generation() {
 
     let data = SerializedMessage::Cast {
         variant: "A".to_string(),
-        data: vec![],
+        args: vec![],
+        metadata: None,
     };
     assert!(matches!(TheMessage::deserialize(data), Ok(TheMessage::A)));
 }
@@ -60,12 +62,14 @@ async fn test_complex_serializable_generation() {
     assert!(matches!(serialize, Ok(SerializedMessage::Cast { .. })));
     let data = SerializedMessage::Cast {
         variant: "A".to_string(),
-        data: vec![],
+        args: vec![],
+        metadata: None,
     };
     assert!(matches!(TheMessage::deserialize(data), Ok(TheMessage::A)));
     let data = SerializedMessage::Cast {
         variant: "B".to_string(),
-        data: vec![],
+        args: vec![],
+        metadata: None,
     };
     assert!(TheMessage::deserialize(data).is_err());
 
@@ -76,6 +80,7 @@ async fn test_complex_serializable_generation() {
         variant: "B".to_string(),
         reply: ractor::concurrency::oneshot().0.into(),
         args: vec![],
+        metadata: None,
     };
     assert!(matches!(
         TheMessage::deserialize(data),
@@ -85,6 +90,7 @@ async fn test_complex_serializable_generation() {
         variant: "A".to_string(),
         args: vec![],
         reply: ractor::concurrency::oneshot().0.into(),
+        metadata: None,
     };
     assert!(TheMessage::deserialize(data).is_err());
 

@@ -347,6 +347,38 @@ async fn test_sending_message_to_invalid_actor_type() {
     handle2.await.unwrap();
 }
 
+#[crate::concurrency::test]
+async fn test_sending_message_to_dead_actor() {
+    struct TestActor;
+
+    #[async_trait::async_trait]
+    impl Actor for TestActor {
+        type Msg = EmptyMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Actor failed to start");
+
+    // Stop the actor and wait for it to die
+    actor.stop(None);
+    handle.await.unwrap();
+
+    // assert that if we send a message, it doesn't transmit since
+    // the receiver is dropped
+    assert!(actor.cast(EmptyMessage).is_err());
+}
+
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
 async fn test_serialized_cast() {
@@ -370,7 +402,8 @@ async fn test_serialized_cast() {
         fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
             Ok(crate::message::SerializedMessage::Cast {
                 variant: "Cast".to_string(),
-                data: vec![],
+                args: vec![],
+                metadata: None,
             })
         }
     }
@@ -495,6 +528,7 @@ async fn test_serialized_rpc() {
                         args: vec![],
                         reply: tx,
                         variant: "Call".to_string(),
+                        metadata: None,
                     })
                 }
             }
@@ -600,8 +634,9 @@ async fn test_remote_actor() {
         }
         fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
             Ok(crate::message::SerializedMessage::Cast {
-                data: vec![],
+                args: vec![],
                 variant: "Cast".to_string(),
+                metadata: None,
             })
         }
     }

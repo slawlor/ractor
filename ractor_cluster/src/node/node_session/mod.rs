@@ -337,7 +337,8 @@ impl NodeSession {
                     {
                         let _ = actor.send_serialized(SerializedMessage::Cast {
                             variant: cast_args.variant,
-                            data: cast_args.what,
+                            args: cast_args.what,
+                            metadata: cast_args.metadata,
                         });
                     }
                 }
@@ -357,12 +358,14 @@ impl NodeSession {
                                 args: call_args.what,
                                 reply: (tx, timeout).into(),
                                 variant: call_args.variant,
+                                metadata: call_args.metadata,
                             });
                         } else {
                             let _ = actor.send_serialized(SerializedMessage::Call {
                                 args: call_args.what,
                                 reply: tx.into(),
                                 variant: call_args.variant,
+                                metadata: call_args.metadata,
                             });
                         }
 

@@ -3,34 +3,70 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! TBFilled out. Representative gen_factory implementation
+//! # Factory actors
 //!
-//! A factory is a supervisor/manager to a pool of workers on the same node. This
-//! is helpful for job dispatch
+//! A factory is a manager of a pool of workers on the same node. This
+//! is helpful for job dispatch and load balancing when single-threaded execution
+//! of a since [crate::Actor] may not be sufficient. Factories have a set "Job" syntax
+//! which denotes a key and message payload for each action. Workers are effectively mindless
+//! agents of the factory's will.
+//!
+//! ## Worker message routing mode
+//!  
+//! The factory has a series of dispatch modes which are defined in [RoutingMode] and
+//! control the way the factory dispatches work to workers. This should be selected based
+//! on the intended workload. Some general guidence:
+//!
+//! 1. If you need to process a sequence of operations on a given key (i.e. the Job is a user, and
+//! there's a sequential list of updates to that user). You then want the job to land on the same
+//! worker and should select [RoutingMode::KeyPersistent] or [RoutingMode::StickyQueuer].
+//! 2. If you don't need a sequence of operations then [RoutingMode::Queuer] is likely a good choice.
+//! 3. If your workers are making remote calls to other services/actors you probably want [RoutingMode::Queuer]
+//! or [RoutingMode::StickyQueuer] to prevent head-of-the-line contention. Otherwise [RoutingMode::KeyPersistent]
+//! is sufficient.
+//! 4. For some custom defined routing, you can define your own [CustomHashFunction] which will be
+//! used in conjunction with [RoutingMode::CustomHashFunction] to take the incoming job key and
+//! the space which should be hashed to (i.e. the nnumber of workers).
+//! 5. If you just want load balancing there's also [RoutingMode::RoundRobin] and [RoutingMode::Random]
+//! for general 1-off dispatching of jobs
+//!
+//! ## Worker lifecycle
+//!
+//! A worker's lifecycle is managed by the factory. If the worker dies or crashes, the factory will
+//! replace the worker with a new instance and continue processing jobs for that worker. The
+//! factory also maintains the worker's message queue's so messages won't be lost which were in the
+//! "worker"'s queue.
 //!
 //! TODO:
 //! * Batch job processing (incl splitting batches, etc)
-//! * Factor stats
+//! * Factory stats
+//! * Factory ping (every 1s to a worker for dead man's switch?)
 //!
 
 use std::collections::{HashMap, VecDeque};
-use std::hash::Hash;
 use std::marker::PhantomData;
 
 use rand::Rng;
 
-use crate::{Actor, ActorId, ActorProcessingErr, ActorRef, Message, SupervisionEvent};
+use crate::concurrency::{Duration, Instant};
+#[cfg(feature = "cluster")]
+use crate::message::BoxedDowncastErr;
+use crate::{Actor, ActorProcessingErr, ActorRef, Message, SupervisionEvent};
 
 mod hash;
 
-pub mod worker;
-pub use worker::{WorkerProperties, WorkerStartContext};
-
 pub mod job;
 pub mod routing_mode;
+pub mod worker;
 
-pub use job::{Job, JobOptions};
+use worker::MessageProcessingStats;
+
+pub use job::{Job, JobKey, JobOptions};
 pub use routing_mode::{CustomHashFunction, RoutingMode};
+pub use worker::{WorkerMessage, WorkerProperties, WorkerStartContext};
+
+/// Identifier for a worker in a factory
+pub type WorkerId = usize;
 
 #[cfg(test)]
 mod tests;
@@ -38,7 +74,7 @@ mod tests;
 /// Trait defining the discard handler for a factory.
 pub trait DiscardHandler<TKey, TMsg>: Send + Sync + 'static
 where
-    TKey: Message + Hash + Sync,
+    TKey: JobKey,
     TMsg: Message,
 {
     /// Called on a job
@@ -56,20 +92,36 @@ where
     /// Build a new worker
     ///
     /// * `wid`: The worker's "id" or index in the worker pool
-    fn build(&self, wid: usize) -> TWorker;
+    fn build(&self, wid: WorkerId) -> TWorker;
+}
+
+/// The configuration for the dead-man's switch functionality
+pub struct DeadMansSwitchConfiguration {
+    /// Duration before determining worker is stuck
+    pub detection_timeout: Duration,
+    /// Flag denoting if the stuck worker should be killed
+    /// and restarted
+    pub kill_worker: bool,
 }
 
 /// A factory is a manager to a pool of worker actors used for job dispatching
 pub struct Factory<TKey, TMsg, TWorker>
 where
-    TKey: Message + Hash + Sync,
+    TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = Job<TKey, TMsg>>,
+    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
 {
     /// Number of workers in the factory
     pub worker_count: usize,
 
+    /// If [true], tells the factory to collect statistics on the workers.
+    ///
+    /// Default is [false]
+    pub collect_worker_stats: bool,
+
     /// Message routing mode
+    ///
+    /// Default is [RoutingMode::KeyPersistent]
     pub routing_mode: RoutingMode<TKey>,
 
     /// Maximum queue length. Any job arriving when the queue is at its max length
@@ -79,10 +131,12 @@ where
     /// * For [RoutingMode::KeyPersistent] and [RoutingMode::CustomHashFunction], this applies to the worker's
     /// message queue
     ///
-    /// Default is disabled
+    /// Default is [None]
     pub discard_threshold: Option<usize>,
 
-    /// Discard callback when a job is discarded
+    /// Discard callback when a job is discarded.
+    ///
+    /// Default is [None]
     pub discard_handler: Option<Box<dyn DiscardHandler<TKey, TMsg>>>,
 
     /// A worker's ability for parallelized work
@@ -90,14 +144,20 @@ where
     /// Default is 1 (worker is strictly sequential in dispatched work)
     pub worker_parallel_capacity: usize,
 
+    /// Controls the "dead man's" switching logic on the factory. Periodically
+    /// the factory will scan for stuck workers. If detected, the worker information
+    /// will be logged along with the current job key information. Optionally the worker
+    /// can be killed and replaced by the factory
+    pub dead_mans_switch: Option<DeadMansSwitchConfiguration>,
+
     _worker: PhantomData<TWorker>,
 }
 
 impl<TKey, TMsg, TWorker> Factory<TKey, TMsg, TWorker>
 where
-    TKey: Message + Hash + Sync,
+    TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = Job<TKey, TMsg>>,
+    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
 {
     fn maybe_discard(&self, state: &mut FactoryState<TKey, TMsg, TWorker>) {
         if let Some(threshold) = self.discard_threshold {
@@ -114,9 +174,9 @@ where
 
 impl<TKey, TMsg, TWorker> Default for Factory<TKey, TMsg, TWorker>
 where
-    TKey: Message + Hash + Sync,
+    TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = Job<TKey, TMsg>>,
+    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
 {
     fn default() -> Self {
         Self {
@@ -126,6 +186,8 @@ where
             discard_handler: None,
             _worker: PhantomData,
             worker_parallel_capacity: 1,
+            collect_worker_stats: false,
+            dead_mans_switch: None,
         }
     }
 }
@@ -133,43 +195,97 @@ where
 /// State of a factory (backlogged jobs, handler, etc)
 pub struct FactoryState<TKey, TMsg, TWorker>
 where
-    TKey: Message + Hash + Sync,
+    TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = Job<TKey, TMsg>>,
+    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
 {
     worker_builder: Box<dyn WorkerBuilder<TWorker>>,
-    pool: HashMap<usize, WorkerProperties<TKey, TMsg, TWorker>>,
+    pool: HashMap<WorkerId, WorkerProperties<TKey, TMsg, TWorker>>,
 
     messages: VecDeque<Job<TKey, TMsg>>,
-    last_worker: usize,
+    last_worker: WorkerId,
+    stats: MessageProcessingStats,
 }
 
-/// Messages to a factory
+impl<TKey, TMsg, TWorker> FactoryState<TKey, TMsg, TWorker>
+where
+    TKey: JobKey,
+    TMsg: Message,
+    TWorker:
+        Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg, TWorker>>,
+{
+    fn log_stats(&mut self, factory: &ActorRef<Factory<TKey, TMsg, TWorker>>) {
+        let factory_identifier = if let Some(factory_name) = factory.get_name() {
+            format!("======== Factory {factory_name} stats ========\n")
+        } else {
+            format!("======== Factory ({}) stats ========\n", factory.get_id())
+        };
+
+        log::debug!("{}\n{}", factory_identifier, self.stats);
+        self.stats.reset_global_counters();
+    }
+}
+
+/// Messages to a factory.
+///
+/// **A special note about factory messages in a distributed context!**
+///
+/// Factories only support the command [FactoryMessage::Dispatch] over a cluster
+/// configuration as the rest of the message types are internal and only intended for
+/// in-host communciation. This means if you're communicating to a factory you would
+/// send only a serialized [Job] which would automatically be converted to a
+/// [FactoryMessage::Dispatch(Job)]
 pub enum FactoryMessage<TKey, TMsg>
 where
-    TKey: Message + Hash + Sync,
+    TKey: JobKey,
     TMsg: Message,
 {
     /// Dispatch a new message
     Dispatch(Job<TKey, TMsg>),
 
     /// A job finished
-    Finished(ActorId, TKey),
+    Finished(WorkerId, TKey),
+
+    /// Send a ping to the workers of the factory along with
+    /// tracking the factory's timing itself
+    DoPings(Instant),
+
+    /// A reply to a factory ping suppling the worker id and the time
+    /// of the ping start
+    WorkerPong(WorkerId, Instant),
+
+    /// Trigger a scan for stuck worker detection
+    IdentifyStuckWorkers,
 }
 #[cfg(feature = "cluster")]
 impl<TKey, TMsg> Message for FactoryMessage<TKey, TMsg>
 where
-    TKey: Message + Hash + Sync,
+    TKey: JobKey,
     TMsg: Message,
 {
+    fn serializable() -> bool {
+        TMsg::serializable()
+    }
+    fn serialize(
+        self,
+    ) -> Result<crate::message::SerializedMessage, crate::message::BoxedDowncastErr> {
+        match self {
+            Self::Dispatch(job) => job.serialize(),
+            _ => Err(BoxedDowncastErr),
+        }
+    }
+    fn deserialize(bytes: crate::message::SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+        Ok(Self::Dispatch(Job::<TKey, TMsg>::deserialize(bytes)?))
+    }
 }
 
 #[async_trait::async_trait]
 impl<TKey, TMsg, TWorker> Actor for Factory<TKey, TMsg, TWorker>
 where
-    TKey: Message + Hash + Sync,
+    TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = Job<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg, TWorker>>,
+    TWorker:
+        Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg, TWorker>>,
 {
     type Msg = FactoryMessage<TKey, TMsg>;
     type State = FactoryState<TKey, TMsg, TWorker>;
@@ -198,9 +314,24 @@ where
                     self.worker_parallel_capacity,
                     self.discard_threshold,
                     self.discard_handler.as_ref().map(|a| a.clone_box()),
+                    self.collect_worker_stats,
                 ),
             );
         }
+
+        // Startup worker pinging
+        myself.send_after(Duration::from_secs(1), || {
+            FactoryMessage::DoPings(Instant::now())
+        });
+
+        // startup stuck worker detection
+        if let Some(dmd) = &self.dead_mans_switch {
+            myself.send_after(dmd.detection_timeout, || {
+                FactoryMessage::IdentifyStuckWorkers
+            });
+        }
+        let mut stats = MessageProcessingStats::default();
+        stats.enable();
 
         // initial state
         Ok(Self::State {
@@ -208,12 +339,13 @@ where
             worker_builder: builder,
             pool,
             last_worker: 0,
+            stats,
         })
     }
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        myself: ActorRef<Self>,
         message: FactoryMessage<TKey, TMsg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -222,6 +354,7 @@ where
             FactoryMessage::Dispatch(mut job) => {
                 // set the time the factory received the message
                 job.set_factory_time();
+                state.stats.job_submitted();
 
                 match &self.routing_mode {
                     RoutingMode::KeyPersistent => {
@@ -231,12 +364,31 @@ where
                         }
                     }
                     RoutingMode::Queuer => {
-                        let maybe_worker =
-                            state.pool.values_mut().find(|worker| worker.is_available());
-                        if let Some(worker) = maybe_worker {
+                        if let Some(worker) =
+                            state.pool.values_mut().find(|worker| worker.is_available())
+                        {
                             worker.enqueue_job(job)?;
                         } else {
                             // no free worker, backlog the message
+                            state.messages.push_back(job);
+                            self.maybe_discard(state);
+                        }
+                    }
+                    RoutingMode::StickyQueuer => {
+                        // See if there's a worker processing this given job key already, if yes route to that worker
+                        let maybe_worker = state
+                            .pool
+                            .values_mut()
+                            .find(|worker| worker.is_processing_key(&job.key));
+                        if let Some(worker) = maybe_worker {
+                            worker.enqueue_job(job)?;
+                        } else if let Some(worker) =
+                            state.pool.values_mut().find(|worker| worker.is_available())
+                        {
+                            // If no matching sticky worker, find the first free worker
+                            worker.enqueue_job(job)?;
+                        } else {
+                            // no free worker, enqueue the message
                             state.messages.push_back(job);
                             self.maybe_discard(state);
                         }
@@ -266,23 +418,85 @@ where
                 }
             }
             FactoryMessage::Finished(who, job_key) => {
-                if let Some(worker) = state.pool.values_mut().find(|v| v.is_pid(who)) {
-                    worker.worker_complete(job_key)?;
+                if let Some(worker) = state.pool.get_mut(&who) {
+                    if let Some(job_options) = worker.worker_complete(job_key)? {
+                        // record the job data on the factory
+                        state.stats.handle_job_done(&job_options);
+                    }
                 }
 
-                if let RoutingMode::Queuer = self.routing_mode {
-                    // de-queue another job and send it to the free worker
-                    if let Some(job) = state.messages.pop_front() {
-                        let maybe_worker =
-                            state.pool.values_mut().find(|worker| worker.is_available());
-                        if let Some(worker) = maybe_worker {
-                            worker.enqueue_job(job)?;
-                        } else {
-                            // no free worker, backlog the message
-                            state.messages.push_front(job);
-                            self.maybe_discard(state);
+                match self.routing_mode {
+                    RoutingMode::Queuer | RoutingMode::StickyQueuer => {
+                        // pop + discard expired jobs
+                        let mut next_job = None;
+                        while let Some(job) = state.messages.pop_front() {
+                            if !job.is_expired() {
+                                next_job = Some(job);
+                                break;
+                            } else {
+                                state.stats.job_expired();
+                            }
+                        }
+                        // de-queue another job
+                        if let Some(job) = next_job {
+                            if let Some(worker) =
+                                state.pool.get_mut(&who).filter(|f| f.is_available())
+                            {
+                                // Check if this worker is now free (should be the case except potentially in a sticky queuer which may automatically
+                                // move to a sticky message)
+                                worker.enqueue_job(job)?;
+                            } else if let Some(worker) =
+                                state.pool.values_mut().find(|worker| worker.is_available())
+                            {
+                                // If that worker is busy, try and scan the workers to find a free worker
+                                worker.enqueue_job(job)?;
+                            } else {
+                                // no free worker, put the message back into the queue where it was (at the front of the queue)
+                                state.messages.push_front(job);
+                                self.maybe_discard(state);
+                            }
                         }
                     }
+                    _ => {}
+                }
+            }
+            FactoryMessage::WorkerPong(wid, time) => {
+                if let Some(worker) = state.pool.get_mut(&wid) {
+                    worker.factory_pong(time);
+                }
+            }
+            FactoryMessage::DoPings(when) => {
+                let delta = Instant::now() - when;
+                if state.stats.handle_ping(delta) {
+                    state.log_stats(&myself);
+                }
+
+                for worker in state.pool.values_mut() {
+                    worker.send_factory_ping()?;
+                }
+
+                // schedule next ping
+                myself.send_after(Duration::from_secs(1), || {
+                    FactoryMessage::DoPings(Instant::now())
+                });
+            }
+            FactoryMessage::IdentifyStuckWorkers => {
+                if let Some(dmd) = &self.dead_mans_switch {
+                    for worker in state.pool.values() {
+                        if worker.is_stuck(dmd.detection_timeout) && dmd.kill_worker {
+                            log::info!(
+                                "Factory {:?} killing stuck worker {}",
+                                myself.get_name(),
+                                worker.wid
+                            );
+                            worker.actor.kill();
+                        }
+                    }
+
+                    // schedule next check
+                    myself.send_after(dmd.detection_timeout, || {
+                        FactoryMessage::IdentifyStuckWorkers
+                    });
                 }
             }
         }
@@ -317,7 +531,7 @@ where
                     let (replacement, _) =
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
-                    worker.replace_worker(replacement);
+                    worker.replace_worker(replacement)?;
                 }
             }
             SupervisionEvent::ActorPanicked(who, reason) => {
@@ -340,7 +554,7 @@ where
                     let (replacement, _) =
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
-                    worker.replace_worker(replacement);
+                    worker.replace_worker(replacement)?;
                 }
             }
             _ => {}

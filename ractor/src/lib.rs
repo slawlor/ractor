@@ -156,6 +156,8 @@ pub mod pg;
 pub mod port;
 pub mod registry;
 pub mod rpc;
+#[cfg(feature = "cluster")]
+pub mod serialization;
 pub mod time;
 
 #[cfg(test)]
@@ -163,6 +165,8 @@ mod tests;
 
 #[cfg(test)]
 use criterion as _;
+#[cfg(test)]
+use paste as _;
 #[cfg(test)]
 use rand as _;
 
@@ -174,6 +178,8 @@ pub use actor::{Actor, ActorRuntime};
 pub use actor_id::ActorId;
 pub use message::Message;
 pub use port::{OutputMessage, OutputPort, RpcReplyPort};
+#[cfg(feature = "cluster")]
+pub use serialization::BytesConvertable;
 
 /// Represents the state of an actor. Must be safe
 /// to send between threads (same bounds as a [Message])
