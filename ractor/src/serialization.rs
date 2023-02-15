@@ -55,6 +55,13 @@ implement_numeric! {u128}
 implement_numeric! {f32}
 implement_numeric! {f64}
 
+impl BytesConvertable for () {
+    fn into_bytes(self) -> Vec<u8> {
+        Vec::new()
+    }
+    fn from_bytes(_: Vec<u8>) -> Self {}
+}
+
 impl BytesConvertable for bool {
     fn into_bytes(self) -> Vec<u8> {
         if self {
