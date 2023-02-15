@@ -271,6 +271,85 @@ where
         actor.start(ports, startup_args, Some(supervisor)).await
     }
 
+    /// Spawn an actor instantly, not waiting on the actor's `pre_start` routine. This is helpful
+    /// for actors where you want access to the send messages into the actor's message queue
+    /// without waiting on an asynchronous context.
+    ///
+    /// **WARNING** Failures in the pre_start routine need to be waited on in the join handle
+    /// since they will NOT fail the spawn operation in this context
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The [Actor] defining the logic for this actor
+    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<Result<JoinHandle<()>, SpawnErr>>))] upon successful creation of the
+    /// message queues, so you can begin sending messages. However the associated [JoinHandle] contains the inner
+    /// information around if the actor successfully started or not in it's `pre_start` routine. Returns [Err(SpawnErr)] if
+    /// the actor name is already allocated
+    #[allow(clippy::type_complexity)]
+    pub fn spawn_instant(
+        name: Option<ActorName>,
+        handler: TActor,
+        startup_args: TActor::Arguments,
+    ) -> Result<
+        (
+            ActorRef<TActor>,
+            JoinHandle<Result<JoinHandle<()>, SpawnErr>>,
+        ),
+        SpawnErr,
+    > {
+        let (actor, ports) = Self::new(name, handler)?;
+        let actor_ref = actor.actor_ref.clone();
+        let join_op = crate::concurrency::spawn(async move {
+            let (_, handle) = actor.start(ports, startup_args, None).await?;
+            Ok(handle)
+        });
+        Ok((actor_ref, join_op))
+    }
+
+    /// Spawn an actor instantly with supervision, not waiting on the actor's `pre_start` routine.
+    /// This is helpful for actors where you want access to the send messages into the actor's
+    /// message queue without waiting on an asynchronous context.
+    ///
+    /// **WARNING** Failures in the pre_start routine need to be waited on in the join handle
+    /// since they will NOT fail the spawn operation in this context. Additionally the supervision
+    /// tree will **NOT** be linked until the `pre_start` completes so there is a chance an actor
+    /// is lost during `pre_start` and not successfully started unless it's specifically handled
+    /// by the caller by awaiting later.
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The [Actor] defining the logic for this actor
+    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
+    /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<Result<JoinHandle<()>, SpawnErr>>))] upon successful creation of the
+    /// message queues, so you can begin sending messages. However the associated [JoinHandle] contains the inner
+    /// information around if the actor successfully started or not in it's `pre_start` routine. Returns [Err(SpawnErr)] if
+    /// the actor name is already allocated
+    #[allow(clippy::type_complexity)]
+    pub fn spawn_linked_instant(
+        name: Option<ActorName>,
+        handler: TActor,
+        startup_args: TActor::Arguments,
+        supervisor: ActorCell,
+    ) -> Result<
+        (
+            ActorRef<TActor>,
+            JoinHandle<Result<JoinHandle<()>, SpawnErr>>,
+        ),
+        SpawnErr,
+    > {
+        let (actor, ports) = Self::new(name, handler)?;
+        let actor_ref = actor.actor_ref.clone();
+        let join_op = crate::concurrency::spawn(async move {
+            let (_, handle) = actor.start(ports, startup_args, Some(supervisor)).await?;
+            Ok(handle)
+        });
+        Ok((actor_ref, join_op))
+    }
+
     /// Spawn a REMOTE actor with a supervisor, automatically starting the actor. Only for use
     /// by `ractor_cluster::node::NodeSession`
     ///

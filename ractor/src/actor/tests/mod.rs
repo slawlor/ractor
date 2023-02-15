@@ -759,3 +759,60 @@ async fn spawning_local_actor_as_remote_fails() {
     actor.stop(None);
     handle.await.expect("Failed to clean stop the actor");
 }
+
+#[crate::concurrency::test]
+async fn instant_spawns() {
+    let counter = Arc::new(AtomicU8::new(0));
+
+    struct EmptyActor;
+    #[async_trait::async_trait]
+    impl Actor for EmptyActor {
+        type Msg = String;
+        type State = Arc<AtomicU8>;
+        type Arguments = Arc<AtomicU8>;
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+            counter: Arc<AtomicU8>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            // delay startup by some amount
+            crate::concurrency::sleep(Duration::from_millis(200)).await;
+            Ok(counter)
+        }
+
+        async fn handle(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+            _message: String,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            state.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    let (actor, handles) = crate::ActorRuntime::spawn_instant(None, EmptyActor, counter.clone())
+        .expect("Failed to instant spawn");
+
+    for i in 0..10 {
+        actor
+            .cast(format!("I = {i}"))
+            .expect("Actor couldn't receive message!");
+    }
+
+    // actor is still starting up
+    assert_eq!(0, counter.load(Ordering::Relaxed));
+
+    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    // actor is started now and processing messages
+    assert_eq!(10, counter.load(Ordering::Relaxed));
+
+    // Cleanup
+    actor.stop(None);
+    handles
+        .await
+        .unwrap()
+        .expect("Actor's pre_start routine panicked")
+        .await
+        .unwrap();
+}

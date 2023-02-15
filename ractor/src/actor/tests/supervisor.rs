@@ -6,16 +6,13 @@
 //! Supervisor tests
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicU64, AtomicU8, Ordering},
     Arc,
 };
 
 use crate::{concurrency::Duration, ActorProcessingErr};
 
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
-
-#[cfg(feature = "cluster")]
-impl crate::Message for () {}
 
 #[crate::concurrency::test]
 async fn test_supervision_panic_in_post_startup() {
@@ -895,6 +892,96 @@ async fn test_killing_a_supervisor_terminates_children() {
     assert_eq!(ActorStatus::Stopped, child_ref.get_status());
 
     c_handle.await.expect("Failed to wait for child to die");
+}
+
+#[crate::concurrency::test]
+async fn instant_supervised_spawns() {
+    let counter = Arc::new(AtomicU8::new(0));
+
+    struct EmptySupervisor;
+    #[async_trait::async_trait]
+    impl Actor for EmptySupervisor {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+        async fn pre_start(&self, _: ActorRef<Self>, _: ()) -> Result<(), ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle_supervisor_evt(
+            &self,
+            _: ActorRef<Self>,
+            _: SupervisionEvent,
+            _: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            Err(From::from(
+                "Supervision event received when it shouldn't have been!",
+            ))
+        }
+    }
+
+    struct EmptyActor;
+    #[async_trait::async_trait]
+    impl Actor for EmptyActor {
+        type Msg = String;
+        type State = Arc<AtomicU8>;
+        type Arguments = Arc<AtomicU8>;
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+            counter: Arc<AtomicU8>,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            // delay startup by some amount
+            crate::concurrency::sleep(Duration::from_millis(200)).await;
+            Ok(counter)
+        }
+
+        async fn handle(
+            &self,
+            _this_actor: crate::ActorRef<Self>,
+            _message: String,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            state.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    let (supervisor, shandle) = Actor::spawn(None, EmptySupervisor, ())
+        .await
+        .expect("Failed to startup supervisor");
+    let (actor, handles) = crate::ActorRuntime::spawn_linked_instant(
+        None,
+        EmptyActor,
+        counter.clone(),
+        supervisor.get_cell(),
+    )
+    .expect("Failed to instant spawn");
+
+    for i in 0..10 {
+        actor
+            .cast(format!("I = {i}"))
+            .expect("Actor couldn't receive message!");
+    }
+
+    // actor is still starting up
+    assert_eq!(0, counter.load(Ordering::Relaxed));
+
+    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    // actor is started now and processing messages
+    assert_eq!(10, counter.load(Ordering::Relaxed));
+
+    // Cleanup
+    supervisor.stop(None);
+    shandle.await.unwrap();
+
+    actor.stop(None);
+    handles
+        .await
+        .unwrap()
+        .expect("Actor's pre_start routine panicked")
+        .await
+        .unwrap();
 }
 
 // TODO: Still to be tested

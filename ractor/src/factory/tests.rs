@@ -25,8 +25,6 @@ struct TestKey {
     id: u64,
 }
 #[cfg(feature = "cluster")]
-impl crate::Message for TestKey {}
-#[cfg(feature = "cluster")]
 impl crate::BytesConvertable for TestKey {
     fn from_bytes(bytes: Vec<u8>) -> Self {
         Self {

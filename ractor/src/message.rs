@@ -169,3 +169,27 @@ pub trait Message: Any + Send + Sized + 'static {
 // since there's no need for an override
 #[cfg(not(feature = "cluster"))]
 impl<T: Any + Send + Sized + 'static> Message for T {}
+
+// Blanket implementation for basic types which are directly bytes serializable which
+// are all to be CAST operations
+#[cfg(feature = "cluster")]
+impl<T: Any + Send + Sized + 'static + crate::serialization::BytesConvertable> Message for T {
+    fn serializable() -> bool {
+        true
+    }
+
+    fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
+        Ok(SerializedMessage::Cast {
+            variant: String::new(),
+            args: self.into_bytes(),
+            metadata: None,
+        })
+    }
+
+    fn deserialize(bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+        match bytes {
+            SerializedMessage::Cast { args, .. } => Ok(T::from_bytes(args)),
+            _ => Err(BoxedDowncastErr),
+        }
+    }
+}
