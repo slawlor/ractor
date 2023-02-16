@@ -44,7 +44,7 @@ On our roadmap is to add more of the Erlang functionality including potentially 
 
 ### Performance
 
-Actor's in `ractor` are generally quite lightweight and there are benchmarks which you are welcome to run on your own host system with
+Actors in `ractor` are generally quite lightweight and there are benchmarks which you are welcome to run on your own host system with:
 
 ```bash
 cargo bench -p ractor
@@ -52,7 +52,7 @@ cargo bench -p ractor
 
 ## Installation
 
-Install `ractor` by adding the following to your Cargo.toml dependencies
+Install `ractor` by adding the following to your Cargo.toml dependencies.
 
 ```toml
 [dependencies]
@@ -61,13 +61,13 @@ ractor = "0.7"
 
 ## Features
 
-`ractor` exposes a single feature currently, namely
+`ractor` exposes a single feature currently, namely:
 
-1. `cluster` which exposes various functionality required for `ractor_cluster` to setup and manage a cluster of actors over a network link. This is work-in-progress and is being tracked in [#16](https://github.com/slawlor/ractor/issues/16).
+1. `cluster`, which exposes various functionality required for `ractor_cluster` to set up and manage a cluster of actors over a network link. This is work-in-progress and is being tracked in [#16](https://github.com/slawlor/ractor/issues/16).
 
 ## Working with Actors
 
-Actors in `ractor` are very lightweight and can be treated as thread-safe. Each actor will only call one of it's handler functions at a time, and they will
+Actors in `ractor` are very lightweight and can be treated as thread-safe. Each actor will only call one of its handler functions at a time, and they will
 never be executed in parallel. Following the actor model leads to microservices with well-defined state and processing logic.
 
 An example `ping-pong` actor might be the following
@@ -219,7 +219,7 @@ enum MyBasicMessageType {
 }
 ```
 
-The will implement the default ```ractor::Message``` trait for you without you having to write it out by hand.
+This will implement the default ```ractor::Message``` trait for you without you having to write it out by hand.
 
 #### Deriving the network serializable message trait for remote actors
 
@@ -247,7 +247,7 @@ Besides that, just write your actor as you would. The actor itself will live whe
 
 ## Contributors
 
-The original authors of `ractor` are Sean Lawlor (@slawlor), Dillon George (@dillonrg), and Evan Au (@afterdusk). To learn more about contributing to `ractor` please see [CONTRIBUTING.md](https://github.com/slawlor/ractor/blob/main/CONTRIBUTING.md)
+The original authors of `ractor` are Sean Lawlor (@slawlor), Dillon George (@dillonrg), and Evan Au (@afterdusk). To learn more about contributing to `ractor` please see [CONTRIBUTING.md](https://github.com/slawlor/ractor/blob/main/CONTRIBUTING.md).
 
 ## License
 
