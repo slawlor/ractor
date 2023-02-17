@@ -73,7 +73,7 @@ never be executed in parallel. Following the actor model leads to microservices 
 An example `ping-pong` actor might be the following
 
 ```rust
-use ractor::{Actor, ActorCell, ActorProcessingErr};
+use ractor::{cast, Actor, ActorProcessingErr, ActorRef};
 
 /// [PingPong] is a basic actor that will print
 /// ping..pong.. repeatedly until some exit
@@ -118,24 +118,30 @@ impl Actor for PingPong {
     // Initially we need to create our state, and potentially
     // start some internal processing (by posting a message for
     // example)
-    async fn pre_start(&self, myself: ActorCell, _: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+    async fn pre_start(
+        &self,
+        myself: ActorRef<Self>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
         // startup the event processing
-        myself.cast(Message::Ping)?;
+        cast!(myself, Message::Ping)?;
+        // create the initial state
         Ok(0u8)
     }
 
     // This is our main message handler
     async fn handle(
         &self,
-        myself: ActorCell,
+        myself: ActorRef<Self>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         if *state < 10u8 {
             message.print();
-            myself.cast(message.next())?;
+            cast!(myself, message.next())?;
             *state += 1;
         } else {
+            println!();
             myself.stop(None);
             // don't send another message, rather stop the agent after 10 iterations
         }
@@ -145,8 +151,12 @@ impl Actor for PingPong {
 
 #[tokio::main]
 async fn main() {
-    let (_, actor_handle) = Actor::spawn(None, PingPong).await.expect("Failed to start actor");
-    actor_handle.await.expect("Actor failed to exit cleanly");
+    let (_actor, handle) = Actor::spawn(None, PingPong, ())
+        .await
+        .expect("Failed to start ping-pong actor");
+    handle
+        .await
+        .expect("Ping-pong actor failed to exit properly");
 }
 ```
 
