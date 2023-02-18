@@ -29,6 +29,7 @@ pub(crate) async fn test_auth_handshake(port_a: u16, port_b: u16, valid_cookies:
         "node_a".to_string(),
         hostname.clone(),
         ractor_cluster::IncomingEncryptionMode::Raw,
+        ractor_cluster::node::NodeConnectionMode::Isolated,
     );
     let server_b = ractor_cluster::NodeServer::new(
         port_b,
@@ -36,6 +37,7 @@ pub(crate) async fn test_auth_handshake(port_a: u16, port_b: u16, valid_cookies:
         "node_b".to_string(),
         hostname,
         ractor_cluster::IncomingEncryptionMode::Raw,
+        ractor_cluster::node::NodeConnectionMode::Isolated,
     );
 
     let (actor_a, handle_a) = Actor::spawn(None, server_a, ())
@@ -140,6 +142,7 @@ pub(crate) async fn startup_ping_pong_test_node(port: u16, connect_client: Optio
         "node_a".to_string(),
         hostname,
         ractor_cluster::IncomingEncryptionMode::Raw,
+        ractor_cluster::node::NodeConnectionMode::Isolated,
     );
 
     let (actor, handle) = Actor::spawn(None, server, ())

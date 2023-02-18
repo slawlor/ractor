@@ -26,6 +26,21 @@ services:
     command: ractor_cluster_integration_tests test ${B_TEST}
     environment:
       RUST_LOG: debug
+
+  node-c:
+    depends_on: 
+      - node-b
+    container_name: "node-c"
+    build:
+      context: .
+      dockerfile: ractor_cluster_integration_tests/Dockerfile
+    image: ractor_cluster_tests:latest
+    networks:
+      - test-net
+    entrypoint: ''
+    command: ractor_cluster_integration_tests test ${C_TEST}
+    environment:
+      RUST_LOG: debug
 networks:
   test-net:
     external: false

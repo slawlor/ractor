@@ -29,6 +29,9 @@ message NameMessage {
 
     // The node's capability flags
     NodeFlags flags = 2;
+
+    // This node's connection details
+    string connection_string = 3;
 }
 
 // Server -> Client: `SendStatus` is the server replying with the handshake status to the client
@@ -77,6 +80,8 @@ message Challenge {
     NodeFlags flags = 2;
     // The challenge value
     uint32 challenge = 3;
+    // The node's incoming connection string
+    string connection_string = 4;
 }
 
 // The reply to the server's challenge.

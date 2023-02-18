@@ -42,6 +42,7 @@
 //! serialization is handled. There however is a procedural macro in `ractor_cluster_derive` to facilitate this, which is
 //! re-exposed on this crate under the same naming. Simply derive [RactorMessage] or [RactorClusterMessage] if you want local or
 //! remote-supporting messages, respectively.
+//!
 
 #![deny(warnings)]
 #![warn(unused_imports)]

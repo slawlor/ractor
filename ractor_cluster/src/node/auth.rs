@@ -211,6 +211,7 @@ mod tests {
                     proto::NameMessage {
                         name: "howdy".to_string(),
                         flags: Some(NodeFlags { version: 1 }),
+                        connection_string: "localhost:123".to_string(),
                     },
                 )),
             },
@@ -324,6 +325,7 @@ mod tests {
                         name: "challenger".to_string(),
                         flags: Some(NodeFlags { version: 1 }),
                         challenge: 123,
+                        connection_string: "localhost:123".to_string(),
                     },
                 )),
             },

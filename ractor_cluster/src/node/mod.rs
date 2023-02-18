@@ -122,7 +122,7 @@ pub enum NodeServerMessage {
     },
 
     /// Retrieve the current status of the node server, listing the node sessions
-    GetSessions(RpcReplyPort<HashMap<NodeId, ActorRef<NodeSession>>>),
+    GetSessions(RpcReplyPort<HashMap<NodeId, NodeServerSessionInformation>>),
 }
 
 /// Message from the TCP `ractor_cluster::net::session::Session` actor and the
@@ -139,6 +139,22 @@ pub enum NodeSessionMessage {
     GetAuthenticationState(RpcReplyPort<bool>),
 }
 
+/// Node connection mode from the [Erlang](https://www.erlang.org/doc/reference_manual/distributed.html#node-connections)
+/// specification. f a node A connects to node B, and node B has a connection to node C,
+/// then node A also tries to connect to node C
+#[derive(Copy, Clone)]
+pub enum NodeConnectionMode {
+    /// Transitive connection mode. Node A connecting to Node B will list Node B's peers and try and connect to those as well
+    Transitive,
+    /// Nodes only connect to peers which are manually specified
+    Isolated,
+}
+impl Default for NodeConnectionMode {
+    fn default() -> Self {
+        Self::Transitive
+    }
+}
+
 /// Represents the server which is managing all node session instances
 ///
 /// The [NodeServer] supervises a single `ractor_cluster::net::listener::Listener` actor which is
@@ -151,16 +167,24 @@ pub struct NodeServer {
     node_name: String,
     hostname: String,
     encryption_mode: IncomingEncryptionMode,
+    connection_mode: NodeConnectionMode,
 }
 
 impl NodeServer {
     /// Create a new node server instance
+    ///
+    /// * `port` - The port to run the [NodeServer] on for incoming requests
+    /// * `cookie` - The magic cookie for authentication between [NodeServer]s
+    /// * `node_name` - The name of this node
+    /// * `hostname` - The hostname of the machine
+    /// * `connection_mode` - Connection mode for peer nodes
     pub fn new(
         port: crate::net::NetworkPort,
         cookie: String,
         node_name: String,
         hostname: String,
         tls_config: IncomingEncryptionMode,
+        connection_mode: NodeConnectionMode,
     ) -> Self {
         Self {
             port,
@@ -168,24 +192,39 @@ impl NodeServer {
             node_name,
             hostname,
             encryption_mode: tls_config,
+            connection_mode,
         }
     }
 }
 
-struct NodeServerSessionInformation {
-    actor: ActorRef<NodeSession>,
-    peer_name: Option<auth_protocol::NameMessage>,
-    is_server: bool,
-    node_id: NodeId,
+/// Node session information
+#[derive(Clone)]
+pub struct NodeServerSessionInformation {
+    /// The NodeSession actor
+    pub actor: ActorRef<NodeSession>,
+    /// This peer's name (if set)
+    pub peer_name: Option<auth_protocol::NameMessage>,
+    /// Is server-incoming connection
+    pub is_server: bool,
+    /// The node's id
+    pub node_id: NodeId,
+    /// The peer's network address
+    pub peer_addr: String,
 }
 
 impl NodeServerSessionInformation {
-    fn new(actor: ActorRef<NodeSession>, is_server: bool, node_id: NodeId) -> Self {
+    fn new(
+        actor: ActorRef<NodeSession>,
+        is_server: bool,
+        node_id: NodeId,
+        peer_addr: String,
+    ) -> Self {
         Self {
             actor,
             peer_name: None,
             is_server,
             node_id,
+            peer_addr,
         }
     }
 
@@ -262,6 +301,7 @@ impl Actor for NodeServer {
                     version: PROTOCOL_VERSION,
                 }),
                 name: format!("{}@{}", self.node_name, self.hostname),
+                connection_string: format!("{}:{}", self.hostname, self.port),
             },
         })
     }
@@ -275,6 +315,7 @@ impl Actor for NodeServer {
         match message {
             Self::Msg::ConnectionOpened { stream, is_server } => {
                 let node_id = state.node_id_counter;
+                let peer_addr = stream.peer_addr().to_string();
                 if let Ok((actor, _)) = Actor::spawn_linked(
                     None,
                     NodeSession::new(
@@ -283,6 +324,7 @@ impl Actor for NodeServer {
                         self.cookie.clone(),
                         myself.clone(),
                         state.this_node_name.clone(),
+                        self.connection_mode,
                     ),
                     stream,
                     myself.get_cell(),
@@ -291,7 +333,12 @@ impl Actor for NodeServer {
                 {
                     state.node_sessions.insert(
                         actor.get_id(),
-                        NodeServerSessionInformation::new(actor.clone(), is_server, node_id),
+                        NodeServerSessionInformation::new(
+                            actor.clone(),
+                            is_server,
+                            node_id,
+                            peer_addr,
+                        ),
                     );
                     state.node_id_counter += 1;
                 } else {
@@ -310,7 +357,7 @@ impl Actor for NodeServer {
             Self::Msg::GetSessions(reply) => {
                 let mut map = HashMap::new();
                 for value in state.node_sessions.values() {
-                    map.insert(value.node_id, value.actor.clone());
+                    map.insert(value.node_id, value.clone());
                 }
                 let _ = reply.send(map);
             }

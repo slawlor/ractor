@@ -10,6 +10,7 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 
 pub mod auth_handshake;
+pub mod dist_connect;
 pub mod encryption;
 pub mod pg_groups;
 
@@ -29,4 +30,8 @@ pub enum TestCase {
     PgGroups(pg_groups::PgGroupsConfig),
     /// Test encrypted socket communications (through the auth handshake)
     Encryption(encryption::EncryptionConfig),
+    /// Test the transitive connection of a cluster
+    DistConnect(dist_connect::DistConnectConfig),
+    /// Not-a-Node: Don't run any test and exit this node with code 0
+    Nan,
 }

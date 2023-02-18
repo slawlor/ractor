@@ -7,7 +7,7 @@
 //! `node()`s and all of its authentication and communication for that
 //! pairing
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::net::SocketAddr;
 
@@ -21,6 +21,7 @@ use tokio::time::Duration;
 
 use super::{auth, NodeServer};
 use crate::net::session::SessionMessage;
+use crate::node::NodeConnectionMode;
 use crate::protocol::auth as auth_protocol;
 use crate::protocol::control as control_protocol;
 use crate::protocol::node as node_protocol;
@@ -80,25 +81,35 @@ pub struct NodeSession {
     is_server: bool,
     cookie: String,
     node_server: ActorRef<NodeServer>,
-    node_name: auth_protocol::NameMessage,
+    this_node_name: auth_protocol::NameMessage,
+    connection_mode: super::NodeConnectionMode,
 }
 
 impl NodeSession {
     /// Construct a new [NodeSession] with the supplied
     /// arguments
+    ///
+    /// * `node_id`: This peer's node id
+    /// * `is_server`: Is a server-received session (if false, this is the client)
+    /// * `cookie`: The authorization cookie
+    /// * `node_server`: The parent node server
+    /// * `node_name`: This node's name and connection details
+    /// * `connection_mode`: The connection mode for peer connections
     pub fn new(
         node_id: crate::NodeId,
         is_server: bool,
         cookie: String,
         node_server: ActorRef<NodeServer>,
         node_name: auth_protocol::NameMessage,
+        connection_mode: super::NodeConnectionMode,
     ) -> Self {
         Self {
             node_id,
             is_server,
             cookie,
             node_server,
-            node_name,
+            this_node_name: node_name,
+            connection_mode,
         }
     }
 }
@@ -172,16 +183,18 @@ impl NodeSession {
                         _expected_digest,
                     ) => {
                         // record the name
-                        state.name = Some(auth_protocol::NameMessage {
+                        let name_message = auth_protocol::NameMessage {
                             name: server_challenge_value.name.clone(),
                             flags: server_challenge_value.flags.clone(),
-                        });
+                            connection_string: server_challenge_value.connection_string.clone(),
+                        };
+                        state.name = Some(name_message.clone());
                         // tell the node server that we now know this peer's name information
                         let _ = self
                             .node_server
                             .cast(super::NodeServerMessage::UpdateSession {
                                 actor_id: myself.get_id(),
-                                name: self.node_name.clone(),
+                                name: name_message,
                             });
                         // send the client challenge to the server
                         let reply = auth_protocol::AuthenticationMessage {
@@ -219,7 +232,6 @@ impl NodeSession {
                     auth::ServerAuthenticationProcess::HavePeerName(peer_name) => {
                         // store the peer node's name in the session state
                         state.name = Some(peer_name.clone());
-
                         // send the status message, followed by the server's challenge
                         let server_status_result = self
                             .node_server
@@ -231,6 +243,13 @@ impl NodeSession {
                                 Some(Duration::from_millis(500)),
                             )
                             .await;
+                        // tell the node server that we now know this peer's name information
+                        let _ = self
+                            .node_server
+                            .cast(super::NodeServerMessage::UpdateSession {
+                                actor_id: myself.get_id(),
+                                name: peer_name.clone(),
+                            });
                         match server_status_result {
                             Err(_) | Ok(CallResult::Timeout) | Ok(CallResult::SenderError) => {
                                 next = auth::ServerAuthenticationProcess::Close;
@@ -264,9 +283,10 @@ impl NodeSession {
                                                 msg: Some(
                                                     auth_protocol::authentication_message::Msg::ServerChallenge(
                                                         auth_protocol::Challenge {
-                                                            name: self.node_name.name.clone(),
-                                                            flags: self.node_name.flags.clone(),
+                                                            name: self.this_node_name.name.clone(),
+                                                            flags: self.this_node_name.flags.clone(),
                                                             challenge: *challenge,
+                                                            connection_string: self.this_node_name.connection_string.clone(),
                                                         },
                                                     ),
                                                 ),
@@ -544,6 +564,79 @@ impl NodeSession {
                         ractor::pg::leave(leave.group, cells);
                     }
                 }
+                control_protocol::control_message::Msg::EnumerateNodeSessions(whos_asking) => {
+                    let existing_sessions = ractor::call_t!(
+                        self.node_server,
+                        crate::NodeServerMessage::GetSessions,
+                        500
+                    );
+                    if let Ok(sessions) = existing_sessions {
+                        log::info!(
+                            "{:?}",
+                            sessions
+                                .values()
+                                .map(|s| s.peer_name.clone())
+                                .collect::<Vec<_>>()
+                        );
+                        let names = sessions
+                            .into_values()
+                            .filter_map(|local_session| local_session.peer_name)
+                            .filter(|local_session| {
+                                // don't send back the node who's asking so we don't trigger self-connections
+                                whos_asking.name != local_session.name
+                                    && whos_asking.connection_string
+                                        != local_session.connection_string
+                            })
+                            .collect::<Vec<_>>();
+                        let reply_message = control_protocol::ControlMessage {
+                            msg: Some(control_protocol::control_message::Msg::NodeSessions(
+                                control_protocol::NodeSessions { sessions: names },
+                            )),
+                        };
+                        state.tcp_send_control(reply_message);
+                    }
+                }
+                control_protocol::control_message::Msg::NodeSessions(sessions) => {
+                    if let NodeConnectionMode::Transitive = self.connection_mode {
+                        let existing_sessions = if let Ok(sessions) = ractor::call_t!(
+                            self.node_server,
+                            crate::NodeServerMessage::GetSessions,
+                            500
+                        ) {
+                            sessions
+                                .into_values()
+                                .filter_map(|v| v.peer_name.map(|p| [p.name, p.connection_string]))
+                                .flatten()
+                                .collect()
+                        } else {
+                            HashSet::new()
+                        };
+
+                        for session_name in sessions.sessions.into_iter() {
+                            // check if we're already connected to this host or if it's a request to self-connect,
+                            // if so ignore
+                            if !(existing_sessions.contains(&session_name.name)
+                                || existing_sessions.contains(&session_name.connection_string)
+                                || session_name.name == self.this_node_name.name
+                                || session_name.connection_string
+                                    == self.this_node_name.connection_string)
+                            {
+                                // we aren't connected to this peer, start connecting
+                                let node_server = self.node_server.clone();
+                                ractor::concurrency::spawn(async move {
+                                    if let Err(connect_err) = super::client::connect(
+                                        &node_server,
+                                        session_name.connection_string.clone(),
+                                    )
+                                    .await
+                                    {
+                                        log::warn!("Node transitive connection, failed to connect to {} with '{}'", session_name.connection_string, connect_err);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -558,6 +651,17 @@ impl NodeSession {
 
         // startup the ping healthcheck activity
         state.schedule_tcp_ping();
+
+        // trigger enumeration of the remote peer's node sessions for transitive connections
+        if let NodeConnectionMode::Transitive = self.connection_mode {
+            state.tcp_send_control(control_protocol::ControlMessage {
+                msg: Some(
+                    control_protocol::control_message::Msg::EnumerateNodeSessions(
+                        self.this_node_name.clone(),
+                    ),
+                ),
+            });
+        }
 
         // setup PID monitoring
         ractor::registry::pid_registry::monitor(myself.get_cell());
@@ -752,7 +856,7 @@ impl Actor for NodeSession {
         if !self.is_server {
             state.tcp_send_auth(auth_protocol::AuthenticationMessage {
                 msg: Some(auth_protocol::authentication_message::Msg::Name(
-                    self.node_name.clone(),
+                    self.this_node_name.clone(),
                 )),
             });
         }
@@ -781,6 +885,17 @@ impl Actor for NodeSession {
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        if let Some(peer) = &state.name {
+            if self.this_node_name.connection_string == peer.connection_string
+                || self.this_node_name.name == peer.name
+            {
+                // self-connection detected, exit session
+                log::warn!("Cannot establish a connection to self. Exiting");
+                myself.stop(Some("self_connection".to_string()));
+                return Ok(());
+            }
+        }
+
         match message {
             Self::Msg::MessageReceived(maybe_network_message) if state.tcp.is_some() => {
                 if let Some(network_message) = maybe_network_message.message {
