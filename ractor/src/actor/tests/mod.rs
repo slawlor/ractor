@@ -237,7 +237,7 @@ async fn test_stop_does_not_terminate_async_work() {
     assert!(!handle.is_finished());
 
     crate::concurrency::sleep(Duration::from_millis(100)).await;
-    // now enouch time has passed, so we have proceesed the next message, which is stop
+    // now enough time has passed, so we have processed the next message, which is stop
     // so we should be dead now
     assert_eq!(ActorStatus::Stopped, actor.get_status());
     assert!(handle.is_finished());
@@ -586,7 +586,7 @@ async fn test_serialized_rpc() {
 
     let data = rx
         .await
-        .expect("Faield to get reply from actor (within 100ms)");
+        .expect("Failed to get reply from actor (within 100ms)");
     assert_eq!(data, "hello".to_string());
 
     crate::concurrency::sleep(Duration::from_millis(100)).await;

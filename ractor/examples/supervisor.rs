@@ -189,7 +189,7 @@ impl Actor for MidLevelActor {
                 );
             }
             other => {
-                println!("MidLevelActor: recieved supervisor event '{other}'");
+                println!("MidLevelActor: received supervisor event '{other}'");
             }
         }
         Ok(())
@@ -273,7 +273,7 @@ impl Actor for RootActor {
                 myself.stop(Some("Everyone died :(".to_string()));
             }
             other => {
-                println!("RootActor: recieved supervisor event '{other}'");
+                println!("RootActor: received supervisor event '{other}'");
             }
         }
         Ok(())

@@ -69,8 +69,8 @@ fn get_monitor<'a>() -> &'a PgState {
 
 /// Join actors to the group `group`
 ///
-/// * `group` - The staticly named group. Will be created if first actors to join
-/// * `actors` - Thie list of [crate::Actor]s to add to the group
+/// * `group` - The statically named group. Will be created if first actors to join
+/// * `actors` - The list of [crate::Actor]s to add to the group
 pub fn join(group: GroupName, actors: Vec<ActorCell>) {
     let monitor = get_monitor();
     // insert into the monitor group
@@ -109,8 +109,8 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
 
 /// Leaves the specified [crate::Actor]s from the PG group
 ///
-/// * `group` - The staticly named group
-/// * `actors` - Thie list of actors to remove from the group
+/// * `group` - The statically named group
+/// * `actors` - The list of actors to remove from the group
 pub fn leave(group: GroupName, actors: Vec<ActorCell>) {
     let monitor = get_monitor();
     match monitor.map.entry(group.clone()) {

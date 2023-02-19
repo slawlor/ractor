@@ -179,7 +179,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         while rpc_result.is_ok() {
             let duration: Duration = Instant::now() - tic;
             if duration.as_millis() > PING_PONG_ALLOTED_MS {
-                log::error!("Ping pong actor didn't complete in alloted time");
+                log::error!("Ping pong actor didn't complete in allotted time");
                 return -1;
             }
 

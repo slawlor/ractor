@@ -96,7 +96,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// Invoked after an actor has started.
     ///
     /// Any post initialization can be performed here, such as writing
-    /// to a log file, emmitting metrics.
+    /// to a log file, emitting metrics.
     ///
     /// Panics in `post_start` follow the supervision strategy.
     ///
@@ -148,7 +148,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// captured and sent to the supervisor(s)
     ///
     /// * `myself` - A handle to the [ActorCell] representing this actor
-    /// * `message` - The serialized messgae to handle
+    /// * `message` - The serialized message to handle
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
     #[cfg(feature = "cluster")]
@@ -182,7 +182,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
-    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
     /// initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -200,7 +200,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
-    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
     /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
@@ -235,7 +235,7 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
     /// initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -254,7 +254,7 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
     /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
@@ -280,7 +280,7 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
     /// initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<Result<JoinHandle<()>, SpawnErr>>))] upon successful creation of the
@@ -320,7 +320,7 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
     /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
@@ -355,7 +355,7 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler`: The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguements passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
     /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///

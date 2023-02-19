@@ -282,7 +282,7 @@ async fn test_rpc_call_forwarding() {
         forwarder_ref,
         ForwarderMessage::ForwardResult
     )
-    .expect("Failed to foward message");
+    .expect("Failed to forward message");
 
     forward!(
         worker_ref,

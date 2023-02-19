@@ -16,7 +16,7 @@
 //!
 //! 1. Non-serializable macros are simply getting `impl ractor::Message for MyStructOrEnum` added onto their struct
 //! 2. Serializable messages have to have a few formatting requirements.
-//!     a. All variants of the enum will be numbered based on their lexigraphical ordering, which is sent over-the-wire in order to decode which
+//!     a. All variants of the enum will be numbered based on their lexicographical ordering, which is sent over-the-wire in order to decode which
 //!        variant was called. This is the `index` field on any variant of `ractor::message::SerializedMessage`
 //!     b. All properties of the message **MUST** implement the `ractor::BytesConvertable` trait which means they supply a `to_bytes` and `from_bytes` method. Many
 //!        types are pre-done for you in `ractor`'s definition of the trait
@@ -53,7 +53,7 @@ pub fn ractor_message_derive_macro(input: TokenStream) -> TokenStream {
 /// 3. For RPCs, the LAST argument **must** be the reply channel. Additionally the type of message the channel is expecting back must also implement `ractor::BytesConvertable`
 /// 4. Lastly, for RPCs, they should additionally be decorated with `#[rpc]` on each variant's definition. This helps the macro identify that it
 ///    is an RPC and will need port handler
-/// 5. For backwards compatability, you can add new variants as long as you don't rename variants until all nodes in the cluster are upgraded.
+/// 5. For backwards compatibility, you can add new variants as long as you don't rename variants until all nodes in the cluster are upgraded.
 ///
 #[proc_macro_derive(RactorClusterMessage, attributes(rpc))]
 pub fn ractor_cluster_message_derive_macro(input: TokenStream) -> TokenStream {

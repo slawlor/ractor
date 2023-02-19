@@ -148,7 +148,7 @@ where
 }
 
 /// Send a message asynchronously to another actor, waiting in a new task for the reply
-/// and then forwaring the reply to a followup-actor. If this [CallResult] from the first
+/// and then forwarding the reply to a followup-actor. If this [CallResult] from the first
 /// actor is not success, the forward is not sent.
 ///
 /// * `actor` - A reference to the [ActorCell] to communicate with

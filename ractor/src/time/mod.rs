@@ -21,7 +21,7 @@ use crate::{Actor, ActorCell, MessagingErr, ACTIVE_STATES};
 #[cfg(test)]
 mod tests;
 
-/// Sends a message to a given actor repeatedly after a specifid time
+/// Sends a message to a given actor repeatedly after a specified time
 /// using the provided message generation function. The task will exit
 /// once the channel is closed (meaning the underlying [crate::Actor]
 /// has terminated)

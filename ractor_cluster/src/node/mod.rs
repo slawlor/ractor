@@ -12,7 +12,7 @@
 //! [NodeSession] requests. [NodeSession]s represent a remote server, locally.
 //!
 //! Additionally, you can open a session as a "client" by requesting a new session from the [NodeServer]
-//! after intially connecting a [TcpStream] to the desired endpoint and then attaching the [NodeSession]
+//! after initially connecting a [TcpStream] to the desired endpoint and then attaching the [NodeSession]
 //! to the TcpStream (and linking the actors). See [client::connect] for client-based connections
 //!
 //! ## Supervision

@@ -106,7 +106,7 @@ impl MessageProcessingStats {
 
         if self.ping_count > 600 {
             // When we hit 10min, convert the message timing to an average and reset the counters
-            // this lets us track degredation without being overwhelmed by old (stale) data
+            // this lets us track degradation without being overwhelmed by old (stale) data
             self.ping_timing_us /= self.ping_count as u128;
             self.ping_count = 1;
             true
