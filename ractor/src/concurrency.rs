@@ -3,7 +3,7 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Shared concurrency primatives utilized within the library for different frameworks (tokio, async-std, etc)
+//! Shared concurrency primitives utilized within the library for different frameworks (tokio, async-std, etc)
 
 /// A timoeout error
 #[derive(Debug)]
@@ -41,7 +41,7 @@ pub fn oneshot<T>() -> (OneshotSender<T>, OneshotReceiver<T>) {
 
 // =============== TOKIO =============== //
 
-/// Tokio-based primatives
+/// Tokio-based primitives
 // #[cfg(feature = "tokio_runtime")]
 pub mod tokio_primatives {
     use std::future::Future;
@@ -108,7 +108,7 @@ pub use tokio_primatives::*;
 
 // =============== ASYNC-STD =============== //
 
-/// Tokio-based primatives
+/// Tokio-based primitives
 #[cfg(feature = "async_std_runtime")]
 pub mod async_std_primatives {
     use std::future::Future;

@@ -19,7 +19,7 @@ macro_rules! cast {
 /// * `$actor` - The actor to call
 /// * `$msg` - The message builder which takes in a [crate::port::RpcReplyPort] and emits a message which
 /// the actor supports
-/// * `$args` - (optional) Variable length arguments which will PRECEED the reply channel when
+/// * `$args` - (optional) Variable length arguments which will PRECEDE the reply channel when
 /// constructing the message payload
 ///
 /// Returns [Ok(_)] with the result on successful RPC or [Err(crate::RactorErr)] on failure
@@ -99,7 +99,7 @@ macro_rules! call {
 /// * `$actor` - The actor to call
 /// * `$msg` - The message builder variant
 /// * `$timeout_ms` - the timeout in milliseconds for the remote procedure call
-/// * `$args` - (optional) Variable length arguments which will PRECEED the reply channel when
+/// * `$args` - (optional) Variable length arguments which will PRECEDE the reply channel when
 /// constructing the message payload
 ///
 /// Returns [Ok(_)] with the result on successful RPC or [Err(crate::RactorErr)] on failure

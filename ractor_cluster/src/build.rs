@@ -3,7 +3,7 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! This is the pre-compilation build script for the crate `ractor` when running in distrubted
+//! This is the pre-compilation build script for the crate `ractor` when running in distributed
 //! mode. It's used to compile protobuf into Rust code prior to compilation.
 
 /// The shared-path for all protobuf specifications

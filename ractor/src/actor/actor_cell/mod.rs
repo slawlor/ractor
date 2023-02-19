@@ -289,7 +289,7 @@ impl ActorCell {
 
     /// Terminate this [super::Actor] and all it's children
     pub(crate) fn terminate(&self) {
-        // we don't need to nofity of exit if we're already stopping or stopped
+        // we don't need to notify of exit if we're already stopping or stopped
         if self.get_status() as u8 <= ActorStatus::Upgrading as u8 {
             // kill myself immediately. Ignores failures, as a failure means either
             // 1. we're already dead or

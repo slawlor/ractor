@@ -26,7 +26,7 @@ use tokio::time::{Duration, Instant};
 // ============================ Fork Actor ============================ //
 
 enum ForkMessage {
-    /// Request the fork be sent to a philospher
+    /// Request the fork be sent to a philosopher
     RequestFork(ActorRef<Philosopher>),
     /// Mark the fork as currently being used
     UsingFork(ActorId),
@@ -175,7 +175,7 @@ struct PhilosophersFork {
 struct PhilosopherMetrics {
     /// The number of state changes that have occurred.
     state_change_count: u16,
-    /// The number of times a Philosopher failed to eat because he didnt have both forks.
+    /// The number of times a Philosopher failed to eat because he didn't have both forks.
     failed_to_eat: u16,
     /// The time that the Philosopher spent thinking.
     time_thinking: Duration,

@@ -23,12 +23,12 @@ impl<T> CallResult<T> {
         matches!(self, Self::Success(_))
     }
 
-    /// Determin if the [CallResult] is a [CallResult::Timeout]
+    /// Determine if the [CallResult] is a [CallResult::Timeout]
     pub fn is_timeout(&self) -> bool {
         matches!(self, Self::Timeout)
     }
 
-    /// Determin if the [CallResult] is a [CallResult::SenderError]
+    /// Determine if the [CallResult] is a [CallResult::SenderError]
     pub fn is_send_error(&self) -> bool {
         matches!(self, Self::SenderError)
     }
@@ -80,7 +80,7 @@ impl<T> CallResult<T> {
         }
     }
 
-    /// Tranforms the [CallResult] to a Result mapping `Success(t)` to `Ok(t)` and all else to `Err(err)`
+    /// Transforms the [CallResult] to a Result mapping `Success(t)` to `Ok(t)` and all else to `Err(err)`
     pub fn success_or<E>(self, err: E) -> Result<T, E> {
         if let Self::Success(t) = self {
             Ok(t)
@@ -89,7 +89,7 @@ impl<T> CallResult<T> {
         }
     }
 
-    /// Tranforms the [CallResult] to a Result mapping `Success(t)` to `Ok(t)` and all else to `Err(err())`
+    /// Transforms the [CallResult] to a Result mapping `Success(t)` to `Ok(t)` and all else to `Err(err())`
     pub fn success_or_else<E, F>(self, err: F) -> Result<T, E>
     where
         F: FnOnce() -> E,

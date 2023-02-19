@@ -15,7 +15,7 @@
 //!  
 //! The factory has a series of dispatch modes which are defined in [RoutingMode] and
 //! control the way the factory dispatches work to workers. This should be selected based
-//! on the intended workload. Some general guidence:
+//! on the intended workload. Some general guidance:
 //!
 //! 1. If you need to process a sequence of operations on a given key (i.e. the Job is a user, and
 //! there's a sequential list of updates to that user). You then want the job to land on the same
@@ -26,7 +26,7 @@
 //! is sufficient.
 //! 4. For some custom defined routing, you can define your own [CustomHashFunction] which will be
 //! used in conjunction with [RoutingMode::CustomHashFunction] to take the incoming job key and
-//! the space which should be hashed to (i.e. the nnumber of workers).
+//! the space which should be hashed to (i.e. the number of workers).
 //! 5. If you just want load balancing there's also [RoutingMode::RoundRobin] and [RoutingMode::Random]
 //! for general 1-off dispatching of jobs
 //!
@@ -232,7 +232,7 @@ where
 ///
 /// Factories only support the command [FactoryMessage::Dispatch] over a cluster
 /// configuration as the rest of the message types are internal and only intended for
-/// in-host communciation. This means if you're communicating to a factory you would
+/// in-host communication. This means if you're communicating to a factory you would
 /// send only a serialized [Job] which would automatically be converted to a
 /// [FactoryMessage::Dispatch(Job)]
 pub enum FactoryMessage<TKey, TMsg>
@@ -250,7 +250,7 @@ where
     /// tracking the factory's timing itself
     DoPings(Instant),
 
-    /// A reply to a factory ping suppling the worker id and the time
+    /// A reply to a factory ping supplying the worker id and the time
     /// of the ping start
     WorkerPong(WorkerId, Instant),
 

@@ -29,7 +29,7 @@ ractor_cluster = "0.7"
 
 Ractor actors can be built in a network-distributed pool of actors, similar to [Erlang's EPMD](https://www.erlang.org/doc/man/epmd.html) which manages inter-node connections + node naming. In our implementation, we have [`ractor_cluster`](https://crates.io/crates/ractor_cluster) in order to facilitate distributed `ractor` actors.
 
-`ractor_cluster` has a single main type in it, namely the `NodeServer` which represents a host of a `node()` process. It additionally has some macros and a procedural macros to facilitate developer efficiency when building distributed actors. The `NodeServer` is reponsible for:
+`ractor_cluster` has a single main type in it, namely the `NodeServer` which represents a host of a `node()` process. It additionally has some macros and a procedural macros to facilitate developer efficiency when building distributed actors. The `NodeServer` is responsible for:
 
 1. Managing all incoming and outgoing `NodeSession` actors which represent a remote node connected to this host.
 2. Managing the `TcpListener` which hosts the server socket to accept incoming session requests.

@@ -129,7 +129,7 @@ implement_vectorized_numeric! {i32}
 implement_vectorized_numeric! {i64}
 implement_vectorized_numeric! {i128}
 
-// We explicitely skip u8, as it has a more
+// We explicitly skip u8, as it has a more
 // optimized definition
 impl BytesConvertable for Vec<u8> {
     fn into_bytes(self) -> Vec<u8> {

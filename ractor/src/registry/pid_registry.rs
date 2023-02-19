@@ -99,7 +99,7 @@ pub fn get_all_pids() -> Vec<ActorCell> {
         .collect::<Vec<_>>()
 }
 
-/// Retrieve an actor from the global registery of all local actors
+/// Retrieve an actor from the global registry of all local actors
 ///
 /// * `id` - The **local** id of the actor to retrieve
 ///

@@ -540,7 +540,7 @@ async fn test_supervision_error_in_post_stop() {
     assert_eq!(0, supervisor_ref.get_num_children());
 }
 
-/// Test that a panic in the supervisor's handling propogates to
+/// Test that a panic in the supervisor's handling propagates to
 /// the supervisor's supervisor
 #[crate::concurrency::test]
 async fn test_supervision_panic_in_supervisor_handle() {
@@ -681,7 +681,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
     assert_eq!(0, supervisor_ref.get_num_children());
 }
 
-/// Test that a panic in the supervisor's handling propogates to
+/// Test that a panic in the supervisor's handling propagates to
 /// the supervisor's supervisor
 #[crate::concurrency::test]
 async fn test_supervision_error_in_supervisor_handle() {
@@ -877,7 +877,7 @@ async fn test_killing_a_supervisor_terminates_children() {
     assert_eq!(1, supervisor_ref.get_num_children());
     assert_eq!(1, child_ref.get_num_parents());
 
-    // initate the shutdown of the supervisor
+    // initiate the shutdown of the supervisor
     supervisor_ref
         .cast(())
         .expect("Sending message to supervisor failed");

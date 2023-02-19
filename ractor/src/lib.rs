@@ -126,7 +126,7 @@
 //! 1. Signals: Signals are the highest-priority of all and will interrupt the actor wherever processing currently is (this includes terminating async work). There
 //! is only 1 signal today, which is `Signal::Kill`, and it immediately terminates all work. This includes message processing or supervision event processing.
 //! 2. Stop: There is also a pre-defined stop signal. You can give a "stop reason" if you want, but it's optional. Stop is a graceful exit, meaning currently executing async
-//! work will complete, and on the next message processing iteration Stop will take prioritity over future supervision events or regular messages. It will **not** terminate
+//! work will complete, and on the next message processing iteration Stop will take priority over future supervision events or regular messages. It will **not** terminate
 //! currently executing work, regardless of the provided reason.
 //! 3. SupervisionEvent: Supervision events are messages from child actors to their supervisors in the event of their startup, death, and/or unhandled panic. Supervision events
 //! are how an actor's supervisor(s) are notified of events of their children and can handle lifetime events for them.
