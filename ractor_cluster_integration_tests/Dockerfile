@@ -8,6 +8,8 @@ WORKDIR /usr/src/app
 COPY . .
 RUN cargo install --path ractor_cluster_integration_tests/
 RUN mv /usr/local/cargo/bin/ractor_cluster_integration_tests /usr/local/bin/ractor_cluster_integration_tests
+RUN mv /usr/src/app/ractor_cluster_integration_tests/test-ca/ /usr/local/bin/test-ca
 WORKDIR /usr/local/bin
 
 ENTRYPOINT [ "ractor_cluster_integration_tests" ]
+# ENTRYPOINT ["/bin/bash"]

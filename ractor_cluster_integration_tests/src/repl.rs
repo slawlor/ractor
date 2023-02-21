@@ -21,6 +21,7 @@ impl ReplCommandProcessor<TestCase> for TestRepl {
         let code = match command {
             TestCase::AuthHandshake(config) => crate::tests::auth_handshake::test(config).await,
             TestCase::PgGroups(config) => crate::tests::pg_groups::test(config).await,
+            TestCase::Encryption(config) => crate::tests::encryption::test(config).await,
         };
 
         if code < 0 {

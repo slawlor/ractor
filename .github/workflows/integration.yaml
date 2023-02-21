@@ -37,4 +37,9 @@ jobs:
         working-directory: .
         run: |
           docker compose --env-file ./ractor_cluster_integration_tests/envs/pg-groups.env up --exit-code-from node-b
+
+      - name: Encrypted communications
+        working-directory: .
+        run: |
+          docker compose --env-file ./ractor_cluster_integration_tests/envs/encryption.env up --exit-code-from node-b
       

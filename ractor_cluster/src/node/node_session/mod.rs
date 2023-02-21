@@ -715,7 +715,7 @@ impl NodeSessionState {
 #[async_trait::async_trait]
 impl Actor for NodeSession {
     type Msg = super::NodeSessionMessage;
-    type Arguments = tokio::net::TcpStream;
+    type Arguments = crate::net::NetworkStream;
     type State = NodeSessionState;
 
     async fn pre_start(
@@ -723,8 +723,8 @@ impl Actor for NodeSession {
         myself: ActorRef<Self>,
         stream: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let peer_addr = stream.peer_addr()?;
-        let local_addr = stream.local_addr()?;
+        let peer_addr = stream.peer_addr();
+        let local_addr = stream.local_addr();
         // startup the TCP socket handler for message write + reading
         let actor = crate::net::session::Session::spawn_linked(
             myself.clone(),

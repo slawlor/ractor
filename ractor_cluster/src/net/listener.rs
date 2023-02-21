@@ -9,6 +9,7 @@ use ractor::{cast, ActorProcessingErr};
 use ractor::{Actor, ActorRef};
 use tokio::net::TcpListener;
 
+use super::IncomingEncryptionMode;
 use crate::node::NodeServerMessage;
 
 /// A Tcp Socket [Listener] responsible for accepting new connections and spawning [super::session::Session]s
@@ -19,6 +20,7 @@ use crate::node::NodeServerMessage;
 pub struct Listener {
     port: super::NetworkPort,
     session_manager: ActorRef<crate::node::NodeServer>,
+    encryption: IncomingEncryptionMode,
 }
 
 impl Listener {
@@ -26,10 +28,12 @@ impl Listener {
     pub fn new(
         port: super::NetworkPort,
         session_manager: ActorRef<crate::node::NodeServer>,
+        encryption: IncomingEncryptionMode,
     ) -> Self {
         Self {
             port,
             session_manager,
+            encryption,
         }
     }
 }
@@ -90,14 +94,39 @@ impl Actor for Listener {
         if let Some(listener) = &mut state.listener {
             match listener.accept().await {
                 Ok((stream, addr)) => {
-                    let _ = cast!(
-                        self.session_manager,
-                        NodeServerMessage::ConnectionOpened {
+                    let local = stream.local_addr()?;
+
+                    let session = match &self.encryption {
+                        IncomingEncryptionMode::Raw => Some(super::NetworkStream::Raw {
+                            peer_addr: addr,
+                            local_addr: local,
                             stream,
-                            is_server: true
+                        }),
+                        IncomingEncryptionMode::Tls(acceptor) => {
+                            match acceptor.accept(stream).await {
+                                Ok(enc_stream) => Some(super::NetworkStream::TlsServer {
+                                    peer_addr: addr,
+                                    local_addr: local,
+                                    stream: enc_stream,
+                                }),
+                                Err(some_err) => {
+                                    log::warn!("Error establishing secure socket: {}", some_err);
+                                    None
+                                }
+                            }
                         }
-                    );
-                    log::info!("TCP Session opened for {}", addr);
+                    };
+
+                    if let Some(stream) = session {
+                        let _ = cast!(
+                            self.session_manager,
+                            NodeServerMessage::ConnectionOpened {
+                                stream,
+                                is_server: true
+                            }
+                        );
+                        log::info!("TCP Session opened for {}", addr);
+                    }
                 }
                 Err(socket_accept_error) => {
                     log::warn!(

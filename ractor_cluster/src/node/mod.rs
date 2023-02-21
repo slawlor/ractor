@@ -12,7 +12,7 @@
 //! [NodeSession] requests. [NodeSession]s represent a remote server, locally.
 //!
 //! Additionally, you can open a session as a "client" by requesting a new session from the [NodeServer]
-//! after initially connecting a [TcpStream] to the desired endpoint and then attaching the [NodeSession]
+//! after initially connecting a TcpStream to the desired endpoint and then attaching the [NodeSession]
 //! to the TcpStream (and linking the actors). See [client::connect] for client-based connections
 //!
 //! ## Supervision
@@ -48,13 +48,13 @@ pub mod auth;
 pub mod client;
 pub mod node_session;
 pub use node_session::NodeSession;
-use tokio::net::TcpStream;
 
 use std::collections::HashMap;
 use std::{cmp::Ordering, collections::hash_map::Entry};
 
 use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
 
+use crate::net::IncomingEncryptionMode;
 use crate::protocol::auth as auth_protocol;
 use crate::{NodeId, RactorMessage};
 
@@ -93,10 +93,10 @@ impl From<SessionCheckReply> for auth_protocol::server_status::Status {
 #[derive(RactorMessage)]
 pub enum NodeServerMessage {
     /// Notifies the session manager that a new incoming (`is_server = true`) or outgoing (`is_server = false`)
-    /// [TcpStream] was accepted
+    /// [crate::NetworkStream] was accepted
     ConnectionOpened {
-        /// The [TcpStream] for this network connection
-        stream: TcpStream,
+        /// The [crate::NetworkStream] for this network connection
+        stream: crate::net::NetworkStream,
         /// Flag denoting if it's a server (incoming) connection when [true], [false] for outgoing
         is_server: bool,
     },
@@ -150,6 +150,7 @@ pub struct NodeServer {
     cookie: String,
     node_name: String,
     hostname: String,
+    encryption_mode: IncomingEncryptionMode,
 }
 
 impl NodeServer {
@@ -159,12 +160,14 @@ impl NodeServer {
         cookie: String,
         node_name: String,
         hostname: String,
+        tls_config: IncomingEncryptionMode,
     ) -> Self {
         Self {
             port,
             cookie,
             node_name,
             hostname,
+            encryption_mode: tls_config,
         }
     }
 }
@@ -242,7 +245,11 @@ impl Actor for NodeServer {
         myself: ActorRef<Self>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
-        let listener = crate::net::listener::Listener::new(self.port, myself.clone());
+        let listener = crate::net::listener::Listener::new(
+            self.port,
+            myself.clone(),
+            self.encryption_mode.clone(),
+        );
 
         let (actor_ref, _) = Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
 
@@ -327,7 +334,11 @@ impl Actor for NodeServer {
 
                     // try to re-create the listener. If it's a port-bind issue, we will have already panicked on
                     // trying to start the NodeServer
-                    let listener = crate::net::listener::Listener::new(self.port, myself.clone());
+                    let listener = crate::net::listener::Listener::new(
+                        self.port,
+                        myself.clone(),
+                        self.encryption_mode.clone(),
+                    );
 
                     let (actor_ref, _) =
                         Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
@@ -361,7 +372,11 @@ impl Actor for NodeServer {
 
                     // try to re-create the listener. If it's a port-bind issue, we will have already panicked on
                     // trying to start the NodeServer
-                    let listener = crate::net::listener::Listener::new(self.port, myself.clone());
+                    let listener = crate::net::listener::Listener::new(
+                        self.port,
+                        myself.clone(),
+                        self.encryption_mode.clone(),
+                    );
 
                     let (actor_ref, _) =
                         Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
