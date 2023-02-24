@@ -15,6 +15,7 @@ syntax = "proto3";
 package control;
 
 import "google/protobuf/timestamp.proto";
+import "auth.proto";
 
 // Represents a single actor
 message Actor {
@@ -65,6 +66,12 @@ message PgLeave {
     repeated Actor actors = 2;
 }
 
+// A collection of NodeSession endpoints
+message NodeSessions {
+    // The list of sessions
+    repeated auth.NameMessage sessions = 1;
+}
+
 // Control messages between authenticated `node()`s which are dist-connected
 message ControlMessage {
     // The message payload
@@ -81,5 +88,9 @@ message ControlMessage {
         PgJoin pg_join = 5;
         // A PG group leave event
         PgLeave pg_leave = 6;
+        // Enumerate the node sessions on the remote peer
+        auth.NameMessage enumerate_node_sessions = 7;
+        // The list of node sessions on the remote host for transitive connections
+        NodeSessions node_sessions = 8;
     }
 }

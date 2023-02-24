@@ -42,4 +42,9 @@ jobs:
         working-directory: .
         run: |
           docker compose --env-file ./ractor_cluster_integration_tests/envs/encryption.env up --exit-code-from node-b
+          
+      - name: Transitive connections
+        working-directory: .
+        run: |
+          docker compose --env-file ./ractor_cluster_integration_tests/envs/dist-connect.env up --exit-code-from node-c
       

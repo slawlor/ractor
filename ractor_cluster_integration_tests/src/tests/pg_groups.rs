@@ -112,6 +112,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         super::random_name(),
         hostname,
         ractor_cluster::IncomingEncryptionMode::Raw,
+        ractor_cluster::node::NodeConnectionMode::Isolated,
     );
 
     let (actor, handle) = Actor::spawn(None, server, ())
@@ -151,7 +152,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
             .cloned()
         {
             let is_authenticated = ractor::call_t!(
-                item,
+                item.actor,
                 ractor_cluster::NodeSessionMessage::GetAuthenticationState,
                 200
             );

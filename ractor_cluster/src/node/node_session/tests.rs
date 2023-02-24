@@ -12,6 +12,8 @@ use std::sync::{
 
 use ractor::concurrency::sleep;
 
+use crate::node::NodeConnectionMode;
+
 use super::*;
 
 struct DummyNodeServer;
@@ -94,11 +96,13 @@ async fn node_sesison_client_auth_success() {
         cookie: "cookie".to_string(),
         is_server: true,
         node_id: 1,
-        node_name: auth_protocol::NameMessage {
+        this_node_name: auth_protocol::NameMessage {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
         },
         node_server: server_ref.clone(),
+        connection_mode: NodeConnectionMode::Isolated,
     };
 
     let mut state = NodeSessionState {
@@ -171,6 +175,7 @@ async fn node_sesison_client_auth_success() {
             auth_protocol::Challenge {
                 name: "Something".to_string(),
                 flags: Some(auth_protocol::NodeFlags { version: 1 }),
+                connection_string: "localhost:123".to_string(),
                 challenge: 123,
             },
         )),
@@ -235,11 +240,13 @@ async fn node_session_client_auth_session_state_failures() {
         cookie: "cookie".to_string(),
         is_server: true,
         node_id: 1,
-        node_name: auth_protocol::NameMessage {
+        this_node_name: auth_protocol::NameMessage {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
         },
         node_server: server_ref.clone(),
+        connection_mode: NodeConnectionMode::Isolated,
     };
 
     let mut state = NodeSessionState {
@@ -312,6 +319,7 @@ async fn node_session_client_auth_session_state_failures() {
             auth_protocol::Challenge {
                 name: "something".to_string(),
                 flags: Some(auth_protocol::NodeFlags { version: 1 }),
+                connection_string: "localhost:123".to_string(),
                 challenge: 123,
             },
             [0u8; 32],
@@ -360,11 +368,13 @@ async fn node_session_server_auth_success() {
         cookie: "cookie".to_string(),
         is_server: true,
         node_id: 1,
-        node_name: auth_protocol::NameMessage {
+        this_node_name: auth_protocol::NameMessage {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
         },
         node_server: server_ref.clone(),
+        connection_mode: NodeConnectionMode::Isolated,
     };
 
     // let addr = SocketAddr::
@@ -383,6 +393,7 @@ async fn node_session_server_auth_success() {
             auth_protocol::NameMessage {
                 name: "peer".to_string(),
                 flags: Some(auth_protocol::NodeFlags { version: 1 }),
+                connection_string: "localhost:123".to_string(),
             },
         )),
     };
@@ -451,11 +462,13 @@ async fn node_session_server_auth_session_state_failures() {
         cookie: "cookie".to_string(),
         is_server: true,
         node_id: 1,
-        node_name: auth_protocol::NameMessage {
+        this_node_name: auth_protocol::NameMessage {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
         },
         node_server: server_ref.clone(),
+        connection_mode: NodeConnectionMode::Isolated,
     };
 
     let mut state = NodeSessionState {
@@ -473,6 +486,7 @@ async fn node_session_server_auth_session_state_failures() {
             auth_protocol::NameMessage {
                 name: "other_continues".to_string(),
                 flags: Some(auth_protocol::NodeFlags { version: 1 }),
+                connection_string: "localhost:123".to_string(),
             },
         )),
     };
@@ -491,6 +505,7 @@ async fn node_session_server_auth_session_state_failures() {
             auth_protocol::NameMessage {
                 name: "this_continues".to_string(),
                 flags: Some(auth_protocol::NodeFlags { version: 1 }),
+                connection_string: "localhost:123".to_string(),
             },
         )),
     };
@@ -595,11 +610,13 @@ async fn node_session_handle_node_msg() {
         cookie: "cookie".to_string(),
         is_server: true,
         node_id: 1,
-        node_name: auth_protocol::NameMessage {
+        this_node_name: auth_protocol::NameMessage {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
         },
         node_server: server_ref.clone(),
+        connection_mode: NodeConnectionMode::Isolated,
     };
 
     let mut state = NodeSessionState {
@@ -689,11 +706,13 @@ async fn node_session_handle_control() {
         cookie: "cookie".to_string(),
         is_server: true,
         node_id: 1,
-        node_name: auth_protocol::NameMessage {
+        this_node_name: auth_protocol::NameMessage {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
         },
         node_server: server_ref.clone(),
+        connection_mode: NodeConnectionMode::Isolated,
     };
 
     let mut state = NodeSessionState {

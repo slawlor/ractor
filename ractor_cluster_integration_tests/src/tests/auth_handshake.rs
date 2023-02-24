@@ -34,6 +34,7 @@ pub async fn test(config: AuthHandshakeConfig) -> i32 {
         super::random_name(),
         hostname.clone(),
         ractor_cluster::IncomingEncryptionMode::Raw,
+        ractor_cluster::node::NodeConnectionMode::Isolated,
     );
 
     log::info!("Starting NodeServer on port {}", config.server_port);
@@ -90,7 +91,7 @@ pub async fn test(config: AuthHandshakeConfig) -> i32 {
             }
 
             let is_authenticated = ractor::call_t!(
-                item,
+                item.actor,
                 ractor_cluster::NodeSessionMessage::GetAuthenticationState,
                 200
             );
