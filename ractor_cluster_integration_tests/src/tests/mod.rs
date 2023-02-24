@@ -10,6 +10,7 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 
 pub mod auth_handshake;
+pub mod encryption;
 pub mod pg_groups;
 
 fn random_name() -> String {
@@ -26,4 +27,6 @@ pub enum TestCase {
     AuthHandshake(auth_handshake::AuthHandshakeConfig),
     /// Test pg groups through a ractor cluster
     PgGroups(pg_groups::PgGroupsConfig),
+    /// Test encrypted socket communications (through the auth handshake)
+    Encryption(encryption::EncryptionConfig),
 }

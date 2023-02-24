@@ -7,16 +7,14 @@
 
 // TODO: RUSTLS + Tokio : https://github.com/tokio-rs/tls/blob/master/tokio-rustls/examples/server/src/main.rs
 
-use std::convert::TryInto;
 use std::net::SocketAddr;
 
 use bytes::Bytes;
 use prost::Message;
 use ractor::{Actor, ActorCell, ActorProcessingErr, ActorRef};
 use ractor::{SpawnErr, SupervisionEvent};
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
 use tokio::io::ErrorKind;
+use tokio::io::{AsyncReadExt, ReadHalf, WriteHalf};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
@@ -24,12 +22,19 @@ use crate::RactorMessage;
 
 /// Helper method to read exactly `len` bytes from the stream into a pre-allocated buffer
 /// of bytes
-async fn read_n_bytes(stream: &mut OwnedReadHalf, len: usize) -> Result<Vec<u8>, tokio::io::Error> {
+async fn read_n_bytes(stream: &mut ActorReadHalf, len: usize) -> Result<Vec<u8>, tokio::io::Error> {
     let mut buf = vec![0u8; len];
     let mut c_len = 0;
-    stream.readable().await?;
+    if let ActorReadHalf::Regular(r) = stream {
+        r.readable().await?;
+    }
+
     while c_len < len {
-        let n = stream.read(&mut buf[c_len..]).await?;
+        let n = match stream {
+            ActorReadHalf::ServerTls(t) => t.read(&mut buf[c_len..]).await?,
+            ActorReadHalf::ClientTls(t) => t.read(&mut buf[c_len..]).await?,
+            ActorReadHalf::Regular(t) => t.read(&mut buf[c_len..]).await?,
+        };
         if n == 0 {
             // EOF
             return Err(tokio::io::Error::new(
@@ -57,7 +62,7 @@ pub struct Session {
 impl Session {
     pub(crate) async fn spawn_linked(
         handler: ActorRef<crate::node::NodeSession>,
-        stream: TcpStream,
+        stream: super::NetworkStream,
         peer_addr: SocketAddr,
         local_addr: SocketAddr,
         supervisor: ActorCell,
@@ -105,15 +110,36 @@ pub struct SessionState {
 #[async_trait::async_trait]
 impl Actor for Session {
     type Msg = SessionMessage;
-    type Arguments = TcpStream;
+    type Arguments = super::NetworkStream;
     type State = SessionState;
 
     async fn pre_start(
         &self,
         myself: ActorRef<Self>,
-        stream: TcpStream,
+        stream: super::NetworkStream,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let (read, write) = stream.into_split();
+        let (read, write) = match stream {
+            super::NetworkStream::Raw { stream, .. } => {
+                let (read, write) = stream.into_split();
+                (ActorReadHalf::Regular(read), ActorWriteHalf::Regular(write))
+            }
+            super::NetworkStream::TlsClient { stream, .. } => {
+                let (read_half, write_half) = tokio::io::split(stream);
+                (
+                    ActorReadHalf::ClientTls(read_half),
+                    ActorWriteHalf::ClientTls(write_half),
+                )
+            }
+            super::NetworkStream::TlsServer { stream, .. } => {
+                let (read_half, write_half) = tokio::io::split(stream);
+                (
+                    ActorReadHalf::ServerTls(read_half),
+                    ActorWriteHalf::ServerTls(write_half),
+                )
+            }
+        };
+
+        // let (read, write) = stream.into_split();
         // spawn writer + reader child actors
         let (writer, _) =
             Actor::spawn_linked(None, SessionWriter, write, myself.get_cell()).await?;
@@ -209,10 +235,61 @@ impl Actor for Session {
 
 // ========================= Node Session writer ========================= //
 
+enum ActorWriteHalf {
+    ServerTls(WriteHalf<tokio_rustls::server::TlsStream<TcpStream>>),
+    ClientTls(WriteHalf<tokio_rustls::client::TlsStream<TcpStream>>),
+    Regular(OwnedWriteHalf),
+}
+
+impl ActorWriteHalf {
+    async fn write_u64(&mut self, n: u64) -> tokio::io::Result<()> {
+        use tokio::io::AsyncWriteExt;
+        match self {
+            Self::ServerTls(t) => t.write_u64(n).await,
+            Self::ClientTls(t) => t.write_u64(n).await,
+            Self::Regular(t) => t.write_u64(n).await,
+        }
+    }
+
+    async fn write_all(&mut self, data: &[u8]) -> tokio::io::Result<()> {
+        use tokio::io::AsyncWriteExt;
+        match self {
+            Self::ServerTls(t) => t.write_all(data).await,
+            Self::ClientTls(t) => t.write_all(data).await,
+            Self::Regular(t) => t.write_all(data).await,
+        }
+    }
+
+    async fn flush(&mut self) -> tokio::io::Result<()> {
+        use tokio::io::AsyncWriteExt;
+        match self {
+            Self::ServerTls(t) => t.flush().await,
+            Self::ClientTls(t) => t.flush().await,
+            Self::Regular(t) => t.flush().await,
+        }
+    }
+}
+
+enum ActorReadHalf {
+    ServerTls(ReadHalf<tokio_rustls::server::TlsStream<TcpStream>>),
+    ClientTls(ReadHalf<tokio_rustls::client::TlsStream<TcpStream>>),
+    Regular(OwnedReadHalf),
+}
+
+impl ActorReadHalf {
+    async fn read_u64(&mut self) -> tokio::io::Result<u64> {
+        match self {
+            Self::ServerTls(t) => t.read_u64().await,
+            Self::ClientTls(t) => t.read_u64().await,
+            Self::Regular(t) => t.read_u64().await,
+        }
+    }
+}
+
 struct SessionWriter;
 
 struct SessionWriterState {
-    writer: Option<OwnedWriteHalf>,
+    writer: Option<ActorWriteHalf>,
 }
 
 #[derive(crate::RactorMessage)]
@@ -224,13 +301,13 @@ enum SessionWriterMessage {
 #[async_trait::async_trait]
 impl Actor for SessionWriter {
     type Msg = SessionWriterMessage;
-    type Arguments = OwnedWriteHalf;
+    type Arguments = ActorWriteHalf;
     type State = SessionWriterState;
 
     async fn pre_start(
         &self,
         _myself: ActorRef<Self>,
-        writer: OwnedWriteHalf,
+        writer: ActorWriteHalf,
     ) -> Result<Self::State, ActorProcessingErr> {
         // OK we've established connection, now we can process requests
 
@@ -258,16 +335,15 @@ impl Actor for SessionWriter {
         match message {
             SessionWriterMessage::WriteObject(msg) if state.writer.is_some() => {
                 if let Some(stream) = &mut state.writer {
-                    stream.writable().await.unwrap();
+                    if let ActorWriteHalf::Regular(w) = stream {
+                        w.writable().await?;
+                    }
 
                     let encoded_data = msg.encode_length_delimited_to_vec();
-                    let length = encoded_data.len();
-                    let length_bytes: [u8; 8] = (length as u64).to_be_bytes();
-                    log::trace!("Writing 8 length bytes");
-                    if let Err(write_err) = stream.write_all(&length_bytes).await {
+                    if let Err(write_err) = stream.write_u64(encoded_data.len() as u64).await {
                         log::warn!("Error writing to the stream '{}'", write_err);
                     } else {
-                        log::trace!("Wrote length, writing payload (len={})", length);
+                        log::trace!("Wrote length, writing payload (len={})", encoded_data.len());
                         // now send the object
                         if let Err(write_err) = stream.write_all(&encoded_data).await {
                             log::warn!("Error writing to the stream '{}'", write_err);
@@ -305,19 +381,19 @@ pub enum SessionReaderMessage {
 impl ractor::Message for SessionReaderMessage {}
 
 struct SessionReaderState {
-    reader: Option<OwnedReadHalf>,
+    reader: Option<ActorReadHalf>,
 }
 
 #[async_trait::async_trait]
 impl Actor for SessionReader {
     type Msg = SessionReaderMessage;
-    type Arguments = OwnedReadHalf;
+    type Arguments = ActorReadHalf;
     type State = SessionReaderState;
 
     async fn pre_start(
         &self,
         myself: ActorRef<Self>,
-        reader: OwnedReadHalf,
+        reader: ActorReadHalf,
     ) -> Result<Self::State, ActorProcessingErr> {
         // start waiting for the first object on the network
         let _ = myself.cast(SessionReaderMessage::WaitForObject);
@@ -345,9 +421,8 @@ impl Actor for SessionReader {
         match message {
             Self::Msg::WaitForObject if state.reader.is_some() => {
                 if let Some(stream) = &mut state.reader {
-                    match read_n_bytes(stream, 8).await {
-                        Ok(buf) => {
-                            let length = u64::from_be_bytes(buf.try_into().unwrap());
+                    match stream.read_u64().await {
+                        Ok(length) => {
                             log::trace!("Payload length message ({}) received", length);
                             let _ = myself.cast(SessionReaderMessage::ReadObject(length));
                             return Ok(());

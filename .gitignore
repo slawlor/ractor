@@ -16,3 +16,4 @@ Cargo.lock
 debug/
 coverage/
 **/*.profraw
+**/.DS_Store

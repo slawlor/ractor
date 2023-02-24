@@ -62,7 +62,9 @@ pub mod node;
 pub type NodeId = u64;
 
 // ============== Re-exports ============== //
+pub use net::{IncomingEncryptionMode, NetworkStream};
 pub use node::client::connect as client_connect;
+pub use node::client::connect_enc as client_connect_enc;
 pub use node::{
     client::ClientConnectErr, NodeServer, NodeServerMessage, NodeSession, NodeSessionMessage,
 };

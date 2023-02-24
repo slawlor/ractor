@@ -33,6 +33,7 @@ pub async fn test(config: AuthHandshakeConfig) -> i32 {
         cookie,
         super::random_name(),
         hostname.clone(),
+        ractor_cluster::IncomingEncryptionMode::Raw,
     );
 
     log::info!("Starting NodeServer on port {}", config.server_port);
@@ -48,8 +49,7 @@ pub async fn test(config: AuthHandshakeConfig) -> i32 {
             client_port
         );
         if let Err(error) =
-            ractor_cluster::node::client::connect(&actor, format!("{client_host}:{client_port}"))
-                .await
+            ractor_cluster::client_connect(&actor, format!("{client_host}:{client_port}")).await
         {
             log::error!("Failed to connect with error {error}");
             return -3;

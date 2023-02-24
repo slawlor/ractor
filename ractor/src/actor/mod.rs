@@ -162,8 +162,8 @@ pub trait Actor: Sized + Sync + Send + 'static {
     }
 
     /// Handle the incoming supervision event. Unhandled panicks will captured and
-    /// sent the the supervisor(s). The default supervision behavior is to ignore all
-    /// child events. To override this behavior, implement this method.
+    /// sent the the supervisor(s). The default supervision behavior is to exit the
+    /// supervisor on any child exit. To override this behavior, implement this function.
     ///
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `message` - The message to process
@@ -175,6 +175,13 @@ pub trait Actor: Sized + Sync + Send + 'static {
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        match message {
+            SupervisionEvent::ActorTerminated(who, _, _)
+            | SupervisionEvent::ActorPanicked(who, _) => {
+                myself.stop(None);
+            }
+            _ => {}
+        }
         Ok(())
     }
 

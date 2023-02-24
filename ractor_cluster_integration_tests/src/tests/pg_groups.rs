@@ -106,8 +106,13 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
     let cookie = "cookie".to_string();
     let hostname = "localhost".to_string();
 
-    let server =
-        ractor_cluster::NodeServer::new(config.server_port, cookie, super::random_name(), hostname);
+    let server = ractor_cluster::NodeServer::new(
+        config.server_port,
+        cookie,
+        super::random_name(),
+        hostname,
+        ractor_cluster::IncomingEncryptionMode::Raw,
+    );
 
     let (actor, handle) = Actor::spawn(None, server, ())
         .await
@@ -124,8 +129,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
             client_port
         );
         if let Err(error) =
-            ractor_cluster::node::client::connect(&actor, format!("{client_host}:{client_port}"))
-                .await
+            ractor_cluster::client_connect(&actor, format!("{client_host}:{client_port}")).await
         {
             log::error!("Failed to connect with error {error}");
             return -3;

@@ -19,6 +19,8 @@ pub enum ClientConnectErr {
     /// Error communicating to the [super::NodeServer] actor. Actor receiving port is
     /// closed
     Messaging(MessagingErr),
+    /// Some error with encryption has occurred
+    Encryption(tokio::io::Error),
 }
 
 impl std::error::Error for ClientConnectErr {
@@ -26,6 +28,7 @@ impl std::error::Error for ClientConnectErr {
         match self {
             Self::Socket(cause) => Some(cause),
             Self::Messaging(cause) => Some(cause),
+            Self::Encryption(cause) => Some(cause),
         }
     }
 }
@@ -65,11 +68,59 @@ where
     // connect to the socket
     let stream = TcpStream::connect(address).await?;
 
-    // Startup the TCP handler, linked to the newly created `NodeSession`
+    // Notify the NodeServer that a new connection is opened
     let addr = stream.peer_addr()?;
+    let local = stream.local_addr()?;
 
     node_server.cast(super::NodeServerMessage::ConnectionOpened {
-        stream,
+        stream: crate::net::NetworkStream::Raw {
+            stream,
+            peer_addr: addr,
+            local_addr: local,
+        },
+        is_server: false,
+    })?;
+
+    log::info!("TCP Session opened for {}", addr);
+    Ok(())
+}
+
+/// Connect to another [super::NodeServer] instance with network encryption
+///
+/// * `node_server` - The [super::NodeServer] which will own this new connection session
+/// * `address` - The network address to send the connection to. Must implement [ToSocketAddrs]
+/// * `encryption_settings` - The [tokio_rustls::TlsConnector] which is configured to encrypt the socket
+/// * `domain` - The server name we're connecting to ([rustls::ServerName])
+///
+/// Returns: [Ok(())] if the connection was successful and the [super::NodeSession] was started. Handshake will continue
+/// automatically. Results in a [Err(ClientConnectError)] if any part of the process failed to initiate
+pub async fn connect_enc<T>(
+    node_server: &ActorRef<super::NodeServer>,
+    address: T,
+    encryption_settings: tokio_rustls::TlsConnector,
+    domain: rustls::ServerName,
+) -> Result<(), ClientConnectErr>
+where
+    T: ToSocketAddrs,
+{
+    // connect to the socket
+    let stream = TcpStream::connect(address).await?;
+
+    let addr = stream.peer_addr()?;
+    let local = stream.local_addr()?;
+
+    // encrypt the socket
+    let enc_stream = encryption_settings
+        .connect(domain, stream)
+        .await
+        .map_err(ClientConnectErr::Encryption)?;
+
+    node_server.cast(super::NodeServerMessage::ConnectionOpened {
+        stream: crate::net::NetworkStream::TlsClient {
+            stream: enc_stream,
+            peer_addr: addr,
+            local_addr: local,
+        },
         is_server: false,
     })?;
 
