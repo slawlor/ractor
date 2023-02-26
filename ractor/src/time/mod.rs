@@ -38,9 +38,19 @@ where
     TActor: Actor,
     F: Fn() -> TActor::Msg + Send + 'static,
 {
+    // As per #57, the traditional sleep operation is subject to drift over long periods.
+    // Tokio providers an interval timer which accounts for execution time to send a message
+    // and changes in polling to wake the task to assure that the period doesn't drift over
+    // long runtimes.
+    //
+    // TODO (slawlor): Add support for this in a generic operation in the `concurrency` module
+    // so it can eventually be abstracted with other async runtimes other than Tokio
     crate::concurrency::spawn(async move {
+        let mut timer = tokio::time::interval(period);
+        // timer tick's immediately the first time
+        timer.tick().await;
         while ACTIVE_STATES.contains(&actor.get_status()) {
-            crate::concurrency::sleep(period).await;
+            timer.tick().await;
             // if we receive an error trying to send, the channel is closed and we should stop trying
             // actor died
             if actor.send_message::<TActor>(msg()).is_err() {

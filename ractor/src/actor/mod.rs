@@ -435,27 +435,27 @@ where
             return Err(SpawnErr::ActorAlreadyStarted);
         }
 
-        self.actor_ref.set_status(ActorStatus::Starting);
+        let Self { handler, actor_ref } = self;
+
+        actor_ref.set_status(ActorStatus::Starting);
 
         // Perform the pre-start routine, crashing immediately if we fail to start
-        let mut state = Self::do_pre_start(self.actor_ref.clone(), &self.handler, startup_args)
+        let mut state = Self::do_pre_start(actor_ref.clone(), &handler, startup_args)
             .await?
             .map_err(SpawnErr::StartupPanic)?;
 
         // setup supervision
         if let Some(sup) = &supervisor {
-            self.actor_ref.link(sup.clone());
+            actor_ref.link(sup.clone());
         }
 
         // Generate the ActorRef which will be returned
-        let myself_ret = self.actor_ref.clone();
+        let myself_ret = actor_ref.clone();
 
         // run the processing loop, backgrounding the work
         let handle = crate::concurrency::spawn(async move {
-            let myself = self.actor_ref.clone();
-            let evt = match Self::processing_loop(ports, &mut state, &self.handler, self.actor_ref)
-                .await
-            {
+            let myself = actor_ref.clone();
+            let evt = match Self::processing_loop(ports, &mut state, &handler, actor_ref).await {
                 Ok(exit_reason) => SupervisionEvent::ActorTerminated(
                     myself.get_cell(),
                     Some(BoxedState::new(state)),
