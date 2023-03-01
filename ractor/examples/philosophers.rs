@@ -196,10 +196,12 @@ struct PhilosopherState {
     last_state_change: Instant,
     /// The metrics of this actor
     metrics: PhilosopherMetrics,
+    /// time-slice
+    time_slice: Duration,
 }
 
 impl PhilosopherState {
-    fn new(left: ActorRef<Fork>, right: ActorRef<Fork>) -> Self {
+    fn new(left: ActorRef<Fork>, right: ActorRef<Fork>, time_slice: Duration) -> Self {
         Self {
             mode: PhilosopherMode::Thinking,
             left: PhilosophersFork {
@@ -220,6 +222,7 @@ impl PhilosopherState {
                 time_hungry: Duration::from_micros(0),
                 time_eating: Duration::from_micros(0),
             },
+            time_slice,
         }
     }
 }
@@ -242,11 +245,13 @@ enum PhilosopherMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for PhilosopherMessage {}
 
-struct Philosopher {
+struct PhilosopherArguments {
     time_slice: Duration,
     left: ActorRef<Fork>,
     right: ActorRef<Fork>,
 }
+
+struct Philosopher;
 
 impl Philosopher {
     /// Helper method to set the internal state to begin thinking
@@ -259,7 +264,7 @@ impl Philosopher {
         // schedule become hungry after the thinking time has elapsed
         let metrics_count = state.metrics.state_change_count;
         #[allow(clippy::let_underscore_future)]
-        let _ = myself.send_after(self.time_slice, move || {
+        let _ = myself.send_after(state.time_slice, move || {
             PhilosopherMessage::BecomeHungry(metrics_count)
         });
     }
@@ -285,7 +290,7 @@ impl Philosopher {
         // schedule stop eating after the eating time has elapsed
         let metrics_count = state.metrics.state_change_count;
         #[allow(clippy::let_underscore_future)]
-        let _ = myself.send_after(self.time_slice, move || {
+        let _ = myself.send_after(state.time_slice, move || {
             PhilosopherMessage::StopEating(metrics_count)
         });
     }
@@ -313,15 +318,15 @@ impl Philosopher {
 impl Actor for Philosopher {
     type Msg = PhilosopherMessage;
     type State = PhilosopherState;
-    type Arguments = ();
+    type Arguments = PhilosopherArguments;
     async fn pre_start(
         &self,
         myself: ActorRef<Self>,
-        _: (),
+        args: PhilosopherArguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         // initialize the simulation by making the philosopher's hungry
         let _ = cast!(myself, Self::Msg::BecomeHungry(0));
-        Ok(Self::State::new(self.left.clone(), self.right.clone()))
+        Ok(Self::State::new(args.left, args.right, args.time_slice))
     }
 
     async fn handle(
@@ -485,14 +490,15 @@ async fn main() {
         } else {
             left - 1
         };
-        let p = Philosopher {
+        let p = PhilosopherArguments {
             time_slice,
             left: forks[left].clone(),
             right: forks[right].clone(),
         };
-        let (philosopher, handle) = Actor::spawn(Some(philosopher_names[left].to_string()), p, ())
-            .await
-            .expect("Failed to create philosopher!");
+        let (philosopher, handle) =
+            Actor::spawn(Some(philosopher_names[left].to_string()), Philosopher, p)
+                .await
+                .expect("Failed to create philosopher!");
         results.insert(philosopher_names[left].to_string(), None);
         philosophers.push(philosopher);
         all_handles.spawn(handle);

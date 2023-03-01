@@ -29,35 +29,33 @@ struct Output(String);
 #[cfg(feature = "cluster")]
 impl ractor::Message for Output {}
 
-struct Publisher {
-    output: Arc<OutputPort<Output>>,
-}
+struct Publisher;
 
 #[async_trait::async_trait]
 impl Actor for Publisher {
     type Msg = PublisherMessage;
 
-    type State = ();
-    type Arguments = ();
+    type State = Arc<OutputPort<Output>>;
+    type Arguments = Arc<OutputPort<Output>>;
 
     async fn pre_start(
         &self,
         _myself: ActorRef<Self>,
-        _: (),
+        port: Arc<OutputPort<Output>>,
     ) -> Result<Self::State, ActorProcessingErr> {
-        Ok(())
+        Ok(port)
     }
 
     async fn handle(
         &self,
         _myself: ActorRef<Self>,
         message: Self::Msg,
-        _state: &mut Self::State,
+        state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
             Self::Msg::Publish(msg) => {
                 println!("Publishing {msg}");
-                self.output.send(Output(format!("Published: {msg}")));
+                state.send(Output(format!("Published: {msg}")));
             }
         }
         Ok(())
@@ -106,15 +104,9 @@ impl Actor for Subscriber {
 async fn main() {
     let port = Arc::new(OutputPort::default());
 
-    let (publisher_ref, publisher_handle) = Actor::spawn(
-        None,
-        Publisher {
-            output: port.clone(),
-        },
-        (),
-    )
-    .await
-    .expect("Failed to start publisher");
+    let (publisher_ref, publisher_handle) = Actor::spawn(None, Publisher, port.clone())
+        .await
+        .expect("Failed to start publisher");
 
     let mut subscriber_refs = vec![];
     let mut subscriber_handles = vec![];

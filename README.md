@@ -187,7 +187,7 @@ are how an actor's supervisor(s) are notified of events of their children and ca
 
 Ractor actors can also be used to build a distributed pool of actors, similar to [Erlang's EPMD](https://www.erlang.org/doc/man/epmd.html) which manages inter-node connections + node naming. In our implementation, we have [`ractor_cluster`](https://crates.io/crates/ractor_cluster) in order to facilitate distributed `ractor` actors.
 
-`ractor_cluster` has a single main type in it, namely the `NodeServer` which represents a host of a `node()` process. It additionally has some macros and a procedural macros to facilitate developer efficiency when building distributed actors. The `NodeServer` is responsible for 
+`ractor_cluster` has a single main type in it, namely the `NodeServer` which represents a host of a `node()` process. It additionally has some macros and a procedural macros to facilitate developer efficiency when building distributed actors. The `NodeServer` is responsible for
 
 1. Managing all incoming and outgoing `NodeSession` actors which represent a remote node connected to this host.
 2. Managing the `TcpListener` which hosts the server socket to accept incoming session requests.
@@ -254,6 +254,22 @@ ractor_cluster::derive_serialization_for_prost_type! {MyProtobufType}
 ```
 
 Besides that, just write your actor as you would. The actor itself will live where you define it and will be capable of receiving messages sent over the network link from other clusters!
+
+## Differences between an actor's "state" and `self`
+
+Actors can (but don't need to!) have internal state. In order to facilitate this `ractor` gives implementors of the `Actor` trait the ability to define the state type for an actor. The actor's `pre_start` routine is what initializes and sets up this state. You can imagine doing things like
+
+1. Opening a network socket + storing the `TcpListener` in the state
+2. Setting up a database connection + authenticating to the DB
+3. Initializing basic state variables (counters, stats, whatever)
+
+Because of this and the possibility that some of these operations are fallible, `pre_start` captures panic's in the method during the initialization and returns them to the caller of `Actor::spawn`.
+
+When designing `ractor`, we made the explicit decision to make a separate state type for an actor, rather than passing around a mutable `self` reference. The reason for this is that if we were to use a `&mut self` reference, creation + instantiation of the `Self` struct would be outside of the actor's specification (i.e. not in `pre_start`) and the safety it gives would be potentially lost, causing potential crashes in the caller when it maybe shouldn't.
+
+Lastly is that we would need to change some of the ownership properties that `ractor` is currently based on to pass an owned `self` in each call, returning a `Self` reference which seems clunky in this context.
+
+**In the current realization** an actor's `self` is passed as a read-only reference which shouldn't ideally contain state information, but could contain configuration / startup information if you want. However there is also `Arguments` to each `Actor` which allows passing owned values to the state of an actor. In an ideal world, all actor structs would be empty with no stored values.
 
 ## Contributors
 
