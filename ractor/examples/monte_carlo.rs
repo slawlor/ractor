@@ -112,9 +112,7 @@ impl Actor for Game {
 
 // ================== Manager Actor ================== //
 
-struct GameManager {
-    num_games: u32,
-}
+struct GameManager;
 
 struct GameManagerMessage {
     id: ActorId,
@@ -147,12 +145,12 @@ impl Actor for GameManager {
     type Msg = GameManagerMessage;
 
     type State = GameManagerState;
-    type Arguments = ();
+    type Arguments = u32;
 
     async fn pre_start(
         &self,
         myself: ActorRef<Self>,
-        _: (),
+        num_games: u32,
     ) -> Result<Self::State, ActorProcessingErr> {
         // This is the first code that will run in the actor. It spawns the Game actors,
         // registers them to its monitoring list, then sends them a message indicating
@@ -163,14 +161,14 @@ impl Actor for GameManager {
         println!("Wager per round: ${}", game_conditions.wager);
         println!("Rounds per game: {}", game_conditions.total_rounds);
         println!("Running simulations...");
-        for _ in 0..self.num_games {
+        for _ in 0..num_games {
             let (actor, _) = Actor::spawn_linked(None, Game, (), myself.clone().into())
                 .await
                 .expect("Failed to start game");
             cast!(actor, GameMessage(myself.clone())).expect("Failed to send message");
         }
 
-        Ok(GameManagerState::new(self.num_games))
+        Ok(GameManagerState::new(num_games))
     }
 
     async fn handle(
@@ -207,11 +205,9 @@ const NUM_GAMES: u32 = 100;
 #[tokio::main]
 async fn main() {
     // create the supervisor
-    let manager = GameManager {
-        num_games: NUM_GAMES,
-    };
+    let manager = GameManager;
     // spawn it off and wait for it to complete/exit
-    let (_actor, handle) = Actor::spawn(None, manager, ())
+    let (_actor, handle) = Actor::spawn(None, manager, NUM_GAMES)
         .await
         .expect("Failed to start game manager");
 
