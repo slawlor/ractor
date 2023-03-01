@@ -183,6 +183,7 @@ impl BytesConvertable for Vec<char> {
 #[cfg(test)]
 mod tests {
     use super::BytesConvertable;
+    use crate::{message::BoxedDowncastErr, Message};
     use rand::{distributions::Alphanumeric, thread_rng, Rng};
 
     fn random_string() -> String {
@@ -202,6 +203,10 @@ mod tests {
                     let bytes = test_data.clone().into_bytes();
                     let back = <$ty as BytesConvertable>::from_bytes(bytes);
                     assert_eq!(test_data, back);
+
+                    let serialized_message = test_data.serialize().expect("Failed to serialize type");
+                    let deserialized_message = <$ty as Message>::deserialize(serialized_message).expect("Failed to deserialize type");
+                    assert_eq!(test_data, deserialized_message);
                 }
             }
         };
@@ -220,6 +225,10 @@ mod tests {
                     let back = <Vec<$ty> as BytesConvertable>::from_bytes(bytes);
 
                     assert_eq!(test_data, back);
+
+                    let serialized_message = test_data.clone().serialize().expect("Failed to serialize type");
+                    let deserialized_message = <Vec<$ty> as Message>::deserialize(serialized_message).expect("Failed to deserialize type");
+                    assert_eq!(test_data, deserialized_message);
                 }
             }
         };
@@ -263,4 +272,11 @@ mod tests {
     run_vector_type_test! {f64}
     run_vector_type_test! {char}
     run_vector_type_test! {bool}
+
+    #[test]
+    fn test_boxed_downcast_error() {
+        let err = BoxedDowncastErr;
+        println!("{err}");
+        println!("{err:?}");
+    }
 }
