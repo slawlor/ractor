@@ -1,7 +1,7 @@
 # ractor
 
 <p align="center">
-    <img src="./docs/ractor_logo.svg" width="20%" /> 
+    <img src="https://raw.githubusercontent.com/slawlor/ractor/main/docs/ractor_logo.svg" width="20%" /> 
 </p>
 
 *Pronounced ract-er*
