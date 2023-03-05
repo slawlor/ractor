@@ -12,7 +12,7 @@ use crate::ActorId;
 use crate::RpcReplyPort;
 
 /// An error downcasting a boxed item to a strong type
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct BoxedDowncastErr;
 impl std::fmt::Display for BoxedDowncastErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

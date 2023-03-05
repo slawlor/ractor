@@ -234,8 +234,14 @@ where
         }
     }
 
+    /// Set the time the factor received the job
     pub(crate) fn set_factory_time(&mut self) {
         self.options.factory_time = SystemTime::now();
+    }
+
+    /// Set the time the worker began processing the job
+    pub(crate) fn set_worker_time(&mut self) {
+        self.options.worker_time = SystemTime::now();
     }
 }
 

@@ -51,7 +51,7 @@ use rand::Rng;
 use crate::concurrency::{Duration, Instant};
 #[cfg(feature = "cluster")]
 use crate::message::BoxedDowncastErr;
-use crate::{Actor, ActorProcessingErr, ActorRef, Message, SupervisionEvent};
+use crate::{Actor, ActorProcessingErr, ActorRef, Message, RpcReplyPort, SupervisionEvent};
 
 mod hash;
 
@@ -67,6 +67,11 @@ pub use worker::{WorkerMessage, WorkerProperties, WorkerStartContext};
 
 /// Identifier for a worker in a factory
 pub type WorkerId = usize;
+
+#[cfg(not(test))]
+const PING_FREQUENCY_MS: u64 = 1000;
+#[cfg(test)]
+const PING_FREQUENCY_MS: u64 = 100;
 
 #[cfg(test)]
 mod tests;
@@ -150,7 +155,8 @@ where
     /// can be killed and replaced by the factory
     pub dead_mans_switch: Option<DeadMansSwitchConfiguration>,
 
-    _worker: PhantomData<TWorker>,
+    /// The worker type
+    pub _worker: PhantomData<TWorker>,
 }
 
 impl<TKey, TMsg, TWorker> Factory<TKey, TMsg, TWorker>
@@ -159,15 +165,20 @@ where
     TMsg: Message,
     TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
 {
-    fn maybe_discard(&self, state: &mut FactoryState<TKey, TMsg, TWorker>) {
-        if let Some(threshold) = self.discard_threshold {
-            if state.messages.len() > threshold {
+    fn maybe_enqueue(&self, state: &mut FactoryState<TKey, TMsg, TWorker>, job: Job<TKey, TMsg>) {
+        if let Some(limit) = self.discard_threshold {
+            state.messages.push_back(job);
+            while state.messages.len() > limit {
+                // try and shed a job
                 if let Some(msg) = state.messages.pop_front() {
                     if let Some(handler) = &self.discard_handler {
                         handler.discard(msg);
                     }
                 }
             }
+        } else {
+            // no load-shedding
+            state.messages.push_back(job);
         }
     }
 }
@@ -256,6 +267,9 @@ where
 
     /// Trigger a scan for stuck worker detection
     IdentifyStuckWorkers,
+
+    /// Retrieve the factory's statsistics
+    GetStats(RpcReplyPort<MessageProcessingStats>),
 }
 #[cfg(feature = "cluster")]
 impl<TKey, TMsg> Message for FactoryMessage<TKey, TMsg>
@@ -320,7 +334,7 @@ where
         }
 
         // Startup worker pinging
-        myself.send_after(Duration::from_secs(1), || {
+        myself.send_after(Duration::from_millis(PING_FREQUENCY_MS), || {
             FactoryMessage::DoPings(Instant::now())
         });
 
@@ -369,9 +383,8 @@ where
                         {
                             worker.enqueue_job(job)?;
                         } else {
-                            // no free worker, backlog the message
-                            state.messages.push_back(job);
-                            self.maybe_discard(state);
+                            // no free worker, maybe backlog the message
+                            self.maybe_enqueue(state, job);
                         }
                     }
                     RoutingMode::StickyQueuer => {
@@ -388,9 +401,8 @@ where
                             // If no matching sticky worker, find the first free worker
                             worker.enqueue_job(job)?;
                         } else {
-                            // no free worker, enqueue the message
-                            state.messages.push_back(job);
-                            self.maybe_discard(state);
+                            // no free worker, maybe backlog the message
+                            self.maybe_enqueue(state, job);
                         }
                     }
                     RoutingMode::RoundRobin => {
@@ -453,7 +465,6 @@ where
                             } else {
                                 // no free worker, put the message back into the queue where it was (at the front of the queue)
                                 state.messages.push_front(job);
-                                self.maybe_discard(state);
                             }
                         }
                     }
@@ -476,7 +487,7 @@ where
                 }
 
                 // schedule next ping
-                myself.send_after(Duration::from_secs(1), || {
+                myself.send_after(Duration::from_millis(PING_FREQUENCY_MS), || {
                     FactoryMessage::DoPings(Instant::now())
                 });
             }
@@ -498,6 +509,9 @@ where
                         FactoryMessage::IdentifyStuckWorkers
                     });
                 }
+            }
+            FactoryMessage::GetStats(reply) => {
+                let _ = reply.send(state.stats.clone());
             }
         }
 

@@ -94,7 +94,7 @@ pub fn where_is(name: ActorName) -> Option<ActorCell> {
 
 /// Returns a list of names that have been registered
 ///
-/// Returns: A [Vec<&'str>] of actor names which are registered
+/// Returns: A [`Vec<String>`] of actor names which are registered
 /// currently
 pub fn registered() -> Vec<ActorName> {
     let reg = get_actor_registry();

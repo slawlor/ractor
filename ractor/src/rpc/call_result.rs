@@ -140,3 +140,80 @@ impl<T> CallResult<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ok() -> CallResult<()> {
+        CallResult::Success(())
+    }
+    fn timeout() -> CallResult<()> {
+        CallResult::Timeout
+    }
+    fn err() -> CallResult<()> {
+        CallResult::SenderError
+    }
+
+    #[test]
+    fn test_call_result_operations() {
+        assert!(ok().is_success());
+        assert!(!ok().is_send_error());
+        assert!(!ok().is_timeout());
+
+        ok().unwrap();
+        ok().expect("Not ok!");
+        assert_eq!(1, ok().map(|_| 1).unwrap_or(2));
+        assert_eq!(1, ok().map(|_| 1).unwrap_or_else(|| 2));
+        assert_eq!(Ok(1), ok().map(|_| 1).success_or(2));
+        assert_eq!(Ok(1), ok().map(|_| 1).success_or_else(|| 2));
+        assert_eq!(1, ok().map_or(2, |_| 1));
+        assert_eq!(1, ok().map_or_else(|| 2, |_| 1));
+
+        assert!(!timeout().is_success());
+        assert!(!timeout().is_send_error());
+        assert!(timeout().is_timeout());
+
+        assert_eq!(2, timeout().map(|_| 1).unwrap_or(2));
+        assert_eq!(2, timeout().map(|_| 1).unwrap_or_else(|| 2));
+        assert_eq!(Err(2), timeout().map(|_| 1).success_or(2));
+        assert_eq!(Err(2), timeout().map(|_| 1).success_or_else(|| 2));
+        assert_eq!(2, timeout().map_or(2, |_| 1));
+        assert_eq!(2, timeout().map_or_else(|| 2, |_| 1));
+
+        assert!(!err().is_success());
+        assert!(err().is_send_error());
+        assert!(!err().is_timeout());
+
+        assert_eq!(2, err().map(|_| 1).unwrap_or(2));
+        assert_eq!(2, err().map(|_| 1).unwrap_or_else(|| 2));
+        assert_eq!(Err(2), err().map(|_| 1).success_or(2));
+        assert_eq!(Err(2), err().map(|_| 1).success_or_else(|| 2));
+        assert_eq!(2, err().map_or(2, |_| 1));
+        assert_eq!(2, err().map_or_else(|| 2, |_| 1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn unwrap_timeout_panics() {
+        timeout().unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn expect_timeout_panics() {
+        timeout().expect("Should panic!");
+    }
+
+    #[test]
+    #[should_panic]
+    fn unwrap_err_panics() {
+        timeout().unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn expect_err_panics() {
+        timeout().expect("Should panic!");
+    }
+}

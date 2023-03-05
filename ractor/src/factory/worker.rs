@@ -7,7 +7,6 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
-use std::time::SystemTime;
 
 use crate::concurrency::{Duration, Instant};
 use crate::{Actor, ActorRef, Message, MessagingErr};
@@ -21,24 +20,38 @@ use super::{DiscardHandler, JobOptions};
 
 const _MICROS_IN_SEC: u128 = 1000000;
 
-pub(crate) struct MessageProcessingStats {
+/// Messaging statistics collected on a factory and/or
+/// a worker
+#[derive(Clone)]
+pub struct MessageProcessingStats {
     // ========== Pings ========== //
-    ping_count: u64,
-    ping_timing_us: u128,
-    last_ping: Instant,
+    /// number of pings
+    pub ping_count: u64,
+    /// Running sum of ping time
+    pub ping_timing_us: u128,
+    /// The time of the last ping (workers only)
+    pub last_ping: Instant,
     // ========== Incoming Job QPS ========== //
-    last_job_time: Instant,
-    job_count: u64,
-    job_incoming_time_us: u128,
+    /// The time a last job came through
+    pub last_job_time: Instant,
+    /// Job count
+    pub job_count: u64,
+    /// Incoming job time
+    pub job_incoming_time_us: u128,
     // ========== Finished jobs ========== //
-    job_processing_time_us: u128,
-    processed_job_count: u64,
-    total_processed_job_count: u128,
-    time_in_factory_message_queue_us: u128,
+    /// Time a job spent processing
+    pub job_processing_time_us: u128,
+    /// Job processed count
+    pub processed_job_count: u64,
+    /// Total processed job count
+    pub total_processed_job_count: u128,
+    /// Time spent in the factory's message queue
+    pub time_in_factory_message_queue_us: u128,
     // ========== Expired jobs ========== //
-    total_num_expired_jobs: u128,
-
-    enabled: bool,
+    /// Number of expired jobs
+    pub total_num_expired_jobs: u128,
+    /// Stats enabled
+    pub enabled: bool,
 }
 
 impl Display for MessageProcessingStats {
@@ -174,11 +187,13 @@ where
     TMsg: Message,
 {
     /// A ping from the factory. The worker should send a [super::FactoryMessage::WorkerPong] reply
-    /// as soon as received, forwarding this instant value to track timing information.
+    /// as soon as received back to the [super::Factory], forwarding this instant value to
+    /// track timing information.
     FactoryPing(Instant),
     /// A job is dispatched to the worker. Once the worker is complete with processing, it should
-    /// reply with [super::FactoryMessage::Finished] supplying it's WID and the job key to signify
-    /// that the job is completed processing and the worker is available for a new job
+    /// reply with [super::FactoryMessage::Finished] to the [super::Factory] supplying it's
+    /// WID and the job key to signify that the job is completed processing and the worker is
+    /// available for a new job
     Dispatch(Job<TKey, TMsg>),
 }
 
@@ -299,7 +314,7 @@ where
         self.actor = nworker;
         if let Some(mut job) = self.get_next_non_expired_job() {
             self.curr_jobs.insert(job.key.clone(), job.options.clone());
-            job.options.worker_time = SystemTime::now();
+            job.set_worker_time();
             self.actor.cast(WorkerMessage::Dispatch(job))?;
         }
         Ok(())
@@ -335,10 +350,10 @@ where
             self.curr_jobs.insert(job.key.clone(), job.options.clone());
             if let Some(mut older_job) = self.get_next_non_expired_job() {
                 self.message_queue.push_back(job);
-                older_job.options.worker_time = SystemTime::now();
+                older_job.set_worker_time();
                 self.actor.cast(WorkerMessage::Dispatch(older_job))?;
             } else {
-                job.options.worker_time = SystemTime::now();
+                job.set_worker_time();
                 self.actor.cast(WorkerMessage::Dispatch(job))?;
             }
             return Ok(());
@@ -389,7 +404,7 @@ where
         }
         // maybe queue up the next job
         if let Some(mut job) = self.get_next_non_expired_job() {
-            job.options.worker_time = SystemTime::now();
+            job.set_worker_time();
             self.actor.cast(WorkerMessage::Dispatch(job))?;
         }
 

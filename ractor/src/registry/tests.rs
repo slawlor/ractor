@@ -57,11 +57,19 @@ async fn test_duplicate_registration() {
         }
     }
 
+    log::debug!(
+        "{:?}",
+        crate::registry::ActorRegistryErr::AlreadyRegistered("Some name".to_string())
+    );
+
     let (actor, handle) = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor, ())
         .await
         .expect("Actor failed to start");
 
     assert!(crate::registry::where_is("my_second_actor".to_string()).is_some());
+    assert!(crate::registry::registered()
+        .iter()
+        .any(|name| name.as_str() == "my_second_actor"));
 
     let second_actor = Actor::spawn(Some("my_second_actor".to_string()), EmptyActor, ()).await;
     // fails to spawn the second actor due to name err
@@ -211,6 +219,10 @@ mod pid_registry_tests {
             .expect("Actor failed to start");
 
         assert!(crate::registry::where_is_pid(actor.get_id()).is_some());
+        // check it's in the all pids collection too
+        assert!(crate::registry::get_all_pids()
+            .iter()
+            .any(|cell| cell.get_id() == actor.get_id()));
 
         actor.stop(None);
         handle.await.expect("Failed to clean stop the actor");
@@ -357,5 +369,9 @@ mod pid_registry_tests {
         // cleanup
         monitor_actor.stop(None);
         monitor_handle.await.expect("Actor cleanup failed");
+
+        let ev = PidLifecycleEvent::Spawn(test_actor.get_cell());
+        log::debug!("{:?}", ev);
+        log::debug!("{:?}", PidLifecycleEvent::Terminate(test_actor.get_cell()));
     }
 }
