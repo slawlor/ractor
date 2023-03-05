@@ -561,8 +561,18 @@ where
                 }
                 actor_cell::ActorPortMessage::Stop(stop_message) => {
                     let exit_reason = match stop_message {
-                        StopMessage::Stop => None,
-                        StopMessage::Reason(reason) => Some(reason),
+                        StopMessage::Stop => {
+                            log::trace!("Actor {:?} stopped with no reason", myself.get_id());
+                            None
+                        }
+                        StopMessage::Reason(reason) => {
+                            log::trace!(
+                                "Actor {:?} stopped with reason '{}'",
+                                myself.get_id(),
+                                reason
+                            );
+                            Some(reason)
+                        }
                     };
                     Ok((true, exit_reason))
                 }

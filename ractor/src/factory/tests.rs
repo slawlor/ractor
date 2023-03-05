@@ -657,3 +657,56 @@ async fn test_stuck_workers() {
         .map(|c| c.load(Ordering::Relaxed))
         .all(|count| count > 1));
 }
+
+#[crate::concurrency::test]
+async fn test_worker_pings() {
+    let worker_counters: [_; NUM_TEST_WORKERS] = [
+        Arc::new(AtomicU16::new(0)),
+        Arc::new(AtomicU16::new(0)),
+        Arc::new(AtomicU16::new(0)),
+    ];
+
+    let worker_builder = FastTestWorkerBuilder {
+        counters: worker_counters.clone(),
+    };
+    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+        worker_count: NUM_TEST_WORKERS,
+        routing_mode: RoutingMode::<TestKey>::KeyPersistent,
+        ..Default::default()
+    };
+    let (factory, factory_handle) =
+        Actor::spawn(None, factory_definition, Box::new(worker_builder))
+            .await
+            .expect("Failed to spawn factory");
+
+    for _ in 0..999 {
+        factory
+            .cast(FactoryMessage::Dispatch(Job {
+                key: TestKey { id: 1 },
+                msg: TestMessage::Ok,
+                options: JobOptions::default(),
+            }))
+            .expect("Failed to send to factory");
+    }
+
+    // give some time to process all the messages
+    crate::concurrency::sleep(Duration::from_millis(250)).await;
+
+    let stats =
+        crate::call_t!(factory, FactoryMessage::GetStats, 200).expect("Failed to get statistics");
+    assert!(stats.ping_count > 0);
+
+    factory.stop(None);
+    factory_handle.await.unwrap();
+
+    println!(
+        "Counters: [{}] [{}] [{}]",
+        worker_counters[0].load(Ordering::Relaxed),
+        worker_counters[1].load(Ordering::Relaxed),
+        worker_counters[2].load(Ordering::Relaxed)
+    );
+
+    // assert
+    let all_counter = worker_counters[0].load(Ordering::Relaxed);
+    assert_eq!(999, all_counter);
+}

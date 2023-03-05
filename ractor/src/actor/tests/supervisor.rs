@@ -10,7 +10,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::{concurrency::Duration, ActorProcessingErr};
+use crate::{concurrency::Duration, message::BoxedDowncastErr, ActorProcessingErr};
 
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
 
@@ -982,6 +982,107 @@ async fn instant_supervised_spawns() {
         .expect("Actor's pre_start routine panicked")
         .await
         .unwrap();
+}
+
+#[crate::concurrency::test]
+async fn test_supervisor_captures_dead_childs_state() {
+    struct Child;
+    struct Supervisor {
+        flag: Arc<AtomicU64>,
+    }
+
+    #[async_trait::async_trait]
+    impl Actor for Child {
+        type Msg = ();
+        type State = u64;
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(1)
+        }
+        async fn post_start(
+            &self,
+            myself: ActorRef<Self>,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            myself.stop(None);
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Actor for Supervisor {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+        async fn handle(
+            &self,
+            _this_actor: ActorRef<Self>,
+            _message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle_supervisor_evt(
+            &self,
+            this_actor: ActorRef<Self>,
+            message: SupervisionEvent,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            println!("Supervisor event received {message:?}");
+
+            // Check (1) the termination was captured and we got the actor's state
+            if let SupervisionEvent::ActorTerminated(
+                dead_actor,
+                Some(mut boxed_state),
+                _maybe_msg,
+            ) = message
+            {
+                if let Ok(1) = boxed_state.take::<u64>() {
+                    self.flag
+                        .store(dead_actor.get_id().get_pid(), Ordering::Relaxed);
+                    this_actor.stop(None);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let mut temp_state = super::super::messages::BoxedState::new(123u64);
+    assert_eq!(Err(BoxedDowncastErr), temp_state.take::<u32>());
+    let mut temp_state = super::super::messages::BoxedState::new(123u64);
+    assert_eq!(Ok(123u64), temp_state.take::<u64>());
+    assert_eq!(Err(BoxedDowncastErr), temp_state.take::<u64>());
+
+    let flag = Arc::new(AtomicU64::new(0));
+
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
+        .await
+        .expect("Supervisor panicked on startup");
+
+    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
+
+    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_cell)
+        .await
+        .expect("Child panicked on startup");
+
+    let (_, _) = tokio::join!(s_handle, c_handle);
+
+    assert_eq!(child_ref.get_id().get_pid(), flag.load(Ordering::Relaxed));
+
+    // supervisor relationship cleaned up correctly
+    assert_eq!(0, supervisor_ref.get_num_children());
 }
 
 // TODO: Still to be tested
