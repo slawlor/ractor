@@ -53,13 +53,13 @@ use crate::concurrency::{Duration, Instant};
 use crate::message::BoxedDowncastErr;
 use crate::{Actor, ActorProcessingErr, ActorRef, Message, RpcReplyPort, SupervisionEvent};
 
-mod hash;
-
+pub mod hash;
 pub mod job;
 pub mod routing_mode;
+pub mod stats;
 pub mod worker;
 
-use worker::MessageProcessingStats;
+use stats::MessageProcessingStats;
 
 pub use job::{Job, JobKey, JobOptions};
 pub use routing_mode::{CustomHashFunction, RoutingMode};
@@ -174,6 +174,7 @@ where
                     if let Some(handler) = &self.discard_handler {
                         handler.discard(msg);
                     }
+                    state.stats.job_discarded();
                 }
             }
         } else {
@@ -433,7 +434,7 @@ where
                 if let Some(worker) = state.pool.get_mut(&who) {
                     if let Some(job_options) = worker.worker_complete(job_key)? {
                         // record the job data on the factory
-                        state.stats.handle_job_done(&job_options);
+                        state.stats.factory_job_done(&job_options);
                     }
                 }
 
@@ -446,7 +447,7 @@ where
                                 next_job = Some(job);
                                 break;
                             } else {
-                                state.stats.job_expired();
+                                state.stats.job_ttl_expired();
                             }
                         }
                         // de-queue another job
@@ -473,12 +474,11 @@ where
             }
             FactoryMessage::WorkerPong(wid, time) => {
                 if let Some(worker) = state.pool.get_mut(&wid) {
-                    worker.factory_pong(time);
+                    worker.ping_received(time);
                 }
             }
             FactoryMessage::DoPings(when) => {
-                let delta = Instant::now() - when;
-                if state.stats.handle_ping(delta) {
+                if state.stats.ping_received(when) {
                     state.log_stats(&myself);
                 }
 

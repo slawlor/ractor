@@ -6,179 +6,17 @@
 //! Factory worker properties
 
 use std::collections::{HashMap, VecDeque};
-use std::fmt::Display;
 
 use crate::concurrency::{Duration, Instant};
 use crate::{Actor, ActorRef, Message, MessagingErr};
 use crate::{ActorId, ActorProcessingErr};
 
+use super::stats::MessageProcessingStats;
 use super::Factory;
 use super::Job;
 use super::JobKey;
 use super::WorkerId;
 use super::{DiscardHandler, JobOptions};
-
-const _MICROS_IN_SEC: u128 = 1000000;
-
-/// Messaging statistics collected on a factory and/or
-/// a worker
-#[derive(Clone)]
-pub struct MessageProcessingStats {
-    // ========== Pings ========== //
-    /// number of pings
-    pub ping_count: u64,
-    /// Running sum of ping time
-    pub ping_timing_us: u128,
-    /// The time of the last ping (workers only)
-    pub last_ping: Instant,
-    // ========== Incoming Job QPS ========== //
-    /// The time a last job came through
-    pub last_job_time: Instant,
-    /// Job count
-    pub job_count: u64,
-    /// Incoming job time
-    pub job_incoming_time_us: u128,
-    // ========== Finished jobs ========== //
-    /// Time a job spent processing
-    pub job_processing_time_us: u128,
-    /// Job processed count
-    pub processed_job_count: u64,
-    /// Total processed job count
-    pub total_processed_job_count: u128,
-    /// Time spent in the factory's message queue
-    pub time_in_factory_message_queue_us: u128,
-    // ========== Expired jobs ========== //
-    /// Number of expired jobs
-    pub total_num_expired_jobs: u128,
-    /// Stats enabled
-    pub enabled: bool,
-}
-
-impl Display for MessageProcessingStats {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Avg ping time: {}us
-Num processed jobs: {}
-Job qps: {}
-Avg job processing time: {}us
-Avg time in factory queue: {}us
-Num expired jobs: {}
-            ",
-            self.ping_timing_us / self.ping_count as u128,
-            self.total_processed_job_count,
-            self.avg_job_qps(),
-            self.job_processing_time_us / self.processed_job_count as u128,
-            self.time_in_factory_message_queue_us / self.processed_job_count as u128,
-            self.total_num_expired_jobs,
-        )
-    }
-}
-
-impl Default for MessageProcessingStats {
-    fn default() -> Self {
-        Self {
-            ping_count: 0,
-            job_incoming_time_us: 0,
-            last_ping: Instant::now(),
-            last_job_time: Instant::now(),
-            ping_timing_us: 0,
-            job_count: 0,
-            job_processing_time_us: 0,
-            processed_job_count: 0,
-            total_processed_job_count: 0,
-            time_in_factory_message_queue_us: 0,
-            total_num_expired_jobs: 0,
-            enabled: false,
-        }
-    }
-}
-
-impl MessageProcessingStats {
-    pub(crate) fn enable(&mut self) {
-        self.enabled = true;
-    }
-
-    pub(crate) fn reset_global_counters(&mut self) {
-        self.total_num_expired_jobs = 0;
-        self.total_processed_job_count = 0;
-    }
-
-    /// Handle a factory ping, and every 10 minutes adjust the stats to the
-    /// average + return a flag to state that we should log the factory's statistics
-    pub(crate) fn handle_ping(&mut self, duration: Duration) -> bool {
-        // we ALWAYS record the last ping time
-        self.last_ping = Instant::now();
-
-        if !self.enabled {
-            return false;
-        }
-
-        self.ping_count += 1;
-        self.ping_timing_us += duration.as_micros();
-
-        if self.ping_count > 600 {
-            // When we hit 10min, convert the message timing to an average and reset the counters
-            // this lets us track degradation without being overwhelmed by old (stale) data
-            self.ping_timing_us /= self.ping_count as u128;
-            self.ping_count = 1;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn job_submitted(&mut self) {
-        if !self.enabled {
-            return;
-        }
-
-        let time_since_last_job = Instant::now() - self.last_job_time;
-        // update the job counter
-        self.last_job_time = Instant::now();
-        self.job_incoming_time_us += time_since_last_job.as_micros();
-        self.job_count += 1;
-
-        if self.job_count > 10000 {
-            self.job_incoming_time_us /= self.job_count as u128;
-            self.job_count = 1;
-        }
-    }
-
-    pub(crate) fn job_expired(&mut self) {
-        if !self.enabled {
-            return;
-        }
-        self.total_num_expired_jobs += 1;
-    }
-
-    pub(crate) fn avg_job_qps(&self) -> u128 {
-        let us_between_jobs = self.job_incoming_time_us / self.job_count as u128;
-
-        _MICROS_IN_SEC / us_between_jobs
-    }
-
-    pub(crate) fn handle_job_done(&mut self, options: &JobOptions) {
-        if !self.enabled {
-            return;
-        }
-
-        self.processed_job_count += 1;
-        self.total_processed_job_count += 1;
-        self.job_processing_time_us += options.factory_time.elapsed().unwrap().as_micros();
-        self.time_in_factory_message_queue_us += options
-            .factory_time
-            .duration_since(options.submit_time)
-            .unwrap()
-            .as_micros();
-
-        if self.processed_job_count > 10000 {
-            self.job_processing_time_us /= self.processed_job_count as u128;
-            self.time_in_factory_message_queue_us /= self.processed_job_count as u128;
-            self.processed_job_count = 1;
-        }
-    }
-}
 
 /// Message to a worker
 pub enum WorkerMessage<TKey, TMsg>
@@ -268,7 +106,7 @@ where
             if !job.is_expired() {
                 return Some(job);
             } else {
-                self.stats.job_expired();
+                self.stats.job_ttl_expired();
             }
         }
         None
@@ -362,6 +200,7 @@ where
         if let Some(discard_threshold) = self.discard_threshold {
             while discard_threshold > 0 && self.message_queue.len() > discard_threshold {
                 if let Some(discarded) = self.get_next_non_expired_job() {
+                    self.stats.job_discarded();
                     if let Some(handler) = &self.discard_handler {
                         handler.discard(discarded);
                     }
@@ -383,9 +222,8 @@ where
     }
 
     /// Comes back when a ping went out
-    pub(crate) fn factory_pong(&mut self, time: Instant) {
-        let delta = Instant::now() - time;
-        if self.stats.handle_ping(delta) {
+    pub(crate) fn ping_received(&mut self, time: Instant) {
+        if self.stats.ping_received(time) {
             // TODO log metrics ? Should be configurable on the factory level
         }
         self.is_ping_pending = false;
@@ -399,9 +237,6 @@ where
     ) -> Result<Option<JobOptions>, MessagingErr> {
         // remove this pending job
         let options = self.curr_jobs.remove(&key);
-        if let Some(job_options) = &options {
-            self.stats.handle_job_done(job_options);
-        }
         // maybe queue up the next job
         if let Some(mut job) = self.get_next_non_expired_job() {
             job.set_worker_time();

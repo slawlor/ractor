@@ -3,6 +3,9 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
+//! Factory's defaulting routing hash mechanism. Hashes a [super::JobKey] to a finite
+//! space
+
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
