@@ -728,9 +728,14 @@ impl NodeSession {
         match state.remote_actors.get(&actor_pid) {
             Some(actor) => Ok(actor.clone()),
             _ => {
-                let remote_actor_s: RemoteActor = myself.into();
-                let (remote_actor, _) = remote_actor_s
-                    .spawn_linked(actor_name, actor_pid, self.node_id, myself.get_cell())
+                let (remote_actor, _) = RemoteActor
+                    .spawn_linked(
+                        myself.clone(),
+                        actor_name,
+                        actor_pid,
+                        self.node_id,
+                        myself.get_cell(),
+                    )
                     .await?;
                 state.remote_actors.insert(actor_pid, remote_actor.clone());
                 Ok(remote_actor)

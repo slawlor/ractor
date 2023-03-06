@@ -18,23 +18,15 @@ use ractor_cluster_derive::RactorMessage;
 use crate::node::NodeSessionMessage;
 use crate::NodeId;
 
+#[cfg(test)]
+mod tests;
+
 /// A [RemoteActor] is an actor which represents an actor on another node
 ///
 /// A [RemoteActor] handles serialized messages without decoding them, forwarding them
 /// to the remote system for decoding + handling by the real implementation.
 /// Therefore [RemoteActor]s can be thought of as a "shim" to a real actor on a remote system
-pub(crate) struct RemoteActor {
-    /// The owning node session
-    session: ActorRef<crate::node::NodeSession>,
-}
-
-impl From<&ActorRef<super::node::NodeSession>> for RemoteActor {
-    fn from(value: &ActorRef<super::node::NodeSession>) -> Self {
-        RemoteActor {
-            session: value.clone(),
-        }
-    }
-}
+pub(crate) struct RemoteActor;
 
 impl RemoteActor {
     /// Spawn a [RemoteActor] with a supervisor (which should always be a [super::node::NodeSession])
@@ -51,23 +43,26 @@ impl RemoteActor {
     /// the actor failed to start
     pub(crate) async fn spawn_linked(
         self,
+        session: ActorRef<super::node::NodeSession>,
         name: Option<ActorName>,
         pid: u64,
         node_id: NodeId,
         supervisor: ActorCell,
     ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
         let actor_id = ActorId::Remote { node_id, pid };
-        ractor::ActorRuntime::<Self>::spawn_linked_remote(name, self, actor_id, (), supervisor)
+        ractor::ActorRuntime::<Self>::spawn_linked_remote(name, self, actor_id, session, supervisor)
             .await
     }
 }
 
-#[derive(Default)]
 pub(crate) struct RemoteActorState {
     message_tag: u64,
     /// The map of <message_tag, serialized_rpc_reply> port for network
     /// handling of [SerializedMessage::CallReply]s
     pending_requests: HashMap<u64, RpcReplyPort<Vec<u8>>>,
+
+    /// Owning session
+    session: ActorRef<crate::node::NodeSession>,
 }
 
 impl RemoteActorState {
@@ -87,13 +82,17 @@ pub(crate) struct RemoteActorMessage;
 impl Actor for RemoteActor {
     type Msg = RemoteActorMessage;
     type State = RemoteActorState;
-    type Arguments = ();
+    type Arguments = ActorRef<crate::node::NodeSession>;
     async fn pre_start(
         &self,
         _myself: ActorRef<Self>,
-        _: (),
+        session: ActorRef<crate::node::NodeSession>,
     ) -> Result<Self::State, ActorProcessingErr> {
-        Ok(Self::State::default())
+        Ok(Self::State {
+            session,
+            message_tag: 0,
+            pending_requests: HashMap::new(),
+        })
     }
 
     async fn handle(
@@ -138,7 +137,7 @@ impl Actor for RemoteActor {
                     )),
                 };
                 state.pending_requests.insert(tag, reply);
-                let _ = cast!(self.session, NodeSessionMessage::SendMessage(node_msg));
+                let _ = cast!(state.session, NodeSessionMessage::SendMessage(node_msg));
             }
             SerializedMessage::Cast {
                 args,
@@ -156,7 +155,7 @@ impl Actor for RemoteActor {
                         },
                     )),
                 };
-                let _ = cast!(self.session, NodeSessionMessage::SendMessage(node_msg));
+                let _ = cast!(state.session, NodeSessionMessage::SendMessage(node_msg));
             }
             SerializedMessage::CallReply(message_tag, reply_data) => {
                 // Handle the reply to a "Call" message

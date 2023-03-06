@@ -28,10 +28,31 @@ macro_rules! derive_serialization_for_prost_type {
 
 #[cfg(test)]
 mod test {
+    use ractor::BytesConvertable;
+
     use crate::derive_serialization_for_prost_type;
 
     #[test]
-    fn test_protobuf_message_compiles() {
+    fn test_protobuf_message_serialization() {
         derive_serialization_for_prost_type! {crate::protocol::NetworkMessage}
+
+        let original = crate::protocol::NetworkMessage {
+            message: Some(crate::protocol::meta::network_message::Message::Node(
+                crate::protocol::node::NodeMessage {
+                    msg: Some(crate::protocol::node::node_message::Msg::Cast(
+                        crate::protocol::node::Cast {
+                            to: 3,
+                            what: vec![0, 1, 2],
+                            variant: "something".to_string(),
+                            metadata: None,
+                        },
+                    )),
+                },
+            )),
+        };
+
+        let bytes = original.clone().into_bytes();
+        let decoded = <crate::protocol::NetworkMessage as BytesConvertable>::from_bytes(bytes);
+        assert_eq!(original, decoded);
     }
 }

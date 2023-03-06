@@ -177,22 +177,23 @@ impl NodeServer {
     /// * `cookie` - The magic cookie for authentication between [NodeServer]s
     /// * `node_name` - The name of this node
     /// * `hostname` - The hostname of the machine
-    /// * `connection_mode` - Connection mode for peer nodes
+    /// * `encryption_mode`- (optional) Node socket encryption functionality (Default = [IncomingEncryptionMode::Raw])
+    /// * `connection_mode` - (optional) Connection mode for peer nodes (Default = [NodeConnectionMode::Isolated])
     pub fn new(
         port: crate::net::NetworkPort,
         cookie: String,
         node_name: String,
         hostname: String,
-        tls_config: IncomingEncryptionMode,
-        connection_mode: NodeConnectionMode,
+        encryption_mode: Option<IncomingEncryptionMode>,
+        connection_mode: Option<NodeConnectionMode>,
     ) -> Self {
         Self {
             port,
             cookie,
             node_name,
             hostname,
-            encryption_mode: tls_config,
-            connection_mode,
+            encryption_mode: encryption_mode.unwrap_or(IncomingEncryptionMode::Raw),
+            connection_mode: connection_mode.unwrap_or(NodeConnectionMode::Isolated),
         }
     }
 }

@@ -33,8 +33,8 @@ pub async fn test(config: AuthHandshakeConfig) -> i32 {
         cookie,
         super::random_name(),
         hostname.clone(),
-        ractor_cluster::IncomingEncryptionMode::Raw,
-        ractor_cluster::node::NodeConnectionMode::Isolated,
+        None,
+        None,
     );
 
     log::info!("Starting NodeServer on port {}", config.server_port);
