@@ -33,11 +33,11 @@ pub async fn test(config: DistConnectConfig) -> i32 {
         cookie,
         super::random_name(),
         config.node_name.clone(),
-        ractor_cluster::IncomingEncryptionMode::Raw,
+        None,
         if config.node_name.as_str() == "node-c" {
-            ractor_cluster::node::NodeConnectionMode::Transitive
+            Some(ractor_cluster::node::NodeConnectionMode::Transitive)
         } else {
-            ractor_cluster::node::NodeConnectionMode::Isolated
+            Some(ractor_cluster::node::NodeConnectionMode::Isolated)
         },
     );
 

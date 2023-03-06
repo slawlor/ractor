@@ -103,8 +103,8 @@ pub async fn test(config: EncryptionConfig) -> i32 {
         cookie,
         super::random_name(),
         hostname.clone(),
-        ractor_cluster::IncomingEncryptionMode::Tls(acceptor),
-        ractor_cluster::node::NodeConnectionMode::Isolated,
+        Some(ractor_cluster::IncomingEncryptionMode::Tls(acceptor)),
+        None,
     );
 
     log::info!("Starting NodeServer on port {}", config.server_port);

@@ -1,5 +1,9 @@
 # ractor_cluster
 
+<p align="center">
+    <img src="https://raw.githubusercontent.com/slawlor/ractor/main/docs/ractor_logo.svg" width="20%" /> 
+</p>
+
 *A companion crate to `ractor` for supporting remote actors*
 
 [<img alt="github" src="https://img.shields.io/badge/github-slawlor/ractor-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/slawlor/ractor)
@@ -9,11 +13,11 @@
 [![codecov](https://codecov.io/gh/slawlor/ractor/branch/main/graph/badge.svg?token=61AGYYPWBA)](https://codecov.io/gh/slawlor/ractor)
 ![ractor_cluster Downloads](https://img.shields.io/crates/d/ractor_cluster.svg)
 
-This crate contains extensions to `ractor`, a pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.erlang.org/doc/man/gen_server.html). 
+This crate contains extensions to `ractor`, a pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.erlang.org/doc/man/gen_server.html).
 
 ## About
 
-`ractor_cluster` expands upon `ractor` actors to support transmission over a network link and synchronization of actors on remote systems.
+`ractor_cluster` expands upon `ractor` actors to support transmission over a network link and synchronization of actors on networked clusters of actors.
 
 ## Installation
 
@@ -32,7 +36,7 @@ Ractor actors can be built in a network-distributed pool of actors, similar to [
 `ractor_cluster` has a single main type in it, namely the `NodeServer` which represents a host of a `node()` process. It additionally has some macros and a procedural macros to facilitate developer efficiency when building distributed actors. The `NodeServer` is responsible for:
 
 1. Managing all incoming and outgoing `NodeSession` actors which represent a remote node connected to this host.
-2. Managing the `TcpListener` which hosts the server socket to accept incoming session requests.
+2. Managing the `TcpListener` which hosts the server socket to accept incoming session requests (with or without encryption).
 
 The bulk of the logic for node interconnections however is held in the `NodeSession` which manages
 
@@ -51,6 +55,26 @@ Actor::spawn(Some("name".to_string()), MyActor).await
 ```
 
 pattern.
+
+### Quick-start
+
+The basics of setting up a networked cluster of actors lives in the `NodeServer` struct. This structure handles the low-level network ownership over a server port along with all of the lifecycle of cluster inter-connections. By spawning this single struct, you're able to accept incoming connections between hosts!
+
+Nodes in the network are authenticated to each other with a "magic cookie" following the Erlang specification in [Erlang's distribution protocol](https://www.erlang.org/doc/apps/erts/erl_dist_protocol.html). If you want to connect to another host, you need to
+
+1. Initialize your own `NodeServer`
+2. Execute a "client-connection" to the remote `NodeServer` you're trying to connect to like
+
+```rust
+let host = "1.2.3.4";
+let port = "4697";
+ractor_cluster::client_connect(
+    &actor,
+    format!("{host}:{port}"),
+)
+```
+
+Similarly there is a `client_connect_enc` to connect to a `NodeServer` which is utilizing encrypted communication. That's it! If your nodes are sharing a proper magic cookie value, they should authenticate to each other and you'll see remote actors spawned on your local system which you can communciate with through the various `pg` or `pid`-based registries.
 
 ### Designing remote-supported actors
 

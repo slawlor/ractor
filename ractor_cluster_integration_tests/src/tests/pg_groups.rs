@@ -111,8 +111,8 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         cookie,
         super::random_name(),
         hostname,
-        ractor_cluster::IncomingEncryptionMode::Raw,
-        ractor_cluster::node::NodeConnectionMode::Isolated,
+        None,
+        None,
     );
 
     let (actor, handle) = Actor::spawn(None, server, ())
