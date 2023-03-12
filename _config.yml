@@ -18,8 +18,8 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: Ractor: actors for Rust
-email: @slawlor
+title: Ractor - actors for Rust
+email: slawlor
 description: >- # this means to ignore newlines until "baseurl:"
   Ractor provides a fully-supervised, tokio-friendly actor framework
   for Rust frameworks. It is modelled closely off of Erlang's gen_server
