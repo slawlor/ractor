@@ -23,3 +23,8 @@ A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.e
 * [![codecov](https://codecov.io/gh/slawlor/ractor/branch/main/graph/badge.svg?token=61AGYYPWBA)](https://codecov.io/gh/slawlor/ractor)
 * `ractor`: ![ractor Downloads](https://img.shields.io/crates/d/ractor.svg)
 * `ractor_cluster`: ![ractor_cluster Downloads](https://img.shields.io/crates/d/ractor_cluster.svg)
+
+<!-- <nav class="toc-fixed" markdown="1">
+    * TOC
+    {:toc}
+</nav> -->

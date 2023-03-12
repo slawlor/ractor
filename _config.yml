@@ -29,8 +29,6 @@ url: "https://slawlor.github.io" # the base hostname & protocol for your site, e
 twitter_username: shiggschili
 github_username:  slawlor
 
-remote_theme: zendesk/jekyll-theme-zendesk-garden@v0.3.0
-
 # Build settings
 theme: minima
 plugins:
