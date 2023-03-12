@@ -19,7 +19,7 @@
 # in the templates via {{ site.myvariable }}.
 
 title: Ractor - actors for Rust
-email: slawlor
+# email: slawlor
 description: >- # this means to ignore newlines until "baseurl:"
   Ractor provides a fully-supervised, tokio-friendly actor framework
   for Rust frameworks. It is modelled closely off of Erlang's gen_server
@@ -29,10 +29,23 @@ url: "https://slawlor.github.io" # the base hostname & protocol for your site, e
 twitter_username: shiggschili
 github_username:  slawlor
 
+remote_theme: zendesk/jekyll-theme-zendesk-garden@v0.3.0
+
 # Build settings
 theme: minima
 plugins:
   - jekyll-feed
+sidebar:
+  - home
+  - about
+
+# sidebar:
+#   - getting-started
+#   - label: Dev Docs
+#     children:
+#       - doc-1
+#       - doc-2
+#   - deployment
 
 # Exclude from processing.
 # The following items will not be processed, by default.
