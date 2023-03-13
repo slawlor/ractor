@@ -13,7 +13,7 @@ While working through this quickstart, a few notations we want to clarify for re
 ### Messaging actors
 
 Since we're trying to model as best we can around [Erlang's practices](https://www.erlang.org/doc/man/gen_server.html#call-2), message sends in
-Ractor can occur in 2 ways, first-and-forget and waitingo n a reply. Their notations however follow the Erlang naming schemes of "cast" and "call"
+Ractor can occur in 2 ways, first-and-forget and waiting on a reply. Their notations however follow the Erlang naming schemes of "cast" and "call"
 respectively.
 
 ## Installation

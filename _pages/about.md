@@ -2,7 +2,7 @@
 permalink: /about/
 title: "About"
 excerpt: "Ractor is an actor framework for Rust"
-toc: true
+# toc: true
 layout: single
 ---
 

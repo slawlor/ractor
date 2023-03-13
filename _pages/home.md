@@ -2,7 +2,7 @@
 # Feel free to add content and custom Front Matter to this file.
 # To modify the layout, see https://jekyllrb.com/docs/themes/#overriding-theme-defaults
 
-layout: home
+layout: single
 permalink: /
 ---
 
@@ -23,7 +23,3 @@ A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.e
 * `ractor`: ![ractor Downloads](https://img.shields.io/crates/d/ractor.svg)
 * `ractor_cluster`: ![ractor_cluster Downloads](https://img.shields.io/crates/d/ractor_cluster.svg)
 
-<!-- <nav class="toc-fixed" markdown="1">
-    * TOC
-    {:toc}
-</nav> -->
