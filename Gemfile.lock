@@ -209,13 +209,6 @@ GEM
       jekyll (>= 3.5, < 5.0)
       jekyll-feed (~> 0.9)
       jekyll-seo-tag (~> 2.1)
-    minimal-mistakes-jekyll (4.24.0)
-      jekyll (>= 3.7, < 5.0)
-      jekyll-feed (~> 0.1)
-      jekyll-gist (~> 1.5)
-      jekyll-include-cache (~> 0.1)
-      jekyll-paginate (~> 1.1)
-      jekyll-sitemap (~> 1.3)
     minitest (5.18.0)
     nokogiri (1.14.2-arm64-darwin)
       racc (~> 1.4)
@@ -260,12 +253,8 @@ PLATFORMS
   arm64-darwin-22
 
 DEPENDENCIES
-  github-pages (~> 228)
-  http_parser.rb (~> 0.6.0)
-  minimal-mistakes-jekyll (~> 4.24.0)
-  tzinfo (>= 1, < 3)
-  tzinfo-data
-  wdm (~> 0.1.1)
+  github-pages
+  jekyll-include-cache
   webrick
 
 BUNDLED WITH
