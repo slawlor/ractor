@@ -1,24 +1,12 @@
-# Welcome to Jekyll!
-#
-# This config file is meant for settings that affect your whole blog, values
-# which you are expected to set up once and rarely edit after that. If you find
-# yourself editing this file very often, consider using Jekyll's data files
-# feature for the data you need to update frequently.
-#
-# For technical reasons, this file is *NOT* reloaded automatically when you use
-# 'bundle exec jekyll serve'. If you change this file, please restart the server process.
-#
-# If you need help with YAML syntax, here are some quick references for you:
-# https://learn-the-web.algonquindesign.ca/topics/markdown-yaml-cheat-sheet/#yaml
-# https://learnxinyminutes.com/docs/yaml/
-#
-# Site settings
-# These are used to personalize your new site. If you look in the HTML files,
-# you will see them accessed via {{ site.title }}, {{ site.email }}, and so on.
-# You can create any custom variable you would like, and they will be accessible
-# in the templates via {{ site.myvariable }}.
+# Configuraiton information: https://mmistakes.github.io/minimal-mistakes/docs/configuration/
+# and: https://github.com/mmistakes/minimal-mistakes/blob/master/_config.yml
+# To find the default files for the theme: 
+# bundle info minimal-mistakes-jekyll.
 
-title: Ractor - actors for Rust
+# Site Settings
+locale                   : "en-US"
+title: Ractor
+title_separator: "|"
 # email: slawlor
 description: >- # this means to ignore newlines until "baseurl:"
   Ractor provides a fully-supervised, tokio-friendly actor framework
@@ -26,41 +14,39 @@ description: >- # this means to ignore newlines until "baseurl:"
   along with extensions such as factories and distributed clusters.
 baseurl: "/ractor" # the subpath of your site, e.g. /blog
 url: "https://slawlor.github.io" # the base hostname & protocol for your site, e.g. http://example.com
-twitter_username: shiggschili
-github_username:  slawlor
+repository: slawlor/ractor
+logo: "/assets/images/ractor_logo.svg"
+masthead_title: "Ractor - actors for Rust"
+subtitle: "Built on Tokio"
+# search: true
+atom_feed:
+  hide: true
+twitter:
+  username: shiggschili
 
 # Build settings
-theme: minima
+theme: minimal-mistakes-jekyll
 plugins:
-  - jekyll-feed
-sidebar:
-  - home
-  - about
+  - jekyll-include-cache
+minimal_mistakes_skin: "dark" # "default" # "air", "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum", "sunrise"
+lunr:
+  search_within_pages: true
 
-# sidebar:
-#   - getting-started
-#   - label: Dev Docs
-#     children:
-#       - doc-1
-#       - doc-2
-#   - deployment
+footer:
+  links:
+    - label: "Twitter"
+      icon: "fab fa-fw fa-twitter-square"
+      url: "https://twitter.com/shiggschili"
+    - label: "GitHub"
+      icon: "fab fa-fw fa-github"
+      url: "https://github.com/slawlor"
 
-# Exclude from processing.
-# The following items will not be processed, by default.
-# Any item listed under the `exclude:` key here will be automatically added to
-# the internal "default list".
-#
-# Excluded items can be processed by explicitly listing the directories or
-# their entries' file path in the `include:` list.
-#
-# exclude:
-#   - .sass-cache/
-#   - .jekyll-cache/
-#   - gemfiles/
-#   - Gemfile
-#   - Gemfile.lock
-#   - node_modules/
-#   - vendor/bundle/
-#   - vendor/cache/
-#   - vendor/gems/
-#   - vendor/ruby/
+include: ["_pages"]
+defaults:
+  # _pages
+  - scope:
+      path: ""
+      type: pages
+    values:
+      layout: single
+      author_profile: true

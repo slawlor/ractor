@@ -1,9 +1,9 @@
 ---
-id: about
-sidebar_label: About
-layout: page
-title: About
 permalink: /about/
+title: "About"
+excerpt: "Ractor is an actor framework for Rust"
+toc: true
+layout: single
 ---
 
 `ractor` tries to solve the problem of building and maintaining an Erlang-like actor framework in Rust. It gives

@@ -1,0 +1,11 @@
+---
+# Only the main Sass file needs front matter (the dashes are enough)
+---
+
+@charset "utf-8";
+
+@import "minimal-mistakes/skins/{{ site.minimal_mistakes_skin | default: 'default' }}"; // skin
+@import "minimal-mistakes"; // main partials
+
+@media (min-width: 64em) { .page {float: right;width: 100%; padding-right: 200px;} }
+@media (min-width: 80em) { .page {padding-right: 300px;} }

@@ -2,13 +2,12 @@
 # Feel free to add content and custom Front Matter to this file.
 # To modify the layout, see https://jekyllrb.com/docs/themes/#overriding-theme-defaults
 
-id: home
 layout: home
-sidebar_label: Ractor
+permalink: /
 ---
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/slawlor/ractor/main/docs/ractor_logo.svg" width="20%" />
+    <img src="{{ '/assets/images/ractor_logo.svg' | relative_url }}" width="30%" />
 </p>
 
 *Pronounced ract-er*
