@@ -1,8 +1,11 @@
 # main links
 main:
   - title: "Quickstart"
-    url: "/qs/"
+    url: "/quickstart/"
   
+  - title: "FAQ"
+    url: "/faq/"
+
   - title: "About"
     url: /about/
   

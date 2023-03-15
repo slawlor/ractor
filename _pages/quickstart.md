@@ -1,5 +1,5 @@
 ---
-permalink: /qs/
+permalink: /quickstart/
 title: "Quick start"
 toc: true
 layout: single
