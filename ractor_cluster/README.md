@@ -15,6 +15,8 @@
 
 This crate contains extensions to `ractor`, a pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.erlang.org/doc/man/gen_server.html).
 
+**Ractor has a new website!** We've opened a new website to have more general usage patterns (best practices) and helpful guides with actors. Api docs will still be available at [docs.rs](https://docs.rs/ractor) however this will be a supplimentary site for `ractor`. Try it out! <https://slawlor.github.io/ractor/>
+
 ## About
 
 `ractor_cluster` expands upon `ractor` actors to support transmission over a network link and synchronization of actors on networked clusters of actors.
