@@ -20,4 +20,37 @@ This was an initial design choice when building `ractor`. The reason is somewhat
 
 Either that or there would need to be a lot of boiler-plate logic so that `self` is half-initialized elsewhere and then finished initialization in `pre_start` of the fallible bits. Therefore it was decided to utilize a separate state struct which is fully-owned by the actor runtime, and is only instantiated within the wrapped `pre_start` routine. This way unhandled `panic!`s and errors are handled and can be cleanly managed.
 
+## Timers and periodic operations
+
+In actor models, you generally don't want to block the actor waiting for a period to elapse. A simple periodic operation example you might do in normal async processing might be
+
+```rust
+async fn periodic() {
+    loop {
+        do_something().await;
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+```
+
+If you did this in an actor's `handle()` function it would prevent the actor's message pump to process any other messages. In order to avoid this, we provide the `ractor::time` module which exposes actor-friendly timed operations.
+
+You generally have 2 choice for timed operations with actors, a "delay" (`send_after`) or a periodic operation which will send a message at a set frequency (`send_interval`). To rebuild our example above in an actor, you might have
+
+```rust
+
+async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+    match message {
+        Self::Msg::DoSomething => {
+            do_something().await;
+        }
+    }
+    myself.send_after(Duration::from_millis(100), || Self::Message::DoSomething);
+    Ok(())
+}
+```
+
+In this model, the underlying framework will send a message to the actor after the period elapses so the actor's message handler does the necessary processing on a period.
+
 ## More to come
