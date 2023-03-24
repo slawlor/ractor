@@ -111,7 +111,7 @@ where
     pub fn where_is(name: ActorName) -> Option<ActorRef<TActor>> {
         if let Some(actor) = crate::registry::where_is(name) {
             // check the type id when pulling from the registry
-            if actor.inner.type_id == TypeId::of::<TActor>() {
+            if actor.inner.type_id == TypeId::of::<TActor::Msg>() {
                 Some(actor.into())
             } else {
                 None

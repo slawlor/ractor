@@ -34,6 +34,9 @@ async fn test_basic_registation() {
 
     assert!(crate::registry::where_is("my_actor".to_string()).is_some());
 
+    // Coverage for Issue #70
+    assert!(crate::ActorRef::<EmptyActor>::where_is("my_actor".to_string()).is_some());
+
     actor.stop(None);
     handle.await.expect("Failed to clean stop the actor");
 }
