@@ -5,10 +5,13 @@
 
 //! This module contains the logic for initiating client requests to other [super::NodeServer]s
 
+use std::collections::HashSet;
 use std::fmt::Display;
+use std::net::ToSocketAddrs as StdToSocketAddrs;
 
-use ractor::{ActorRef, MessagingErr};
-use tokio::net::{TcpStream, ToSocketAddrs};
+use ractor::{ActorRef, call_t, MessagingErr};
+use tokio::net::{lookup_host, TcpStream, ToSocketAddrs};
+use ractor::concurrency::{Duration, Instant, sleep};
 
 /// A client connection error. Possible issues are Socket connection
 /// problems or failure to talk to the [super::NodeServer]
@@ -49,6 +52,76 @@ impl From<MessagingErr> for ClientConnectErr {
     fn from(value: MessagingErr) -> Self {
         Self::Messaging(value)
     }
+}
+
+/// TODO Either move this into ClientConnectErr or implement `std::error::Error::cause`
+#[derive(Debug)]
+enum NodeServerConnectionError {
+    Timeout(Duration),
+}
+
+impl Display for NodeServerConnectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeServerConnectionError::Timeout(timeout) => {
+                write!(f, "Timeout: {}ms", timeout.as_millis())
+            }
+        }
+    }
+}
+
+impl std::error::Error for NodeServerConnectionError {}
+
+/// Connect to another [super::NodeServer] instance and wait for sessions to propagate.
+///
+/// * `node_server` - The [super::NodeServer] which will own this new connection session
+/// * `address` - The network address to send the connection to. Must implement [ToSocketAddrs]
+/// * `timeout` - The maximum duration to wait for sessions to propagate
+///
+/// Returns: [Ok(())] if the connection was successful and the [super::NodeSession] was started. Handshake will continue
+/// automatically. Results in a [Err(ClientConnectError)] if any part of the process failed to initiate
+pub async fn connect_and_verify<T>(
+    nodeserver: &ActorRef<super::NodeServer>,
+    addr: T,
+    timeout: Duration,
+) -> Result<(), super::ActorProcessingErr>
+    where
+        T: ToSocketAddrs,
+{
+    connect(nodeserver, &addr).await?;
+
+    sleep(Duration::from_millis(100)).await;
+
+    let tic = Instant::now();
+
+    loop {
+        let rpc_reply = call_t!(
+            nodeserver,
+            crate::NodeServerMessage::GetSessions,
+            200
+        )?;
+
+        let time: Duration = Instant::now() - tic;
+        if time > timeout {
+            return Err(Box::new(NodeServerConnectionError::Timeout(time)));
+        }
+
+        let values = rpc_reply
+            .into_values()
+            .filter_map(|v| v.peer_name)
+            .map(|v| v.connection_string)
+            .flat_map(|v| v.to_socket_addrs())
+            .flatten()
+            .collect::<HashSet<_>>();
+
+        let new_addrs = lookup_host(&addr).await?.collect::<HashSet<_>>();
+
+        if values.intersection(&new_addrs).next().is_some() {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 /// Connect to another [super::NodeServer] instance
