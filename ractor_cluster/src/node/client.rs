@@ -54,7 +54,6 @@ impl From<MessagingErr> for ClientConnectErr {
     }
 }
 
-/// TODO Either move this into ClientConnectErr or implement `std::error::Error::cause`
 #[derive(Debug)]
 enum NodeServerConnectionError {
     Timeout(Duration),
@@ -90,21 +89,16 @@ pub async fn connect_and_verify<T>(
 {
     connect(nodeserver, &addr).await?;
 
-    sleep(Duration::from_millis(100)).await;
-
     let tic = Instant::now();
 
     loop {
+        sleep(Duration::from_millis(50)).await;
+
         let rpc_reply = call_t!(
             nodeserver,
             crate::NodeServerMessage::GetSessions,
             200
         )?;
-
-        let time: Duration = Instant::now() - tic;
-        if time > timeout {
-            return Err(Box::new(NodeServerConnectionError::Timeout(time)));
-        }
 
         let values = rpc_reply
             .into_values()
@@ -118,6 +112,11 @@ pub async fn connect_and_verify<T>(
 
         if values.intersection(&new_addrs).next().is_some() {
             break;
+        }
+
+        let time: Duration = Instant::now() - tic;
+        if time > timeout {
+            return Err(Box::new(NodeServerConnectionError::Timeout(time)));
         }
     }
 
