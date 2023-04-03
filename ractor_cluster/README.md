@@ -1,7 +1,7 @@
 # ractor_cluster
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/slawlor/ractor/main/docs/ractor_logo.svg" width="20%" /> 
+    <img src="https://raw.githubusercontent.com/slawlor/ractor/main/docs/ractor_logo.svg" width="50%" /> 
 </p>
 
 *A companion crate to `ractor` for supporting remote actors*
@@ -15,7 +15,7 @@
 
 This crate contains extensions to `ractor`, a pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.erlang.org/doc/man/gen_server.html).
 
-**Ractor has a new website!** We've opened a new website to have more general usage patterns (best practices) and helpful guides with actors. Api docs will still be available at [docs.rs](https://docs.rs/ractor) however this will be a supplimentary site for `ractor`. Try it out! <https://slawlor.github.io/ractor/>
+**Website** Ractor has a companion website for more detailed getting-started guides along with some best practices and is updated regularly. Api docs will still be available at [docs.rs](https://docs.rs/ractor) however this will be a supplimentary site for `ractor`. Try it out! <https://slawlor.github.io/ractor/>
 
 ## About
 
