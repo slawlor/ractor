@@ -7,7 +7,7 @@ permalink: /
 ---
 
 <p align="center">
-    <img src="{{ '/assets/images/ractor_logo.svg' | relative_url }}" width="30%" />
+    <img src="{{ '/assets/images/ractor_logo.svg' | relative_url }}" width="50%" />
 </p>
 
 *Pronounced ract-er*
