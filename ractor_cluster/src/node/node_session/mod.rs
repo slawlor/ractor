@@ -698,7 +698,7 @@ impl NodeSession {
                 .filter(|v| v.supports_remoting())
                 .map(|act| control_protocol::Actor {
                     name: act.get_name(),
-                    pid: act.get_id().get_pid(),
+                    pid: act.get_id().pid(),
                 })
                 .collect::<Vec<_>>();
             if !local_members.is_empty() {
@@ -953,7 +953,7 @@ impl Actor for NodeSession {
                         msg
                     );
                     myself.stop(Some("tcp_session_err".to_string()));
-                } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().get_pid()) {
+                } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().pid()) {
                     log::warn!(
                         "Node session {:?} had a remote actor ({}) panic with {}",
                         state.name,
@@ -965,7 +965,7 @@ impl Actor for NodeSession {
                     // NOTE: This is a legitimate panic of the `RemoteActor`, not the actor on the remote machine panicking (which
                     // is handled by the remote actor's supervisor). Therefore we should re-spawn the actor, and if we can't we
                     // should ourself die. Something is seriously wrong...
-                    let pid = actor.get_id().get_pid();
+                    let pid = actor.get_id().pid();
                     let name = actor.get_name();
                     let _ = self
                         .get_or_spawn_remote_actor(&myself, name, pid, state)
@@ -983,7 +983,7 @@ impl Actor for NodeSession {
                     log::info!("NodeSession {:?} connection closed", state.name);
                     myself.stop(Some("tcp_session_closed".to_string()));
                     // TODO: resilient connection?
-                } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().get_pid()) {
+                } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().pid()) {
                     log::debug!(
                         "NodeSession {:?} received a child exit with reason '{:?}'",
                         state.name,
@@ -1006,7 +1006,7 @@ impl Actor for NodeSession {
                         .filter(|act| act.supports_remoting())
                         .map(|act| control_protocol::Actor {
                             name: act.get_name(),
-                            pid: act.get_id().get_pid(),
+                            pid: act.get_id().pid(),
                         })
                         .collect::<Vec<_>>();
                     if !filtered.is_empty() {
@@ -1027,7 +1027,7 @@ impl Actor for NodeSession {
                         .filter(|act| act.supports_remoting())
                         .map(|act| control_protocol::Actor {
                             name: act.get_name(),
-                            pid: act.get_id().get_pid(),
+                            pid: act.get_id().pid(),
                         })
                         .collect::<Vec<_>>();
                     if !filtered.is_empty() {
@@ -1050,7 +1050,7 @@ impl Actor for NodeSession {
                             msg: Some(control_protocol::control_message::Msg::Spawn(
                                 control_protocol::Spawn {
                                     actors: vec![control_protocol::Actor {
-                                        pid: who.get_id().get_pid(),
+                                        pid: who.get_id().pid(),
                                         name: who.get_name(),
                                     }],
                                 },
@@ -1064,7 +1064,7 @@ impl Actor for NodeSession {
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::Terminate(
                                 control_protocol::Terminate {
-                                    ids: vec![who.get_id().get_pid()],
+                                    ids: vec![who.get_id().pid()],
                                 },
                             )),
                         };
