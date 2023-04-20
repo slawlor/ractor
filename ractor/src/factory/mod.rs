@@ -319,7 +319,7 @@ where
                 factory: myself.clone(),
             };
             let handler = builder.build(wid);
-            let (worker, _) =
+            let (worker, worker_handle) =
                 Actor::spawn_linked(None, handler, context, myself.get_cell()).await?;
             pool.insert(
                 wid,
@@ -330,6 +330,7 @@ where
                     self.discard_threshold,
                     self.discard_handler.as_ref().map(|a| a.clone_box()),
                     self.collect_worker_stats,
+                    worker_handle,
                 ),
             );
         }
@@ -356,6 +357,24 @@ where
             last_worker: 0,
             stats,
         })
+    }
+
+    async fn post_stop(
+        &self,
+        _: ActorRef<Self>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        // send the stop signal to all workers
+        for worker in state.pool.values() {
+            worker.actor.stop(None);
+        }
+        // wait for all workers to exit
+        for worker in state.pool.values_mut() {
+            if let Some(handle) = worker.get_handle() {
+                let _ = handle.await;
+            }
+        }
+        Ok(())
     }
 
     async fn handle(
@@ -542,10 +561,10 @@ where
                         wid: worker.wid,
                         factory: myself.clone(),
                     };
-                    let (replacement, _) =
+                    let (replacement, replacement_handle) =
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
-                    worker.replace_worker(replacement)?;
+                    worker.replace_worker(replacement, replacement_handle)?;
                 }
             }
             SupervisionEvent::ActorPanicked(who, reason) => {
@@ -565,10 +584,10 @@ where
                         wid: worker.wid,
                         factory: myself.clone(),
                     };
-                    let (replacement, _) =
+                    let (replacement, replacement_handle) =
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
-                    worker.replace_worker(replacement)?;
+                    worker.replace_worker(replacement, replacement_handle)?;
                 }
             }
             _ => {}
