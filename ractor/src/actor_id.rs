@@ -57,29 +57,19 @@ pub(crate) fn get_new_local_id() -> ActorId {
     ActorId::Local(ACTOR_ID_ALLOCATOR.fetch_add(1, std::sync::atomic::Ordering::AcqRel))
 }
 
-impl ActorId {
-    /// Retrieve the PID of the actor, ignoring local/remote properties
-    pub fn get_pid(&self) -> u64 {
-        match self {
-            ActorId::Local(pid) => *pid,
-            ActorId::Remote { pid, .. } => *pid,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_get_pid() {
+    fn test_pid() {
         let actor_id = ActorId::Local(123);
-        assert_eq!(123, actor_id.get_pid());
+        assert_eq!(123, actor_id.pid());
         let actor_id = ActorId::Remote {
             node_id: 1,
             pid: 123,
         };
-        assert_eq!(123, actor_id.get_pid());
+        assert_eq!(123, actor_id.pid());
     }
 
     #[test]

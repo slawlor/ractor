@@ -60,11 +60,16 @@ impl SupervisionTree {
         *(self.supervisor.write().unwrap()) = None;
     }
 
-    /// Terminate all your supervised children
+    /// Terminate all your supervised children and unlink them
+    /// from the supervision tree since the supervisor is shutting down
+    /// and can't deal with superivison events anyways
     pub fn terminate_all_children(&self) {
         for kvp in self.children.iter() {
-            kvp.value().1.terminate();
+            let child = &kvp.value().1;
+            child.terminate();
+            child.clear_supervisor();
         }
+        self.children.clear();
     }
 
     /// Terminate the supervised children after a given actor (including the specified actor).

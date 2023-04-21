@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::concurrency::{Duration, Instant};
+use crate::concurrency::{Duration, Instant, JoinHandle};
 use crate::{Actor, ActorRef, Message, MessagingErr};
 use crate::{ActorId, ActorProcessingErr};
 
@@ -92,6 +92,9 @@ where
 
     /// Current pending jobs dispatched to the worker (for tracking stats)
     curr_jobs: HashMap<TKey, JobOptions>,
+
+    /// The join handle for the worker
+    handle: Option<JoinHandle<()>>,
 }
 
 impl<TKey, TMsg, TWorker> WorkerProperties<TKey, TMsg, TWorker>
@@ -119,6 +122,7 @@ where
         discard_threshold: Option<usize>,
         discard_handler: Option<Box<dyn DiscardHandler<TKey, TMsg>>>,
         collect_stats: bool,
+        handle: JoinHandle<()>,
     ) -> Self {
         let mut stats = MessageProcessingStats::default();
         if collect_stats {
@@ -134,6 +138,7 @@ where
             capacity,
             is_ping_pending: false,
             stats,
+            handle: Some(handle),
         }
     }
 
@@ -148,14 +153,25 @@ where
     pub(crate) fn replace_worker(
         &mut self,
         nworker: ActorRef<TWorker>,
+        handle: JoinHandle<()>,
     ) -> Result<(), ActorProcessingErr> {
+        // these jobs are now "lost" as the worker is going to be killed
+        self.is_ping_pending = false;
+        self.stats.last_ping = Instant::now();
+        self.curr_jobs.clear();
+
         self.actor = nworker;
+        self.handle = Some(handle);
         if let Some(mut job) = self.get_next_non_expired_job() {
             self.curr_jobs.insert(job.key.clone(), job.options.clone());
             job.set_worker_time();
             self.actor.cast(WorkerMessage::Dispatch(job))?;
         }
         Ok(())
+    }
+
+    pub(crate) fn get_handle(&mut self) -> Option<JoinHandle<()>> {
+        self.handle.take()
     }
 
     pub(crate) fn is_available(&self) -> bool {
