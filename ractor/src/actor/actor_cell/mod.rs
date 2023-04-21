@@ -312,12 +312,17 @@ impl ActorCell {
     /// Unlink this [super::Actor] from the supervisor if it's
     /// currently linked (if self's supervisor is `supervisor`)
     ///
-    /// * `supervisor` - The child to unlink this [super::Actor] from
+    /// * `supervisor` - The supervisor to unlink this [super::Actor] from
     pub fn unlink(&self, supervisor: ActorCell) {
         if self.inner.tree.is_child_of(supervisor.get_id()) {
             supervisor.inner.tree.remove_child(self.get_id());
             self.inner.tree.clear_supervisor();
         }
+    }
+
+    /// Clear the supervisor field
+    pub(crate) fn clear_supervisor(&self) {
+        self.inner.tree.clear_supervisor();
     }
 
     /// Kill this [super::Actor] forcefully (terminates async work)
