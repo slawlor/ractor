@@ -23,7 +23,7 @@ impl Actor for TestActor {
 
     async fn pre_start(
         &self,
-        _this_actor: crate::ActorRef<Self>,
+        _this_actor: crate::ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
@@ -208,7 +208,7 @@ async fn test_pg_monitoring() {
 
         async fn pre_start(
             &self,
-            myself: crate::ActorRef<Self>,
+            myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             pg::join(self.pg_group.clone(), vec![myself.into()]);
@@ -229,7 +229,7 @@ async fn test_pg_monitoring() {
 
         async fn pre_start(
             &self,
-            myself: crate::ActorRef<Self>,
+            myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             pg::monitor(self.pg_group.clone(), myself.into());
@@ -238,7 +238,7 @@ async fn test_pg_monitoring() {
 
         async fn handle_supervisor_evt(
             &self,
-            _myself: crate::ActorRef<Self>,
+            _myself: crate::ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -304,7 +304,7 @@ async fn local_vs_remote_pg_members() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())

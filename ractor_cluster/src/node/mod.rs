@@ -202,7 +202,7 @@ impl NodeServer {
 #[derive(Clone)]
 pub struct NodeServerSessionInformation {
     /// The NodeSession actor
-    pub actor: ActorRef<NodeSession>,
+    pub actor: ActorRef<NodeSessionMessage>,
     /// This peer's name (if set)
     pub peer_name: Option<auth_protocol::NameMessage>,
     /// Is server-incoming connection
@@ -215,7 +215,7 @@ pub struct NodeServerSessionInformation {
 
 impl NodeServerSessionInformation {
     fn new(
-        actor: ActorRef<NodeSession>,
+        actor: ActorRef<NodeSessionMessage>,
         is_server: bool,
         node_id: NodeId,
         peer_addr: String,
@@ -236,7 +236,7 @@ impl NodeServerSessionInformation {
 
 /// The state of the node server
 pub struct NodeServerState {
-    listener: ActorRef<crate::net::listener::Listener>,
+    listener: ActorRef<crate::net::listener::ListenerMessage>,
     node_sessions: HashMap<ActorId, NodeServerSessionInformation>,
     node_id_counter: NodeId,
     this_node_name: auth_protocol::NameMessage,
@@ -282,7 +282,7 @@ impl Actor for NodeServer {
     type Arguments = ();
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         let listener = crate::net::listener::Listener::new(
@@ -309,7 +309,7 @@ impl Actor for NodeServer {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -368,7 +368,7 @@ impl Actor for NodeServer {
 
     async fn handle_supervisor_evt(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

@@ -40,7 +40,7 @@ impl Actor for PingPong {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         println!("pre_start called");
@@ -52,7 +52,7 @@ impl Actor for PingPong {
 
     async fn post_start(
         &self,
-        _this_actor: ActorRef<Self>,
+        _this_actor: ActorRef<Self::Msg>,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         println!("post_start called");
@@ -62,7 +62,7 @@ impl Actor for PingPong {
     /// Invoked after an actor has been stopped.
     async fn post_stop(
         &self,
-        _this_actor: ActorRef<Self>,
+        _this_actor: ActorRef<Self::Msg>,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         println!("post_stop called");
@@ -71,7 +71,7 @@ impl Actor for PingPong {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

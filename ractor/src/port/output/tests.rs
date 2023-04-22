@@ -30,7 +30,7 @@ async fn test_single_forward() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(0u8)
@@ -38,7 +38,7 @@ async fn test_single_forward() {
 
         async fn handle(
             &self,
-            myself: ActorRef<Self>,
+            myself: ActorRef<Self::Msg>,
             message: Self::Msg,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -93,7 +93,7 @@ async fn test_50_receivers() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(0u8)
@@ -101,7 +101,7 @@ async fn test_50_receivers() {
 
         async fn handle(
             &self,
-            myself: ActorRef<Self>,
+            myself: ActorRef<Self::Msg>,
             message: Self::Msg,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -118,7 +118,7 @@ async fn test_50_receivers() {
         }
     }
 
-    let handles: Vec<(ActorRef<TestActor>, JoinHandle<()>)> =
+    let handles: Vec<(ActorRef<TestActorMessage>, JoinHandle<()>)> =
         join_all((0..50).map(|_| async move {
             Actor::spawn(None, TestActor, ())
                 .await

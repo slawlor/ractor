@@ -58,7 +58,7 @@ impl GameState {
 }
 
 struct Game;
-struct GameMessage(ActorRef<GameManager>);
+struct GameMessage(ActorRef<GameManagerMessage>);
 #[cfg(feature = "cluster")]
 impl ractor::Message for GameMessage {}
 
@@ -72,7 +72,7 @@ impl Actor for Game {
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(GameState::default())
@@ -80,7 +80,7 @@ impl Actor for Game {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -149,7 +149,7 @@ impl Actor for GameManager {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         num_games: u32,
     ) -> Result<Self::State, ActorProcessingErr> {
         // This is the first code that will run in the actor. It spawns the Game actors,
@@ -173,7 +173,7 @@ impl Actor for GameManager {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

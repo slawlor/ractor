@@ -19,7 +19,7 @@ use crate::node::NodeServerMessage;
 /// connects and disconnects as well as tracking the current open [super::session::Session] actors.
 pub struct Listener {
     port: super::NetworkPort,
-    session_manager: ActorRef<crate::node::NodeServer>,
+    session_manager: ActorRef<crate::node::NodeServerMessage>,
     encryption: IncomingEncryptionMode,
 }
 
@@ -27,7 +27,7 @@ impl Listener {
     /// Create a new `Listener`
     pub fn new(
         port: super::NetworkPort,
-        session_manager: ActorRef<crate::node::NodeServer>,
+        session_manager: ActorRef<crate::node::NodeServerMessage>,
         encryption: IncomingEncryptionMode,
     ) -> Self {
         Self {
@@ -54,7 +54,7 @@ impl Actor for Listener {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         let addr = format!("0.0.0.0:{}", self.port);
@@ -76,7 +76,7 @@ impl Actor for Listener {
 
     async fn post_stop(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         // close the listener properly, in case anyone else has handles to the actor stopping
@@ -87,7 +87,7 @@ impl Actor for Listener {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

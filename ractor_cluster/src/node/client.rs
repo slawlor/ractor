@@ -59,7 +59,7 @@ impl From<MessagingErr> for ClientConnectErr {
 /// Returns: [Ok(())] if the connection was successful and the [super::NodeSession] was started. Handshake will continue
 /// automatically. Results in a [Err(ClientConnectError)] if any part of the process failed to initiate
 pub async fn connect<T>(
-    node_server: &ActorRef<super::NodeServer>,
+    node_server: &ActorRef<super::NodeServerMessage>,
     address: T,
 ) -> Result<(), ClientConnectErr>
 where
@@ -95,7 +95,7 @@ where
 /// Returns: [Ok(())] if the connection was successful and the [super::NodeSession] was started. Handshake will continue
 /// automatically. Results in a [Err(ClientConnectError)] if any part of the process failed to initiate
 pub async fn connect_enc<T>(
-    node_server: &ActorRef<super::NodeServer>,
+    node_server: &ActorRef<super::NodeServerMessage>,
     address: T,
     encryption_settings: tokio_rustls::TlsConnector,
     domain: rustls::ServerName,

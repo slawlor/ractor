@@ -23,7 +23,7 @@ use std::sync::{
 use dashmap::DashMap;
 
 use super::{actor_cell::ActorCell, messages::SupervisionEvent};
-use crate::{Actor, ActorId};
+use crate::ActorId;
 
 /// A supervision tree
 #[derive(Default)]
@@ -110,10 +110,7 @@ impl SupervisionTree {
     }
 
     /// Send a notification to all supervisors
-    pub fn notify_supervisor<TActor>(&self, evt: SupervisionEvent)
-    where
-        TActor: Actor,
-    {
+    pub fn notify_supervisor(&self, evt: SupervisionEvent) {
         if let Some(parent) = &*(self.supervisor.read().unwrap()) {
             let _ = parent.send_supervisor_evt(evt);
         }

@@ -111,13 +111,13 @@ impl ActorProperties {
         self.supervision.send(message).map_err(|e| e.into())
     }
 
-    pub fn send_message<TActor>(&self, message: TActor::Msg) -> Result<(), MessagingErr>
+    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr>
     where
-        TActor: Actor,
+        TMessage: Message,
     {
         // Only type-check messages of local actors, remote actors send serialized
         // payloads
-        if self.id.is_local() && self.type_id != std::any::TypeId::of::<TActor::Msg>() {
+        if self.id.is_local() && self.type_id != std::any::TypeId::of::<TMessage>() {
             return Err(MessagingErr::InvalidActorType);
         }
 

@@ -8,36 +8,36 @@
 use std::any::TypeId;
 use std::marker::PhantomData;
 
-use crate::{Actor, ActorName, MessagingErr, SupervisionEvent};
+use crate::{ActorName, Message, MessagingErr, SupervisionEvent};
 
 use super::ActorCell;
 
 /// An [ActorRef] is a strongly-typed wrapper over an [ActorCell]
 /// to provide some syntactic wrapping on the requirement to pass
 /// the actor type everywhere
-pub struct ActorRef<TActor>
+pub struct ActorRef<TMessage>
 where
-    TActor: Actor,
+    TMessage: Message,
 {
     pub(crate) inner: ActorCell,
-    _tactor: PhantomData<TActor>,
+    _tactor: PhantomData<TMessage>,
 }
 
-impl<TActor> Clone for ActorRef<TActor>
+impl<TMessage> Clone for ActorRef<TMessage>
 where
-    TActor: Actor,
+    TMessage: Message,
 {
     fn clone(&self) -> Self {
         ActorRef {
             inner: self.inner.clone(),
-            _tactor: PhantomData::<TActor>,
+            _tactor: PhantomData::<TMessage>,
         }
     }
 }
 
-impl<TActor> std::ops::Deref for ActorRef<TActor>
+impl<TMessage> std::ops::Deref for ActorRef<TMessage>
 where
-    TActor: Actor,
+    TMessage: Message,
 {
     type Target = ActorCell;
 
@@ -46,39 +46,39 @@ where
     }
 }
 
-impl<TActor> From<ActorCell> for ActorRef<TActor>
+impl<TMessage> From<ActorCell> for ActorRef<TMessage>
 where
-    TActor: Actor,
+    TMessage: Message,
 {
     fn from(value: ActorCell) -> Self {
         Self {
             inner: value,
-            _tactor: PhantomData::<TActor>,
+            _tactor: PhantomData::<TMessage>,
         }
     }
 }
 
 impl<TActor> From<ActorRef<TActor>> for ActorCell
 where
-    TActor: Actor,
+    TActor: Message,
 {
     fn from(value: ActorRef<TActor>) -> Self {
         value.inner
     }
 }
 
-impl<TActor> std::fmt::Debug for ActorRef<TActor>
+impl<TMessage> std::fmt::Debug for ActorRef<TMessage>
 where
-    TActor: Actor,
+    TMessage: Message,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.inner)
     }
 }
 
-impl<TActor> ActorRef<TActor>
+impl<TMessage> ActorRef<TMessage>
 where
-    TActor: Actor,
+    TMessage: Message,
 {
     /// Retrieve a cloned [ActorCell] representing this [ActorRef]
     pub fn get_cell(&self) -> ActorCell {
@@ -90,15 +90,15 @@ where
     /// * `message` - The message to send
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message(&self, message: TActor::Msg) -> Result<(), MessagingErr> {
-        self.inner.send_message::<TActor>(message)
+    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr> {
+        self.inner.send_message::<TMessage>(message)
     }
 
     /// Notify the supervisors that a supervision event occurred
     ///
     /// * `evt` - The event to send to this [crate::Actor]'s supervisors
     pub fn notify_supervisor(&self, evt: SupervisionEvent) {
-        self.inner.notify_supervisor::<TActor>(evt)
+        self.inner.notify_supervisor(evt)
     }
 
     // ========================== General Actor Operation Aliases ========================== //
@@ -108,10 +108,10 @@ where
     /// Try and retrieve a strongly-typed actor from the registry.
     ///
     /// Alias of [crate::registry::where_is]
-    pub fn where_is(name: ActorName) -> Option<ActorRef<TActor>> {
+    pub fn where_is(name: ActorName) -> Option<ActorRef<TMessage>> {
         if let Some(actor) = crate::registry::where_is(name) {
             // check the type id when pulling from the registry
-            if actor.inner.type_id == TypeId::of::<TActor::Msg>() {
+            if actor.inner.type_id == TypeId::of::<TMessage>() {
                 Some(actor.into())
             } else {
                 None

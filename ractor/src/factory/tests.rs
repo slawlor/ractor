@@ -54,11 +54,11 @@ struct TestWorker {
 impl Actor for TestWorker {
     type Msg = super::WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;
-    type Arguments = WorkerStartContext<TestKey, TestMessage, Self>;
+    type Arguments = WorkerStartContext<TestKey, TestMessage>;
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         startup_context: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(startup_context)
@@ -66,7 +66,7 @@ impl Actor for TestWorker {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -545,11 +545,11 @@ struct StuckWorker {
 impl Actor for StuckWorker {
     type Msg = super::WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;
-    type Arguments = WorkerStartContext<TestKey, TestMessage, Self>;
+    type Arguments = WorkerStartContext<TestKey, TestMessage>;
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         startup_context: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         self.counter.fetch_add(1, Ordering::Relaxed);
@@ -558,7 +558,7 @@ impl Actor for StuckWorker {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

@@ -28,14 +28,14 @@ async fn test_supervision_panic_in_post_startup() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn post_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             panic!("Boom");
@@ -49,14 +49,14 @@ async fn test_supervision_panic_in_post_startup() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -65,7 +65,7 @@ async fn test_supervision_panic_in_post_startup() {
 
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -115,14 +115,14 @@ async fn test_supervision_error_in_post_startup() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn post_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             Err(From::from("boom"))
@@ -136,14 +136,14 @@ async fn test_supervision_error_in_post_startup() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -152,7 +152,7 @@ async fn test_supervision_error_in_post_startup() {
 
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -202,14 +202,14 @@ async fn test_supervision_panic_in_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -224,14 +224,14 @@ async fn test_supervision_panic_in_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -240,7 +240,7 @@ async fn test_supervision_panic_in_handle() {
 
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -298,14 +298,14 @@ async fn test_supervision_error_in_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -320,14 +320,14 @@ async fn test_supervision_error_in_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -336,7 +336,7 @@ async fn test_supervision_error_in_handle() {
 
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -394,7 +394,7 @@ async fn test_supervision_panic_in_post_stop() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            myself: ActorRef<Self>,
+            myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             // trigger stop, which starts shutdown
@@ -403,7 +403,7 @@ async fn test_supervision_panic_in_post_stop() {
         }
         async fn post_stop(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             panic!("Boom");
@@ -417,14 +417,14 @@ async fn test_supervision_panic_in_post_stop() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -474,7 +474,7 @@ async fn test_supervision_error_in_post_stop() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            myself: ActorRef<Self>,
+            myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             // trigger stop, which starts shutdown
@@ -483,7 +483,7 @@ async fn test_supervision_error_in_post_stop() {
         }
         async fn post_stop(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             Err(From::from("boom"))
@@ -497,14 +497,14 @@ async fn test_supervision_error_in_post_stop() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -557,14 +557,14 @@ async fn test_supervision_panic_in_supervisor_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -579,14 +579,14 @@ async fn test_supervision_panic_in_supervisor_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle_supervisor_evt(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -604,14 +604,14 @@ async fn test_supervision_panic_in_supervisor_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -620,7 +620,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
 
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -698,14 +698,14 @@ async fn test_supervision_error_in_supervisor_handle() {
         type State = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -720,14 +720,14 @@ async fn test_supervision_error_in_supervisor_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle_supervisor_evt(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -745,14 +745,14 @@ async fn test_supervision_error_in_supervisor_handle() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -761,7 +761,7 @@ async fn test_supervision_error_in_supervisor_handle() {
 
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -834,7 +834,7 @@ async fn test_killing_a_supervisor_terminates_children() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -848,14 +848,14 @@ async fn test_killing_a_supervisor_terminates_children() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -904,13 +904,13 @@ async fn instant_supervised_spawns() {
         type Msg = ();
         type State = ();
         type Arguments = ();
-        async fn pre_start(&self, _: ActorRef<Self>, _: ()) -> Result<(), ActorProcessingErr> {
+        async fn pre_start(&self, _: ActorRef<Self::Msg>, _: ()) -> Result<(), ActorProcessingErr> {
             Ok(())
         }
 
         async fn handle_supervisor_evt(
             &self,
-            _: ActorRef<Self>,
+            _: ActorRef<Self::Msg>,
             _: SupervisionEvent,
             _: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -928,7 +928,7 @@ async fn instant_supervised_spawns() {
         type Arguments = Arc<AtomicU8>;
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             counter: Arc<AtomicU8>,
         ) -> Result<Self::State, ActorProcessingErr> {
             // delay startup by some amount
@@ -938,7 +938,7 @@ async fn instant_supervised_spawns() {
 
         async fn handle(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _message: String,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -998,14 +998,14 @@ async fn test_supervisor_captures_dead_childs_state() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(1)
         }
         async fn post_start(
             &self,
-            myself: ActorRef<Self>,
+            myself: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             myself.stop(None);
@@ -1020,14 +1020,14 @@ async fn test_supervisor_captures_dead_childs_state() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -1036,7 +1036,7 @@ async fn test_supervisor_captures_dead_childs_state() {
 
         async fn handle_supervisor_evt(
             &self,
-            this_actor: ActorRef<Self>,
+            this_actor: ActorRef<Self::Msg>,
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {

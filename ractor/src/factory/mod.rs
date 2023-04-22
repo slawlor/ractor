@@ -212,7 +212,7 @@ where
     TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
 {
     worker_builder: Box<dyn WorkerBuilder<TWorker>>,
-    pool: HashMap<WorkerId, WorkerProperties<TKey, TMsg, TWorker>>,
+    pool: HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
 
     messages: VecDeque<Job<TKey, TMsg>>,
     last_worker: WorkerId,
@@ -223,10 +223,9 @@ impl<TKey, TMsg, TWorker> FactoryState<TKey, TMsg, TWorker>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker:
-        Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg, TWorker>>,
+    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg>>,
 {
-    fn log_stats(&mut self, factory: &ActorRef<Factory<TKey, TMsg, TWorker>>) {
+    fn log_stats(&mut self, factory: &ActorRef<FactoryMessage<TKey, TMsg>>) {
         let factory_identifier = if let Some(factory_name) = factory.get_name() {
             format!("======== Factory {factory_name} stats ========\n")
         } else {
@@ -299,8 +298,7 @@ impl<TKey, TMsg, TWorker> Actor for Factory<TKey, TMsg, TWorker>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker:
-        Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg, TWorker>>,
+    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg>>,
 {
     type Msg = FactoryMessage<TKey, TMsg>;
     type State = FactoryState<TKey, TMsg, TWorker>;
@@ -308,7 +306,7 @@ where
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         builder: Box<dyn WorkerBuilder<TWorker>>,
     ) -> Result<Self::State, ActorProcessingErr> {
         // build the pool
@@ -361,7 +359,7 @@ where
 
     async fn post_stop(
         &self,
-        _: ActorRef<Self>,
+        _: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         // send the stop signal to all workers
@@ -379,7 +377,7 @@ where
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: FactoryMessage<TKey, TMsg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -539,7 +537,7 @@ where
 
     async fn handle_supervisor_evt(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

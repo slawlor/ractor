@@ -40,7 +40,7 @@ impl Actor for Publisher {
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         port: Arc<OutputPort<Output>>,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(port)
@@ -48,7 +48,7 @@ impl Actor for Publisher {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -79,7 +79,7 @@ impl Actor for Subscriber {
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
@@ -87,7 +87,7 @@ impl Actor for Subscriber {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

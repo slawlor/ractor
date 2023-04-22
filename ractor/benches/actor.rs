@@ -27,7 +27,7 @@ impl Actor for BenchActor {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         let _ = myself.cast(BenchActorMessage);
@@ -36,7 +36,7 @@ impl Actor for BenchActor {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _message: Self::Msg,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -162,7 +162,7 @@ fn process_messages(c: &mut Criterion) {
 
         async fn pre_start(
             &self,
-            myself: ActorRef<Self>,
+            myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             let _ = myself.cast(BenchActorMessage);
@@ -171,7 +171,7 @@ fn process_messages(c: &mut Criterion) {
 
         async fn handle(
             &self,
-            myself: ActorRef<Self>,
+            myself: ActorRef<Self::Msg>,
             _message: Self::Msg,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {

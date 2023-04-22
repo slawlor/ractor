@@ -20,8 +20,8 @@ use crate::concurrency::{
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
-use crate::ActorId;
 use crate::{Actor, ActorName, SpawnErr};
+use crate::{ActorId, Message};
 
 pub mod actor_ref;
 pub use actor_ref::ActorRef;
@@ -359,11 +359,11 @@ impl ActorCell {
     /// * `message` - The message to send
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message<TActor>(&self, message: TActor::Msg) -> Result<(), MessagingErr>
+    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr>
     where
-        TActor: Actor,
+        TMessage: Message,
     {
-        self.inner.send_message::<TActor>(message)
+        self.inner.send_message::<TMessage>(message)
     }
 
     /// Send a serialized binary message to the actor.
@@ -379,11 +379,8 @@ impl ActorCell {
     /// Notify the supervisors that a supervision event occurred
     ///
     /// * `evt` - The event to send to this [super::Actor]'s supervisors
-    pub fn notify_supervisor<TActor>(&self, evt: SupervisionEvent)
-    where
-        TActor: Actor,
-    {
-        self.inner.tree.notify_supervisor::<TActor>(evt)
+    pub fn notify_supervisor(&self, evt: SupervisionEvent) {
+        self.inner.tree.notify_supervisor(evt)
     }
 
     // ================== Test Utilities ================== //
