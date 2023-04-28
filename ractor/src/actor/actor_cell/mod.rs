@@ -20,6 +20,7 @@ use crate::concurrency::{
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
+use crate::RactorErr;
 use crate::{Actor, ActorName, SpawnErr};
 use crate::{ActorId, Message};
 
@@ -282,6 +283,9 @@ impl ActorCell {
             // Leave all + stop monitoring pg groups (if any)
             crate::pg::demonitor_all(self.get_id());
             crate::pg::leave_all(self.get_id());
+
+            // notify whoever might be waiting on the stop signal
+            self.inner.notify_stop_listener();
         }
 
         self.inner.set_status(status)
@@ -330,12 +334,62 @@ impl ActorCell {
         let _ = self.inner.send_signal(Signal::Kill);
     }
 
+    /// Kill this [super::Actor] forcefully (terminates async work)
+    /// and wait for the actor shutdown to complete
+    ///
+    /// * `timeout` - An optional timeout duration to wait for shutdown to occur
+    ///
+    /// Returns [Ok(())] upon the actor being stopped/shutdown. [Err(RactorErr::Messaging(_))] if the channel is closed
+    /// or dropped (which may indicate some other process is trying to shutdown this actor) or [Err(RactorErr::Timeout)]
+    /// if timeout was hit before the actor was successfully shut down (when set)
+    pub async fn kill_and_wait(
+        &self,
+        timeout: Option<crate::concurrency::Duration>,
+    ) -> Result<(), RactorErr> {
+        if let Some(to) = timeout {
+            match crate::concurrency::timeout(to, self.inner.send_signal_and_wait(Signal::Kill))
+                .await
+            {
+                Err(_) => Err(RactorErr::Timeout),
+                Ok(Err(e)) => Err(e.into()),
+                Ok(_) => Ok(()),
+            }
+        } else {
+            Ok(self.inner.send_signal_and_wait(Signal::Kill).await?)
+        }
+    }
+
     /// Stop this [super::Actor] gracefully (stopping message processing)
     ///
-    /// * `reason` - An optional static string reason why the stop is occurring
+    /// * `reason` - An optional string reason why the stop is occurring
     pub fn stop(&self, reason: Option<String>) {
         // ignore failures, since that means the actor is dead already
         let _ = self.inner.send_stop(reason);
+    }
+
+    /// Stop the [super::Actor] gracefully (stopping messaging processing)
+    /// and wait for the actor shutdown to complete
+    ///
+    /// * `reason` - An optional string reason why the stop is occurring
+    /// * `timeout` - An optional timeout duration to wait for shutdown to occur
+    ///
+    /// Returns [Ok(())] upon the actor being stopped/shutdown. [Err(RactorErr::Messaging(_))] if the channel is closed
+    /// or dropped (which may indicate some other process is trying to shutdown this actor) or [Err(RactorErr::Timeout)]
+    /// if timeout was hit before the actor was successfully shut down (when set)
+    pub async fn stop_and_wait(
+        &self,
+        reason: Option<String>,
+        timeout: Option<crate::concurrency::Duration>,
+    ) -> Result<(), RactorErr> {
+        if let Some(to) = timeout {
+            match crate::concurrency::timeout(to, self.inner.send_stop_and_wait(reason)).await {
+                Err(_) => Err(RactorErr::Timeout),
+                Ok(Err(e)) => Err(e.into()),
+                Ok(_) => Ok(()),
+            }
+        } else {
+            Ok(self.inner.send_stop_and_wait(reason).await?)
+        }
     }
 
     /// Send a supervisor event to the supervisory port

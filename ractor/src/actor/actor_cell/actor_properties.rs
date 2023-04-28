@@ -6,8 +6,6 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
-use crate::{concurrency as mpsc, Message};
-
 use crate::actor::messages::StopMessage;
 use crate::actor::supervision::SupervisionTree;
 use crate::concurrency::{
@@ -17,6 +15,7 @@ use crate::concurrency::{
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
+use crate::{concurrency as mpsc, Message};
 use crate::{Actor, ActorId, ActorName, ActorStatus, MessagingErr, Signal, SupervisionEvent};
 
 // The inner-properties of an Actor
@@ -24,6 +23,8 @@ pub(crate) struct ActorProperties {
     pub(crate) id: ActorId,
     pub(crate) name: Option<ActorName>,
     status: Arc<AtomicU8>,
+    wait_handler: Arc<mpsc::BroadcastSender<()>>,
+    _wait_handler_rx: mpsc::BroadcastReceiver<()>,
     pub(crate) signal: BoundedInputPort<Signal>,
     pub(crate) stop: BoundedInputPort<StopMessage>,
     pub(crate) supervision: InputPort<SupervisionEvent>,
@@ -67,12 +68,15 @@ impl ActorProperties {
         let (tx_stop, rx_stop) = mpsc::mpsc_bounded(2);
         let (tx_supervision, rx_supervision) = mpsc::mpsc_unbounded();
         let (tx_message, rx_message) = mpsc::mpsc_unbounded();
+        let (tx_shutdown, rx_shutdown) = mpsc::broadcast(2);
         (
             Self {
                 id,
                 name,
                 status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
                 signal: tx_signal,
+                wait_handler: Arc::new(tx_shutdown),
+                _wait_handler_rx: rx_shutdown,
                 stop: tx_stop,
                 supervision: tx_supervision,
                 message: tx_message,
@@ -139,5 +143,24 @@ impl ActorProperties {
     pub fn send_stop(&self, reason: Option<String>) -> Result<(), MessagingErr> {
         let msg = reason.map(StopMessage::Reason).unwrap_or(StopMessage::Stop);
         self.stop.try_send(msg).map_err(|e| e.into())
+    }
+
+    /// Send the stop signal, threading in a OneShot sender which notifies when the shutdown is completed
+    pub async fn send_stop_and_wait(&self, reason: Option<String>) -> Result<(), MessagingErr> {
+        let mut rx = self.wait_handler.subscribe();
+        self.send_stop(reason)?;
+        rx.recv().await.map_err(|_| MessagingErr::ChannelClosed)
+    }
+
+    /// Send the kill signal, threading in a OneShot sender which notifies when the shutdown is completed
+    pub async fn send_signal_and_wait(&self, signal: Signal) -> Result<(), MessagingErr> {
+        // first bind the wait handler
+        let mut rx = self.wait_handler.subscribe();
+        let _ = self.send_signal(signal);
+        rx.recv().await.map_err(|_| MessagingErr::ChannelClosed)
+    }
+
+    pub fn notify_stop_listener(&self) {
+        let _ = self.wait_handler.send(());
     }
 }

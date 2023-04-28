@@ -816,3 +816,59 @@ async fn instant_spawns() {
         .await
         .unwrap();
 }
+
+#[crate::concurrency::test]
+async fn stop_and_wait() {
+    struct SlowActor;
+    #[async_trait::async_trait]
+    impl Actor for SlowActor {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            crate::concurrency::sleep(Duration::from_millis(200)).await;
+            Ok(())
+        }
+    }
+    let (actor, handle) = Actor::spawn(None, SlowActor, ())
+        .await
+        .expect("Failed to spawn actor");
+    actor
+        .stop_and_wait(None, None)
+        .await
+        .expect("Failed to wait for actor death");
+    // the handle should be done and completed
+    assert!(handle.is_finished());
+}
+
+#[crate::concurrency::test]
+async fn kill_and_wait() {
+    struct SlowActor;
+    #[async_trait::async_trait]
+    impl Actor for SlowActor {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            crate::concurrency::sleep(Duration::from_millis(200)).await;
+            Ok(())
+        }
+    }
+    let (actor, handle) = Actor::spawn(None, SlowActor, ())
+        .await
+        .expect("Failed to spawn actor");
+    actor
+        .kill_and_wait(None)
+        .await
+        .expect("Failed to wait for actor death");
+    // the handle should be done and completed
+    assert!(handle.is_finished());
+}

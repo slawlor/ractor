@@ -446,10 +446,10 @@ impl NodeSession {
         state: &mut NodeSessionState,
         message: control_protocol::ControlMessage,
         myself: ActorRef<super::NodeSessionMessage>,
-    ) {
+    ) -> Result<(), ActorProcessingErr> {
         if !state.auth.is_ok() {
             log::warn!("Control message received on unauthenticated NodeSession");
-            return;
+            return Ok(());
         }
 
         if let Some(msg) = message.msg {
@@ -474,7 +474,9 @@ impl NodeSession {
                 control_protocol::control_message::Msg::Terminate(termination) => {
                     for pid in termination.ids {
                         if let Some(actor) = state.remote_actors.remove(&pid) {
-                            actor.stop(Some("remote".to_string()));
+                            actor
+                                .stop_and_wait(Some("remote".to_string()), None)
+                                .await?;
                             log::debug!(
                                 "Actor {} on node {} exited, terminating local `RemoteActor` {}",
                                 pid,
@@ -542,17 +544,9 @@ impl NodeSession {
                 }
                 control_protocol::control_message::Msg::PgLeave(leave) => {
                     let mut cells = vec![];
-                    for control_protocol::Actor { name, pid } in leave.actors {
-                        match self
-                            .get_or_spawn_remote_actor(&myself, name, pid, state)
-                            .await
-                        {
-                            Ok(actor) => {
-                                cells.push(actor.get_cell());
-                            }
-                            Err(spawn_err) => {
-                                log::error!("Failed to spawn remote actor with '{}'", spawn_err);
-                            }
+                    for control_protocol::Actor { pid, .. } in leave.actors {
+                        if let Some(actor) = state.remote_actors.get(&pid) {
+                            cells.push(actor.get_cell());
                         }
                     }
                     // join the remote actors to the local PG group
@@ -640,6 +634,7 @@ impl NodeSession {
                 }
             }
         }
+        Ok(())
     }
 
     /// Called once the session is authenticated
@@ -924,7 +919,7 @@ impl Actor for NodeSession {
                         crate::protocol::meta::network_message::Message::Control(
                             control_message,
                         ) => {
-                            self.handle_control(state, control_message, myself).await;
+                            self.handle_control(state, control_message, myself).await?;
                         }
                     }
                 }
@@ -994,7 +989,9 @@ impl Actor for NodeSession {
                         state.name,
                         maybe_reason
                     );
-                    actor.stop(Some("remote_exit".to_string()));
+                    actor
+                        .stop_and_wait(Some("remote_exit".to_string()), None)
+                        .await?;
                 } else {
                     log::warn!("NodeSession {:?} received an unknown child actor exit event from {} - '{:?}'",
                         state.name,
