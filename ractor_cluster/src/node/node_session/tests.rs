@@ -741,7 +741,8 @@ async fn node_session_handle_control() {
             },
             session_ref.clone(),
         )
-        .await;
+        .await
+        .expect("Failed to process control message");
     assert_eq!(1, state.remote_actors.len());
 
     // check terminate cleans up a remote actor
@@ -755,7 +756,8 @@ async fn node_session_handle_control() {
             },
             session_ref.clone(),
         )
-        .await;
+        .await
+        .expect("Failed to process control message");
     assert_eq!(0, state.remote_actors.len());
 
     let group_name = "node_session_handle_control";
@@ -777,7 +779,8 @@ async fn node_session_handle_control() {
             },
             session_ref.clone(),
         )
-        .await;
+        .await
+        .expect("Failed to process control message");
     assert_eq!(1, state.remote_actors.len());
     let id_set = ractor::pg::get_members(&group_name.to_string())
         .into_iter()
@@ -805,7 +808,8 @@ async fn node_session_handle_control() {
             },
             session_ref.clone(),
         )
-        .await;
+        .await
+        .expect("Failed to process control message");
     assert_eq!(1, state.remote_actors.len());
     let id_set = ractor::pg::get_members(&group_name.to_string())
         .into_iter()
@@ -826,7 +830,8 @@ async fn node_session_handle_control() {
             },
             session_ref.clone(),
         )
-        .await;
+        .await
+        .expect("Failed to process control message");
 
     // TODO: ping? for healthchecks
 

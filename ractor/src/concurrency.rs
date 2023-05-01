@@ -24,6 +24,11 @@ pub type MpscUnboundedSender<T> = tokio::sync::mpsc::UnboundedSender<T>;
 /// A bounded MP;SC receiver
 pub type MpscUnboundedReceiver<T> = tokio::sync::mpsc::UnboundedReceiver<T>;
 
+/// A bounded broadcast sender
+pub type BroadcastSender<T> = tokio::sync::broadcast::Sender<T>;
+/// A bounded broadcast receiver
+pub type BroadcastReceiver<T> = tokio::sync::broadcast::Receiver<T>;
+
 /// MPSC bounded channel
 pub fn mpsc_bounded<T>(buffer: usize) -> (MpscSender<T>, MpscReceiver<T>) {
     tokio::sync::mpsc::channel(buffer)
@@ -37,6 +42,11 @@ pub fn mpsc_unbounded<T>() -> (MpscUnboundedSender<T>, MpscUnboundedReceiver<T>)
 /// Oneshot channel
 pub fn oneshot<T>() -> (OneshotSender<T>, OneshotReceiver<T>) {
     tokio::sync::oneshot::channel()
+}
+
+/// Broadcast channel
+pub fn broadcast<T: Clone>(buffer: usize) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+    tokio::sync::broadcast::channel(buffer)
 }
 
 // =============== TOKIO =============== //

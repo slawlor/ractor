@@ -477,13 +477,13 @@ where
             // notify supervisors of the actor's death
             myself.notify_supervisor(evt);
 
-            // set status to stopped
-            myself.set_status(ActorStatus::Stopped);
-
             // unlink superisors
             if let Some(sup) = supervisor {
                 myself.unlink(sup);
             }
+
+            // set status to stopped
+            myself.set_status(ActorStatus::Stopped);
         });
 
         Ok((myself_ret, handle))
