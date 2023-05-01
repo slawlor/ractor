@@ -40,7 +40,7 @@ You generally have 2 choice for timed operations with actors, a "delay" (`send_a
 
 ```rust
 
-async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+async fn handle(&self, myself: ActorRef<Self::Msg>, message: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
     match message {
         Self::Msg::DoSomething => {
             do_something().await;

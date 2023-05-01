@@ -51,7 +51,7 @@ impl Actor for MyFirstActor {
     type Msg = MyFirstActorMessage;
     type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>, arguments: Self::Arguments)
+    async fn pre_start(&self, myself: ActorRef<Self::Msg>, arguments: Self::Arguments)
         -> Result<Self::State, ActorProcessingErr> 
     {
         Ok(())
@@ -81,13 +81,13 @@ impl Actor for MyFirstActor {
     type Msg = MyFirstActorMessage;
     type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>, arguments: Self::Arguments)
+    async fn pre_start(&self, myself: ActorRef<Self::Msg>, arguments: Self::Arguments)
         -> Result<Self::State, ActorProcessingErr>
     {
         Ok(())
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) 
+    async fn handle(&self, myself: ActorRef<Self::Msg>, message: Self::Msg, state: &mut Self::State) 
         -> Result<(), ActorProcessingErr>
     {
         match message {
@@ -153,13 +153,13 @@ impl Actor for MyFirstActor {
     type Msg = MyFirstActorMessage;
     type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self>, arguments: Self::Arguments)
+    async fn pre_start(&self, myself: ActorRef<Self::Msg>, arguments: Self::Arguments)
         -> Result<Self::State, ActorProcessingErr>
     {
         Ok(0)
     }
 
-    async fn handle(&self, myself: ActorRef<Self>, message: Self::Msg, state: &mut Self::State) 
+    async fn handle(&self, myself: ActorRef<Self::Msg>, message: Self::Msg, state: &mut Self::State) 
         -> Result<(), ActorProcessingErr>
     {
         match message {
