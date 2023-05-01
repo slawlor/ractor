@@ -27,7 +27,7 @@ use tokio::time::{Duration, Instant};
 
 enum ForkMessage {
     /// Request the fork be sent to a philosopher
-    RequestFork(ActorRef<Philosopher>),
+    RequestFork(ActorRef<PhilosopherMessage>),
     /// Mark the fork as currently being used
     UsingFork(ActorId),
     /// Sent to a fork to indicate that it was put down and no longer is in use. This will
@@ -41,7 +41,7 @@ struct ForkState {
     /// Flag to identify if the fork is clean or not
     clean: bool,
     /// The actor who currently owns the fork
-    owned_by: Option<ActorRef<Philosopher>>,
+    owned_by: Option<ActorRef<PhilosopherMessage>>,
     // A backlog of messages which get queue'd up in a state transition
     backlog: VecDeque<ForkMessage>,
 }
@@ -51,7 +51,7 @@ struct Fork;
 impl Fork {
     fn handle_internal(
         &self,
-        myself: &ActorRef<Self>,
+        myself: &ActorRef<ForkMessage>,
         message: ForkMessage,
         state: &mut ForkState,
     ) -> Option<ForkMessage> {
@@ -116,7 +116,7 @@ impl Actor for Fork {
     type Arguments = ();
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(Self::State {
@@ -128,7 +128,7 @@ impl Actor for Fork {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -164,7 +164,7 @@ enum PhilosopherMode {
 
 struct PhilosophersFork {
     /// The pointer to the fork actor
-    fork: ActorRef<Fork>,
+    fork: ActorRef<ForkMessage>,
     /// Does this philosopher currently have this fork?
     has: bool,
     /// Has the philosopher requested this fork?
@@ -201,7 +201,11 @@ struct PhilosopherState {
 }
 
 impl PhilosopherState {
-    fn new(left: ActorRef<Fork>, right: ActorRef<Fork>, time_slice: Duration) -> Self {
+    fn new(
+        left: ActorRef<ForkMessage>,
+        right: ActorRef<ForkMessage>,
+        time_slice: Duration,
+    ) -> Self {
         Self {
             mode: PhilosopherMode::Thinking,
             left: PhilosophersFork {
@@ -247,15 +251,15 @@ impl ractor::Message for PhilosopherMessage {}
 
 struct PhilosopherArguments {
     time_slice: Duration,
-    left: ActorRef<Fork>,
-    right: ActorRef<Fork>,
+    left: ActorRef<ForkMessage>,
+    right: ActorRef<ForkMessage>,
 }
 
 struct Philosopher;
 
 impl Philosopher {
     /// Helper method to set the internal state to begin thinking
-    fn begin_thinking(&self, myself: &ActorRef<Self>, state: &mut PhilosopherState) {
+    fn begin_thinking(&self, myself: &ActorRef<PhilosopherMessage>, state: &mut PhilosopherState) {
         state.mode = PhilosopherMode::Thinking;
         state.metrics.state_change_count += 1;
         state.metrics.time_eating += Instant::elapsed(&state.last_state_change);
@@ -270,7 +274,7 @@ impl Philosopher {
     }
 
     /// Helper command to set the internal state to begin eating
-    fn begin_eating(&self, myself: &ActorRef<Self>, state: &mut PhilosopherState) {
+    fn begin_eating(&self, myself: &ActorRef<PhilosopherMessage>, state: &mut PhilosopherState) {
         state.metrics.time_hungry += Instant::elapsed(&state.last_state_change);
         state.last_state_change = Instant::now();
         state.mode = PhilosopherMode::Eating;
@@ -296,7 +300,11 @@ impl Philosopher {
     }
 
     /// Helper command to request any forks which are missing
-    fn request_missing_forks(&self, myself: &ActorRef<Self>, state: &mut PhilosopherState) {
+    fn request_missing_forks(
+        &self,
+        myself: &ActorRef<PhilosopherMessage>,
+        state: &mut PhilosopherState,
+    ) {
         if !state.left.has && !state.left.requested {
             state.left.requested = true;
             let _ = state
@@ -321,7 +329,7 @@ impl Actor for Philosopher {
     type Arguments = PhilosopherArguments;
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         args: PhilosopherArguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         // initialize the simulation by making the philosopher's hungry
@@ -331,7 +339,7 @@ impl Actor for Philosopher {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

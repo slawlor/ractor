@@ -13,6 +13,7 @@ use std::sync::{
 use ractor::concurrency::sleep;
 
 use crate::node::NodeConnectionMode;
+use crate::NodeSessionMessage;
 
 use super::*;
 
@@ -24,14 +25,14 @@ impl Actor for DummyNodeServer {
     type Arguments = ();
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
     }
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -63,14 +64,14 @@ impl Actor for DummyNodeSession {
     type Arguments = ();
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())
     }
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _message: Self::Msg,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -87,8 +88,8 @@ async fn node_sesison_client_auth_success() {
         .await
         .expect("Failed to start dummy node session");
 
-    let server_ref: ActorRef<super::NodeServer> = dummy_server.get_cell().into();
-    let session_ref: ActorRef<super::NodeSession> = dummy_session.get_cell().into();
+    let server_ref: ActorRef<super::NodeServerMessage> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<NodeSessionMessage> = dummy_session.get_cell().into();
 
     // Do NOT do what we do here, converting the ActorRef -> ActorCell -> ActorRef on wrong struct but with correct message type. This will work
     // but is very dangerous outside of tests
@@ -231,8 +232,8 @@ async fn node_session_client_auth_session_state_failures() {
         .await
         .expect("Failed to start dummy node session");
 
-    let server_ref: ActorRef<super::NodeServer> = dummy_server.get_cell().into();
-    let session_ref: ActorRef<super::NodeSession> = dummy_session.get_cell().into();
+    let server_ref: ActorRef<super::NodeServerMessage> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<NodeSessionMessage> = dummy_session.get_cell().into();
 
     // Do NOT do what we do here, converting the ActorRef -> ActorCell -> ActorRef on wrong struct but with correct message type. This will work
     // but is very dangerous outside of tests
@@ -359,8 +360,8 @@ async fn node_session_server_auth_success() {
         .await
         .expect("Failed to start dummy node session");
 
-    let server_ref: ActorRef<super::NodeServer> = dummy_server.get_cell().into();
-    let session_ref: ActorRef<super::NodeSession> = dummy_session.get_cell().into();
+    let server_ref: ActorRef<super::NodeServerMessage> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<NodeSessionMessage> = dummy_session.get_cell().into();
 
     // Do NOT do what we do here, converting the ActorRef -> ActorCell -> ActorRef on wrong struct but with correct message type. This will work
     // but is very dangerous outside of tests
@@ -453,8 +454,8 @@ async fn node_session_server_auth_session_state_failures() {
         .await
         .expect("Failed to start dummy node session");
 
-    let server_ref: ActorRef<super::NodeServer> = dummy_server.get_cell().into();
-    let session_ref: ActorRef<super::NodeSession> = dummy_session.get_cell().into();
+    let server_ref: ActorRef<super::NodeServerMessage> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<NodeSessionMessage> = dummy_session.get_cell().into();
 
     // Do NOT do what we do here, converting the ActorRef -> ActorCell -> ActorRef on wrong struct but with correct message type. This will work
     // but is very dangerous outside of tests
@@ -546,7 +547,7 @@ async fn node_session_handle_node_msg() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -554,7 +555,7 @@ async fn node_session_handle_node_msg() {
 
         async fn handle_serialized(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             message: SerializedMessage,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -583,8 +584,8 @@ async fn node_session_handle_node_msg() {
         .await
         .expect("Failed to start dummy node session");
 
-    let server_ref: ActorRef<super::NodeServer> = dummy_server.get_cell().into();
-    let session_ref: ActorRef<super::NodeSession> = dummy_session.get_cell().into();
+    let server_ref: ActorRef<super::NodeServerMessage> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<NodeSessionMessage> = dummy_session.get_cell().into();
 
     let test_pid = ActorId::Remote {
         node_id: 1,
@@ -697,8 +698,8 @@ async fn node_session_handle_control() {
         .await
         .expect("Failed to start dummy node session");
 
-    let server_ref: ActorRef<super::NodeServer> = dummy_server.get_cell().into();
-    let session_ref: ActorRef<super::NodeSession> = dummy_session.get_cell().into();
+    let server_ref: ActorRef<super::NodeServerMessage> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<NodeSessionMessage> = dummy_session.get_cell().into();
 
     // Do NOT do what we do here, converting the ActorRef -> ActorCell -> ActorRef on wrong struct but with correct message type. This will work
     // but is very dangerous outside of tests

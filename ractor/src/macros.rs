@@ -39,13 +39,13 @@ macro_rules! cast {
 ///     type Arguments = ();
 ///     type State = ();
 ///
-///     async fn pre_start(&self, _this_actor: ActorRef<Self>, _: ()) -> Result<Self::State, ActorProcessingErr> {
+///     async fn pre_start(&self, _this_actor: ActorRef<Self::Msg>, _: ()) -> Result<Self::State, ActorProcessingErr> {
 ///         Ok(())
 ///     }
 ///
 ///     async fn handle(
 ///         &self,
-///         _this_actor: ActorRef<Self>,
+///         _this_actor: ActorRef<Self::Msg>,
 ///         message: Self::Msg,
 ///         _state: &mut Self::State,
 ///     ) -> Result<(), ActorProcessingErr> {
@@ -120,13 +120,13 @@ macro_rules! call {
 ///     type Arguments = ();
 ///     type State = ();
 ///
-///     async fn pre_start(&self, _this_actor: ActorRef<Self>, _: ()) -> Result<Self::State, ActorProcessingErr> {
+///     async fn pre_start(&self, _this_actor: ActorRef<Self::Msg>, _: ()) -> Result<Self::State, ActorProcessingErr> {
 ///         Ok(())
 ///     }
 ///
 ///     async fn handle(
 ///         &self,
-///         _this_actor: ActorRef<Self>,
+///         _this_actor: ActorRef<Self::Msg>,
 ///         message: Self::Msg,
 ///         _state: &mut Self::State,
 ///     ) -> Result<(), ActorProcessingErr> {

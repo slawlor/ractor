@@ -21,7 +21,7 @@ async fn test_basic_registation() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -35,7 +35,7 @@ async fn test_basic_registation() {
     assert!(crate::registry::where_is("my_actor".to_string()).is_some());
 
     // Coverage for Issue #70
-    assert!(crate::ActorRef::<EmptyActor>::where_is("my_actor".to_string()).is_some());
+    assert!(crate::ActorRef::<()>::where_is("my_actor".to_string()).is_some());
 
     actor.stop(None);
     handle.await.expect("Failed to clean stop the actor");
@@ -53,7 +53,7 @@ async fn test_duplicate_registration() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -100,7 +100,7 @@ async fn test_actor_registry_unenrollment() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -146,7 +146,7 @@ mod pid_registry_tests {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -163,7 +163,7 @@ mod pid_registry_tests {
             type Arguments = ();
             async fn pre_start(
                 &self,
-                _this_actor: crate::ActorRef<Self>,
+                _this_actor: crate::ActorRef<Self::Msg>,
                 _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 Ok(())
@@ -210,7 +210,7 @@ mod pid_registry_tests {
 
             async fn pre_start(
                 &self,
-                _this_actor: crate::ActorRef<Self>,
+                _this_actor: crate::ActorRef<Self::Msg>,
                 _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 Ok(())
@@ -243,7 +243,7 @@ mod pid_registry_tests {
 
             async fn pre_start(
                 &self,
-                _this_actor: crate::ActorRef<Self>,
+                _this_actor: crate::ActorRef<Self::Msg>,
                 _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 Ok(())
@@ -286,7 +286,7 @@ mod pid_registry_tests {
 
             async fn pre_start(
                 &self,
-                _myself: crate::ActorRef<Self>,
+                _myself: crate::ActorRef<Self::Msg>,
                 _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 Ok(())
@@ -305,7 +305,7 @@ mod pid_registry_tests {
 
             async fn pre_start(
                 &self,
-                myself: crate::ActorRef<Self>,
+                myself: crate::ActorRef<Self::Msg>,
                 _: (),
             ) -> Result<Self::State, ActorProcessingErr> {
                 monitor(myself.into());
@@ -314,7 +314,7 @@ mod pid_registry_tests {
 
             async fn handle_supervisor_evt(
                 &self,
-                _myself: crate::ActorRef<Self>,
+                _myself: crate::ActorRef<Self::Msg>,
                 message: SupervisionEvent,
                 _state: &mut Self::State,
             ) -> Result<(), ActorProcessingErr> {

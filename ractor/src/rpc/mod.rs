@@ -12,7 +12,7 @@
 
 use crate::concurrency::{self, Duration, JoinHandle};
 
-use crate::{Actor, ActorCell, ActorRef, MessagingErr, RpcReplyPort};
+use crate::{ActorCell, ActorRef, Message, MessagingErr, RpcReplyPort};
 
 pub mod call_result;
 pub use call_result::CallResult;
@@ -26,11 +26,11 @@ mod tests;
 /// * `msg` - The message to send to the actor
 ///
 /// Returns [Ok(())] upon successful send, [Err(MessagingErr)] otherwise
-pub fn cast<TActor>(actor: &ActorCell, msg: TActor::Msg) -> Result<(), MessagingErr>
+pub fn cast<TMessage>(actor: &ActorCell, msg: TMessage) -> Result<(), MessagingErr>
 where
-    TActor: Actor,
+    TMessage: Message,
 {
-    actor.send_message::<TActor>(msg)
+    actor.send_message::<TMessage>(msg)
 }
 
 /// Sends an asynchronous request to the specified actor, building a one-time
@@ -43,21 +43,21 @@ where
 ///
 /// Returns [Ok(CallResult)] upon successful initial sending with the reply from
 /// the [crate::Actor], [Err(MessagingErr)] if the initial send operation failed
-pub async fn call<TActor, TReply, TMsgBuilder>(
+pub async fn call<TMessage, TReply, TMsgBuilder>(
     actor: &ActorCell,
     msg_builder: TMsgBuilder,
     timeout_option: Option<Duration>,
 ) -> Result<CallResult<TReply>, MessagingErr>
 where
-    TActor: Actor,
-    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
+    TMessage: Message,
+    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
 {
     let (tx, rx) = concurrency::oneshot();
     let port: RpcReplyPort<TReply> = match timeout_option {
         Some(duration) => (tx, duration).into(),
         None => tx.into(),
     };
-    actor.send_message::<TActor>(msg_builder(port))?;
+    actor.send_message::<TMessage>(msg_builder(port))?;
 
     // wait for the reply
     Ok(if let Some(duration) = timeout_option {
@@ -85,15 +85,15 @@ where
 ///
 /// Returns [Ok(`Vec<CallResult<TReply>>>`)] upon successful initial sending with the reply from
 /// the [crate::Actor]s, [Err(MessagingErr)] if the initial send operation failed
-pub async fn multi_call<TActor, TReply, TMsgBuilder>(
+pub async fn multi_call<TMessage, TReply, TMsgBuilder>(
     actors: &[ActorCell],
     msg_builder: TMsgBuilder,
     timeout_option: Option<Duration>,
 ) -> Result<Vec<CallResult<TReply>>, MessagingErr>
 where
-    TActor: Actor,
+    TMessage: Message,
     TReply: Send + 'static,
-    TMsgBuilder: Fn(RpcReplyPort<TReply>) -> TActor::Msg,
+    TMsgBuilder: Fn(RpcReplyPort<TReply>) -> TMessage,
 {
     let mut rx_ports = Vec::with_capacity(actors.len());
     // send to all actors
@@ -103,7 +103,7 @@ where
             Some(duration) => (tx, duration).into(),
             None => tx.into(),
         };
-        actor.send_message::<TActor>(msg_builder(port))?;
+        actor.send_message::<TMessage>(msg_builder(port))?;
         rx_ports.push(rx);
     }
 
@@ -161,7 +161,7 @@ where
 ///
 /// Returns: A [JoinHandle<CallResult<()>>] which can be awaited to see if the
 /// forward was successful or ignored
-pub fn call_and_forward<TActor, TForwardActor, TReply, TMsgBuilder, FwdMapFn>(
+pub fn call_and_forward<TMessage, TForwardMessage, TReply, TMsgBuilder, FwdMapFn>(
     actor: &ActorCell,
     msg_builder: TMsgBuilder,
     response_forward: ActorCell,
@@ -169,18 +169,18 @@ pub fn call_and_forward<TActor, TForwardActor, TReply, TMsgBuilder, FwdMapFn>(
     timeout_option: Option<Duration>,
 ) -> Result<JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
 where
-    TActor: Actor,
+    TMessage: Message,
     TReply: Send + 'static,
-    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
-    TForwardActor: Actor,
-    FwdMapFn: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,
+    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
+    TForwardMessage: Message,
+    FwdMapFn: FnOnce(TReply) -> TForwardMessage + Send + 'static,
 {
     let (tx, rx) = concurrency::oneshot();
     let port: RpcReplyPort<TReply> = match timeout_option {
         Some(duration) => (tx, duration).into(),
         None => tx.into(),
     };
-    actor.send_message::<TActor>(msg_builder(port))?;
+    actor.send_message::<TMessage>(msg_builder(port))?;
 
     // wait for the reply
     Ok(crate::concurrency::spawn(async move {
@@ -196,20 +196,17 @@ where
                 Err(_send_err) => CallResult::SenderError,
             }
         }
-        .map(|msg| response_forward.send_message::<TForwardActor>(forward_mapping(msg)))
+        .map(|msg| response_forward.send_message::<TForwardMessage>(forward_mapping(msg)))
     }))
 }
 
-impl<TActor> ActorRef<TActor>
+impl<TMessage> ActorRef<TMessage>
 where
-    TActor: Actor,
+    TMessage: Message,
 {
     /// Alias of [cast]
-    pub fn cast(&self, msg: TActor::Msg) -> Result<(), MessagingErr>
-    where
-        TActor: Actor,
-    {
-        cast::<TActor>(&self.inner, msg)
+    pub fn cast(&self, msg: TMessage) -> Result<(), MessagingErr> {
+        cast::<TMessage>(&self.inner, msg)
     }
 
     /// Alias of [call]
@@ -219,26 +216,26 @@ where
         timeout_option: Option<Duration>,
     ) -> Result<CallResult<TReply>, MessagingErr>
     where
-        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
+        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
     {
-        call::<TActor, TReply, TMsgBuilder>(&self.inner, msg_builder, timeout_option).await
+        call::<TMessage, TReply, TMsgBuilder>(&self.inner, msg_builder, timeout_option).await
     }
 
     /// Alias of [call_and_forward]
-    pub fn call_and_forward<TReply, TForwardActor, TMsgBuilder, TFwdMessageBuilder>(
+    pub fn call_and_forward<TReply, TForwardMessage, TMsgBuilder, TFwdMessageBuilder>(
         &self,
         msg_builder: TMsgBuilder,
-        response_forward: &ActorRef<TForwardActor>,
+        response_forward: &ActorRef<TForwardMessage>,
         forward_mapping: TFwdMessageBuilder,
         timeout_option: Option<Duration>,
     ) -> Result<crate::concurrency::JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
     where
         TReply: Send + 'static,
-        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TActor::Msg,
-        TForwardActor: Actor,
-        TFwdMessageBuilder: FnOnce(TReply) -> TForwardActor::Msg + Send + 'static,
+        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
+        TForwardMessage: Message,
+        TFwdMessageBuilder: FnOnce(TReply) -> TForwardMessage + Send + 'static,
     {
-        call_and_forward::<TActor, TForwardActor, TReply, TMsgBuilder, TFwdMessageBuilder>(
+        call_and_forward::<TMessage, TForwardMessage, TReply, TMsgBuilder, TFwdMessageBuilder>(
             &self.inner,
             msg_builder,
             response_forward.inner.clone(),

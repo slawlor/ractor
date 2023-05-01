@@ -34,7 +34,7 @@ async fn test_panic_on_start_captured() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             panic!("Boom!");
@@ -57,7 +57,7 @@ async fn test_error_on_start_captured() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Err(From::from("boom"))
@@ -84,7 +84,7 @@ async fn test_stop_higher_priority_over_messages() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -92,7 +92,7 @@ async fn test_stop_higher_priority_over_messages() {
 
         async fn handle(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -158,7 +158,7 @@ async fn test_kill_terminates_work() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -166,7 +166,7 @@ async fn test_kill_terminates_work() {
 
         async fn handle(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -203,7 +203,7 @@ async fn test_stop_does_not_terminate_async_work() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -211,7 +211,7 @@ async fn test_stop_does_not_terminate_async_work() {
 
         async fn handle(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -255,7 +255,7 @@ async fn test_kill_terminates_supervision_work() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -263,7 +263,7 @@ async fn test_kill_terminates_supervision_work() {
 
         async fn handle_supervisor_evt(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -303,7 +303,7 @@ async fn test_sending_message_to_invalid_actor_type() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -320,7 +320,7 @@ async fn test_sending_message_to_invalid_actor_type() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -337,7 +337,7 @@ async fn test_sending_message_to_invalid_actor_type() {
     // check that actor 2 can't receive a message for actor 1 type
     assert!(actor2
         .get_cell()
-        .send_message::<TestActor1>(TestMessage1)
+        .send_message::<TestMessage1>(TestMessage1)
         .is_err());
 
     actor1.stop(None);
@@ -359,7 +359,7 @@ async fn test_sending_message_to_dead_actor() {
 
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -415,7 +415,7 @@ async fn test_serialized_cast() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -423,7 +423,7 @@ async fn test_serialized_cast() {
 
         async fn handle(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _message: TestMessage,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -542,7 +542,7 @@ async fn test_serialized_rpc() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -550,7 +550,7 @@ async fn test_serialized_rpc() {
 
         async fn handle(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             message: TestMessage,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -613,7 +613,7 @@ async fn test_remote_actor() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -648,7 +648,7 @@ async fn test_remote_actor() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -656,7 +656,7 @@ async fn test_remote_actor() {
 
         async fn handle(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _message: TestRemoteMessage,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -665,7 +665,7 @@ async fn test_remote_actor() {
 
         async fn handle_serialized(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _message: SerializedMessage,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -718,7 +718,7 @@ async fn spawning_local_actor_as_remote_fails() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -733,7 +733,7 @@ async fn spawning_local_actor_as_remote_fails() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -772,7 +772,7 @@ async fn instant_spawns() {
         type Arguments = Arc<AtomicU8>;
         async fn pre_start(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             counter: Arc<AtomicU8>,
         ) -> Result<Self::State, ActorProcessingErr> {
             // delay startup by some amount
@@ -782,7 +782,7 @@ async fn instant_spawns() {
 
         async fn handle(
             &self,
-            _this_actor: crate::ActorRef<Self>,
+            _this_actor: crate::ActorRef<Self::Msg>,
             _message: String,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {

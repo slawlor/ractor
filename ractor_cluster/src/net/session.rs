@@ -54,19 +54,19 @@ async fn read_n_bytes(stream: &mut ActorReadHalf, len: usize) -> Result<Vec<u8>,
 /// The [Session] actor supervises two child actors, [SessionReader] and [SessionWriter]. Should
 /// either the reader or writer exit, they will terminate the entire session.
 pub struct Session {
-    pub(crate) handler: ActorRef<crate::node::NodeSession>,
+    pub(crate) handler: ActorRef<crate::node::NodeSessionMessage>,
     pub(crate) peer_addr: SocketAddr,
     pub(crate) local_addr: SocketAddr,
 }
 
 impl Session {
     pub(crate) async fn spawn_linked(
-        handler: ActorRef<crate::node::NodeSession>,
+        handler: ActorRef<crate::node::NodeSessionMessage>,
         stream: super::NetworkStream,
         peer_addr: SocketAddr,
         local_addr: SocketAddr,
         supervisor: ActorCell,
-    ) -> Result<ActorRef<Self>, SpawnErr> {
+    ) -> Result<ActorRef<SessionMessage>, SpawnErr> {
         match Actor::spawn_linked(
             None,
             Session {
@@ -103,8 +103,8 @@ pub enum SessionMessage {
 
 /// The node session's state
 pub struct SessionState {
-    writer: ActorRef<SessionWriter>,
-    reader: ActorRef<SessionReader>,
+    writer: ActorRef<SessionWriterMessage>,
+    reader: ActorRef<SessionReaderMessage>,
 }
 
 #[async_trait::async_trait]
@@ -115,7 +115,7 @@ impl Actor for Session {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         stream: super::NetworkStream,
     ) -> Result<Self::State, ActorProcessingErr> {
         let (read, write) = match stream {
@@ -158,7 +158,7 @@ impl Actor for Session {
 
     async fn post_stop(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         log::info!("TCP Session closed for {}", self.peer_addr);
@@ -167,7 +167,7 @@ impl Actor for Session {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -198,7 +198,7 @@ impl Actor for Session {
 
     async fn handle_supervisor_evt(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -306,7 +306,7 @@ impl Actor for SessionWriter {
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         writer: ActorWriteHalf,
     ) -> Result<Self::State, ActorProcessingErr> {
         // OK we've established connection, now we can process requests
@@ -318,7 +318,7 @@ impl Actor for SessionWriter {
 
     async fn post_stop(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         // drop the channel to close it should we be exiting
@@ -328,7 +328,7 @@ impl Actor for SessionWriter {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -366,7 +366,7 @@ impl Actor for SessionWriter {
 // ========================= Node Session reader ========================= //
 
 struct SessionReader {
-    session: ActorRef<Session>,
+    session: ActorRef<SessionMessage>,
 }
 
 /// The node connection messages
@@ -392,7 +392,7 @@ impl Actor for SessionReader {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         reader: ActorReadHalf,
     ) -> Result<Self::State, ActorProcessingErr> {
         // start waiting for the first object on the network
@@ -404,7 +404,7 @@ impl Actor for SessionReader {
 
     async fn post_stop(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         // drop the channel to close it should we be exiting
@@ -414,7 +414,7 @@ impl Actor for SessionReader {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

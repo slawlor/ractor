@@ -8,11 +8,11 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::concurrency::{Duration, Instant, JoinHandle};
-use crate::{Actor, ActorRef, Message, MessagingErr};
 use crate::{ActorId, ActorProcessingErr};
+use crate::{ActorRef, Message, MessagingErr};
 
 use super::stats::MessageProcessingStats;
-use super::Factory;
+use super::FactoryMessage;
 use super::Job;
 use super::JobKey;
 use super::WorkerId;
@@ -44,25 +44,23 @@ where
 }
 
 /// Startup context data (`Arguments`) which are passed to a worker on start
-pub struct WorkerStartContext<TKey, TMsg, TWorker>
+pub struct WorkerStartContext<TKey, TMsg>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = Self>,
 {
     /// The worker's identifier
     pub wid: WorkerId,
 
     /// The factory the worker belongs to
-    pub factory: ActorRef<Factory<TKey, TMsg, TWorker>>,
+    pub factory: ActorRef<FactoryMessage<TKey, TMsg>>,
 }
 
 /// Properties of a worker
-pub struct WorkerProperties<TKey, TMsg, TWorker>
+pub struct WorkerProperties<TKey, TMsg>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
 {
     /// Worker identifier
     pub(crate) wid: WorkerId,
@@ -71,7 +69,7 @@ where
     capacity: usize,
 
     /// Worker actor
-    pub(crate) actor: ActorRef<TWorker>,
+    pub(crate) actor: ActorRef<WorkerMessage<TKey, TMsg>>,
 
     /// Worker's message queue
     message_queue: VecDeque<Job<TKey, TMsg>>,
@@ -97,12 +95,10 @@ where
     handle: Option<JoinHandle<()>>,
 }
 
-impl<TKey, TMsg, TWorker> WorkerProperties<TKey, TMsg, TWorker>
+impl<TKey, TMsg> WorkerProperties<TKey, TMsg>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker:
-        Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg, TWorker>>,
 {
     fn get_next_non_expired_job(&mut self) -> Option<Job<TKey, TMsg>> {
         while let Some(job) = self.message_queue.pop_front() {
@@ -117,7 +113,7 @@ where
 
     pub(crate) fn new(
         wid: WorkerId,
-        actor: ActorRef<TWorker>,
+        actor: ActorRef<WorkerMessage<TKey, TMsg>>,
         capacity: usize,
         discard_threshold: Option<usize>,
         discard_handler: Option<Box<dyn DiscardHandler<TKey, TMsg>>>,
@@ -152,7 +148,7 @@ where
 
     pub(crate) fn replace_worker(
         &mut self,
-        nworker: ActorRef<TWorker>,
+        nworker: ActorRef<WorkerMessage<TKey, TMsg>>,
         handle: JoinHandle<()>,
     ) -> Result<(), ActorProcessingErr> {
         // these jobs are now "lost" as the worker is going to be killed

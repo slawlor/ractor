@@ -29,14 +29,14 @@ async fn test_intervals() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(self.counter.clone())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -91,14 +91,14 @@ async fn test_send_after() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(self.counter.clone())
         }
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -149,7 +149,7 @@ async fn test_exit_after() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -179,14 +179,14 @@ async fn test_kill_after() {
         type Arguments = ();
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
         async fn handle(
             &self,
-            _myself: ActorRef<Self>,
+            _myself: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {

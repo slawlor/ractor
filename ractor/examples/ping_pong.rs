@@ -51,7 +51,7 @@ impl Actor for PingPong {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         // startup the event processing
@@ -62,7 +62,7 @@ impl Actor for PingPong {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

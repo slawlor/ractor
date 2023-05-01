@@ -43,12 +43,12 @@ impl RemoteActor {
     /// the actor failed to start
     pub(crate) async fn spawn_linked(
         self,
-        session: ActorRef<super::node::NodeSession>,
+        session: ActorRef<super::node::NodeSessionMessage>,
         name: Option<ActorName>,
         pid: u64,
         node_id: NodeId,
         supervisor: ActorCell,
-    ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<RemoteActorMessage>, JoinHandle<()>), SpawnErr> {
         let actor_id = ActorId::Remote { node_id, pid };
         ractor::ActorRuntime::<Self>::spawn_linked_remote(name, self, actor_id, session, supervisor)
             .await
@@ -62,7 +62,7 @@ pub(crate) struct RemoteActorState {
     pending_requests: HashMap<u64, RpcReplyPort<Vec<u8>>>,
 
     /// Owning session
-    session: ActorRef<crate::node::NodeSession>,
+    session: ActorRef<crate::node::NodeSessionMessage>,
 }
 
 impl RemoteActorState {
@@ -82,11 +82,11 @@ pub(crate) struct RemoteActorMessage;
 impl Actor for RemoteActor {
     type Msg = RemoteActorMessage;
     type State = RemoteActorState;
-    type Arguments = ActorRef<crate::node::NodeSession>;
+    type Arguments = ActorRef<crate::node::NodeSessionMessage>;
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
-        session: ActorRef<crate::node::NodeSession>,
+        _myself: ActorRef<Self::Msg>,
+        session: ActorRef<crate::node::NodeSessionMessage>,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(Self::State {
             session,
@@ -97,7 +97,7 @@ impl Actor for RemoteActor {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _message: Self::Msg,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -106,7 +106,7 @@ impl Actor for RemoteActor {
 
     async fn handle_serialized(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: SerializedMessage,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

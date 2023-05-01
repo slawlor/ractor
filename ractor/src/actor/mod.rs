@@ -89,7 +89,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// Returns an initial [Actor::State] to bootstrap the actor
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr>;
 
@@ -105,7 +105,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     async fn post_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         Ok(())
@@ -122,7 +122,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     async fn post_stop(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         Ok(())
@@ -137,7 +137,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -154,7 +154,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[cfg(feature = "cluster")]
     async fn handle_serialized(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: crate::message::SerializedMessage,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -171,7 +171,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     async fn handle_supervisor_evt(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -199,7 +199,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         name: Option<ActorName>,
         handler: Self,
         startup_args: Self::Arguments,
-    ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr> {
         ActorRuntime::<Self>::spawn(name, handler, startup_args).await
     }
 
@@ -219,7 +219,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         handler: Self,
         startup_args: Self::Arguments,
         supervisor: ActorCell,
-    ) -> Result<(ActorRef<Self>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr> {
         ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor).await
     }
 }
@@ -230,7 +230,7 @@ pub struct ActorRuntime<TActor>
 where
     TActor: Actor,
 {
-    actor_ref: ActorRef<TActor>,
+    actor_ref: ActorRef<TActor::Msg>,
     handler: TActor,
 }
 
@@ -252,7 +252,7 @@ where
         name: Option<ActorName>,
         handler: TActor,
         startup_args: TActor::Arguments,
-    ) -> Result<(ActorRef<TActor>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, startup_args, None).await
     }
@@ -273,7 +273,7 @@ where
         handler: TActor,
         startup_args: TActor::Arguments,
         supervisor: ActorCell,
-    ) -> Result<(ActorRef<TActor>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
         actor.start(ports, startup_args, Some(supervisor)).await
     }
@@ -301,7 +301,7 @@ where
         startup_args: TActor::Arguments,
     ) -> Result<
         (
-            ActorRef<TActor>,
+            ActorRef<TActor::Msg>,
             JoinHandle<Result<JoinHandle<()>, SpawnErr>>,
         ),
         SpawnErr,
@@ -343,7 +343,7 @@ where
         supervisor: ActorCell,
     ) -> Result<
         (
-            ActorRef<TActor>,
+            ActorRef<TActor::Msg>,
             JoinHandle<Result<JoinHandle<()>, SpawnErr>>,
         ),
         SpawnErr,
@@ -376,7 +376,7 @@ where
         id: ActorId,
         startup_args: TActor::Arguments,
         supervisor: ActorCell,
-    ) -> Result<(ActorRef<TActor>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         if id.is_local() {
             Err(SpawnErr::StartupPanic(From::from(
                 "Cannot spawn a remote actor when the identifier is not remote!",
@@ -429,7 +429,7 @@ where
         ports: ActorPortSet,
         startup_args: TActor::Arguments,
         supervisor: Option<ActorCell>,
-    ) -> Result<(ActorRef<TActor>, JoinHandle<()>), SpawnErr> {
+    ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         // cannot start an actor more than once
         if self.actor_ref.get_status() != ActorStatus::Unstarted {
             return Err(SpawnErr::ActorAlreadyStarted);
@@ -493,7 +493,7 @@ where
         mut ports: ActorPortSet,
         state: &mut TActor::State,
         handler: &TActor,
-        myself: ActorRef<TActor>,
+        myself: ActorRef<TActor::Msg>,
     ) -> Result<Option<String>, ActorErr> {
         // perform the post-start, with supervision enabled
         Self::do_post_start(myself.clone(), handler, state)
@@ -549,7 +549,7 @@ where
     /// Returns a tuple of the next [Actor::State] and a flag to denote if the processing
     /// loop is done
     async fn process_message(
-        myself: ActorRef<TActor>,
+        myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
         ports: &mut ActorPortSet,
@@ -616,7 +616,7 @@ where
     }
 
     async fn handle_message(
-        myself: ActorRef<TActor>,
+        myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
         msg: crate::message::BoxedMessage,
@@ -648,7 +648,7 @@ where
         handler.handle(myself, typed_msg, state).await
     }
 
-    fn handle_signal(myself: ActorRef<TActor>, signal: Signal) -> Option<String> {
+    fn handle_signal(myself: ActorRef<TActor::Msg>, signal: Signal) -> Option<String> {
         match &signal {
             Signal::Kill => {
                 myself.terminate();
@@ -658,7 +658,7 @@ where
     }
 
     async fn handle_supervision_message(
-        myself: ActorRef<TActor>,
+        myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
         message: SupervisionEvent,
@@ -667,7 +667,7 @@ where
     }
 
     async fn do_pre_start(
-        myself: ActorRef<TActor>,
+        myself: ActorRef<TActor::Msg>,
         handler: &TActor,
         arguments: TActor::Arguments,
     ) -> Result<Result<TActor::State, ActorProcessingErr>, SpawnErr> {
@@ -678,7 +678,7 @@ where
     }
 
     async fn do_post_start(
-        myself: ActorRef<TActor>,
+        myself: ActorRef<TActor::Msg>,
         handler: &TActor,
         state: &mut TActor::State,
     ) -> Result<Result<(), ActorProcessingErr>, ActorErr> {
@@ -689,7 +689,7 @@ where
     }
 
     async fn do_post_stop(
-        myself: ActorRef<TActor>,
+        myself: ActorRef<TActor::Msg>,
         handler: &TActor,
         state: &mut TActor::State,
     ) -> Result<Result<(), ActorProcessingErr>, ActorErr> {

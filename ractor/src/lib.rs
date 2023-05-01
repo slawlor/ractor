@@ -67,7 +67,7 @@
 //!     // Initially we need to create our state, and potentially
 //!     // start some internal processing (by posting a message for
 //!     // example)
-//!     async fn pre_start(&self, myself: ActorRef<Self>, _: ()) -> Result<Self::State, ActorProcessingErr> {
+//!     async fn pre_start(&self, myself: ActorRef<Self::Msg>, _: ()) -> Result<Self::State, ActorProcessingErr> {
 //!         // startup the event processing
 //!         myself.send_message(Message::Ping).unwrap();
 //!         Ok(0u8)
@@ -76,7 +76,7 @@
 //!     // This is our main message handler
 //!     async fn handle(
 //!         &self,
-//!         myself: ActorRef<Self>,
+//!         myself: ActorRef<Self::Msg>,
 //!         message: Self::Msg,
 //!         state: &mut Self::State,
 //!     ) -> Result<(), ActorProcessingErr> {

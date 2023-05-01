@@ -8,7 +8,7 @@ use super::*;
 struct FakeNodeSession;
 
 impl FakeNodeSession {
-    async fn get_node_session() -> (ActorRef<crate::node::NodeSession>, JoinHandle<()>) {
+    async fn get_node_session() -> (ActorRef<crate::node::NodeSessionMessage>, JoinHandle<()>) {
         let (r, h) = Actor::spawn(None, FakeNodeSession, ())
             .await
             .expect("Failed to start fake node session");
@@ -24,7 +24,7 @@ impl Actor for FakeNodeSession {
     type Arguments = ();
     async fn pre_start(
         &self,
-        _: ActorRef<Self>,
+        _: ActorRef<Self::Msg>,
         _: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(())

@@ -29,7 +29,7 @@ async fn test_rpc_cast() {
 
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -37,7 +37,7 @@ async fn test_rpc_cast() {
 
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -89,7 +89,7 @@ async fn test_rpc_call() {
 
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -97,7 +97,7 @@ async fn test_rpc_call() {
 
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -182,7 +182,7 @@ async fn test_rpc_call_forwarding() {
 
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -190,7 +190,7 @@ async fn test_rpc_call_forwarding() {
 
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
@@ -226,7 +226,7 @@ async fn test_rpc_call_forwarding() {
 
         async fn pre_start(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
@@ -234,7 +234,7 @@ async fn test_rpc_call_forwarding() {
 
         async fn handle(
             &self,
-            _this_actor: ActorRef<Self>,
+            _this_actor: ActorRef<Self::Msg>,
             message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {

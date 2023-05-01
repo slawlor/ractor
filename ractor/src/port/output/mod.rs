@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use crate::concurrency::JoinHandle;
 use tokio::sync::broadcast as pubsub;
 
-use crate::{Actor, ActorRef, Message};
+use crate::{ActorRef, Message};
 
 #[cfg(test)]
 mod tests;
@@ -66,17 +66,17 @@ where
     /// * `converter` - The converter which will convert the output message type to the
     /// receiver's input type and return [Some(_)] if the message should be forwarded, [None]
     /// if the message should be skipped.
-    pub fn subscribe<TReceiver, F>(&self, receiver: ActorRef<TReceiver>, converter: F)
+    pub fn subscribe<TReceiverMsg, F>(&self, receiver: ActorRef<TReceiverMsg>, converter: F)
     where
-        F: Fn(TMsg) -> Option<TReceiver::Msg> + Send + 'static,
-        TReceiver: Actor,
+        F: Fn(TMsg) -> Option<TReceiverMsg> + Send + 'static,
+        TReceiverMsg: Message,
     {
         let mut subs = self.subscriptions.write().unwrap();
 
         // filter out dead subscriptions, since they're no longer valid
         subs.retain(|sub| !sub.is_dead());
 
-        let sub = OutputPortSubscription::new::<TMsg, F, TReceiver>(
+        let sub = OutputPortSubscription::new::<TMsg, F, TReceiverMsg>(
             self.tx.subscribe(),
             converter,
             receiver,
@@ -128,15 +128,15 @@ impl OutputPortSubscription {
     }
 
     /// Create a new subscription
-    pub fn new<TMsg, F, TReceiver>(
+    pub fn new<TMsg, F, TReceiverMsg>(
         mut port: pubsub::Receiver<Option<TMsg>>,
         converter: F,
-        receiver: ActorRef<TReceiver>,
+        receiver: ActorRef<TReceiverMsg>,
     ) -> Self
     where
         TMsg: OutputMessage,
-        F: Fn(TMsg) -> Option<TReceiver::Msg> + Send + 'static,
-        TReceiver: Actor,
+        F: Fn(TMsg) -> Option<TReceiverMsg> + Send + 'static,
+        TReceiverMsg: Message,
     {
         let handle = crate::concurrency::spawn(async move {
             while let Ok(Some(msg)) = port.recv().await {

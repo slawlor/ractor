@@ -84,7 +84,7 @@ impl Actor for PingPongActor {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         ractor::pg::join("test".to_string(), vec![myself.get_cell()]);
@@ -93,7 +93,7 @@ impl Actor for PingPongActor {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -101,7 +101,7 @@ impl Actor for PingPongActor {
         let remote_actors = ractor::pg::get_members(&group)
             .into_iter()
             .filter(|actor| !actor.get_id().is_local())
-            .map(ActorRef::<Self>::from)
+            .map(ActorRef::<Self::Msg>::from)
             .collect::<Vec<_>>();
         match message {
             Self::Msg::Ping => {

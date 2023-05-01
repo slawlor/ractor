@@ -16,7 +16,7 @@
 
 use crate::concurrency::{Duration, JoinHandle};
 
-use crate::{Actor, ActorCell, MessagingErr, ACTIVE_STATES};
+use crate::{ActorCell, Message, MessagingErr, ACTIVE_STATES};
 
 #[cfg(test)]
 mod tests;
@@ -33,10 +33,10 @@ mod tests;
 ///
 /// Returns: The [JoinHandle] which represents the backgrounded work (can be ignored to
 /// "fire and forget")
-pub fn send_interval<TActor, F>(period: Duration, actor: ActorCell, msg: F) -> JoinHandle<()>
+pub fn send_interval<TMessage, F>(period: Duration, actor: ActorCell, msg: F) -> JoinHandle<()>
 where
-    TActor: Actor,
-    F: Fn() -> TActor::Msg + Send + 'static,
+    TMessage: Message,
+    F: Fn() -> TMessage + Send + 'static,
 {
     // As per #57, the traditional sleep operation is subject to drift over long periods.
     // Tokio providers an interval timer which accounts for execution time to send a message
@@ -53,7 +53,7 @@ where
             timer.tick().await;
             // if we receive an error trying to send, the channel is closed and we should stop trying
             // actor died
-            if actor.send_message::<TActor>(msg()).is_err() {
+            if actor.send_message::<TMessage>(msg()).is_err() {
                 break;
             }
         }
@@ -71,18 +71,18 @@ where
 /// Returns: The [JoinHandle<Result<(), MessagingErr>>] which represents the backgrounded work.
 /// Awaiting the handle will yield the result of the send operation. Can be safely ignored to
 /// "fire and forget"
-pub fn send_after<TActor, F>(
+pub fn send_after<TMessage, F>(
     period: Duration,
     actor: ActorCell,
     msg: F,
 ) -> JoinHandle<Result<(), MessagingErr>>
 where
-    TActor: Actor,
-    F: Fn() -> TActor::Msg + Send + 'static,
+    TMessage: Message,
+    F: Fn() -> TMessage + Send + 'static,
 {
     crate::concurrency::spawn(async move {
         crate::concurrency::sleep(period).await;
-        actor.send_message::<TActor>(msg())
+        actor.send_message::<TMessage>(msg())
     })
 }
 
@@ -116,25 +116,24 @@ pub fn kill_after(period: Duration, actor: ActorCell) -> JoinHandle<()> {
 }
 
 /// Add the timing functionality on top of the [crate::ActorRef]
-impl<TActor> crate::ActorRef<TActor>
+impl<TMessage> crate::ActorRef<TMessage>
 where
-    TActor: Actor,
+    TMessage: crate::Message,
 {
     /// Alias of [send_interval]
     pub fn send_interval<F>(&self, period: Duration, msg: F) -> JoinHandle<()>
     where
-        TActor: Actor,
-        F: Fn() -> TActor::Msg + Send + 'static,
+        F: Fn() -> TMessage + Send + 'static,
     {
-        send_interval::<TActor, F>(period, self.get_cell(), msg)
+        send_interval::<TMessage, F>(period, self.get_cell(), msg)
     }
 
     /// Alias of [send_after]
     pub fn send_after<F>(&self, period: Duration, msg: F) -> JoinHandle<Result<(), MessagingErr>>
     where
-        F: Fn() -> TActor::Msg + Send + 'static,
+        F: Fn() -> TMessage + Send + 'static,
     {
-        send_after::<TActor, F>(period, self.get_cell(), msg)
+        send_after::<TMessage, F>(period, self.get_cell(), msg)
     }
 
     /// Alias of [exit_after]

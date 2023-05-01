@@ -40,7 +40,7 @@ impl Actor for Counter {
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         // create the initial state
@@ -49,7 +49,7 @@ impl Actor for Counter {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

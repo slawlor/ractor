@@ -19,13 +19,14 @@ use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, SpawnErr, Supervision
 use rand::Rng;
 use tokio::time::Duration;
 
-use super::{auth, NodeServer};
+use super::auth;
 use crate::net::session::SessionMessage;
 use crate::node::NodeConnectionMode;
 use crate::protocol::auth as auth_protocol;
 use crate::protocol::control as control_protocol;
 use crate::protocol::node as node_protocol;
-use crate::remote_actor::RemoteActor;
+use crate::remote_actor::{RemoteActor, RemoteActorMessage};
+use crate::NodeServerMessage;
 
 const MIN_PING_LATENCY_MS: u64 = 1000;
 const MAX_PING_LATENCY_MS: u64 = 5000;
@@ -64,7 +65,7 @@ impl AuthenticationState {
 /// remote system (and receive replies)
 ///
 /// A [NodeSession] can either be a client or server session, depending on the connection sequence.
-/// If it was an incoming request to the [NodeServer] then it's a "server" session, as
+/// If it was an incoming request to the [crate::NodeServer] then it's a "server" session, as
 /// the server spawned this actor. Otherwise it's an outgoing "client" request.
 ///
 /// If the [NodeSession] is a client session, it will start the authentication handshake with
@@ -80,7 +81,7 @@ pub struct NodeSession {
     node_id: crate::NodeId,
     is_server: bool,
     cookie: String,
-    node_server: ActorRef<NodeServer>,
+    node_server: ActorRef<NodeServerMessage>,
     this_node_name: auth_protocol::NameMessage,
     connection_mode: super::NodeConnectionMode,
 }
@@ -99,7 +100,7 @@ impl NodeSession {
         node_id: crate::NodeId,
         is_server: bool,
         cookie: String,
-        node_server: ActorRef<NodeServer>,
+        node_server: ActorRef<NodeServerMessage>,
         node_name: auth_protocol::NameMessage,
         connection_mode: super::NodeConnectionMode,
     ) -> Self {
@@ -119,7 +120,7 @@ impl NodeSession {
         &self,
         state: &mut NodeSessionState,
         message: auth_protocol::AuthenticationMessage,
-        myself: ActorRef<Self>,
+        myself: ActorRef<super::NodeSessionMessage>,
     ) {
         if state.auth.is_ok() {
             // nothing to do, we're already authenticated
@@ -342,7 +343,7 @@ impl NodeSession {
         &self,
         state: &mut NodeSessionState,
         message: node_protocol::NodeMessage,
-        myself: ActorRef<Self>,
+        myself: ActorRef<super::NodeSessionMessage>,
     ) {
         if !state.auth.is_ok() {
             log::warn!("Inter-node message received on unauthenticated NodeSession");
@@ -444,7 +445,7 @@ impl NodeSession {
         &self,
         state: &mut NodeSessionState,
         message: control_protocol::ControlMessage,
-        myself: ActorRef<Self>,
+        myself: ActorRef<super::NodeSessionMessage>,
     ) {
         if !state.auth.is_ok() {
             log::warn!("Control message received on unauthenticated NodeSession");
@@ -642,7 +643,11 @@ impl NodeSession {
     }
 
     /// Called once the session is authenticated
-    fn after_authenticated(&self, myself: ActorRef<Self>, state: &mut NodeSessionState) {
+    fn after_authenticated(
+        &self,
+        myself: ActorRef<super::NodeSessionMessage>,
+        state: &mut NodeSessionState,
+    ) {
         log::info!(
             "Session authenticated on NodeSession {} - ({:?})",
             self.node_id,
@@ -720,11 +725,11 @@ impl NodeSession {
     /// Get a given remote actor, or spawn it if it doesn't exist.
     async fn get_or_spawn_remote_actor(
         &self,
-        myself: &ActorRef<Self>,
+        myself: &ActorRef<super::NodeSessionMessage>,
         actor_name: Option<String>,
         actor_pid: u64,
         state: &mut NodeSessionState,
-    ) -> Result<ActorRef<RemoteActor>, SpawnErr> {
+    ) -> Result<ActorRef<RemoteActorMessage>, SpawnErr> {
         match state.remote_actors.get(&actor_pid) {
             Some(actor) => Ok(actor.clone()),
             _ => {
@@ -746,12 +751,12 @@ impl NodeSession {
 
 /// The state of the node session
 pub struct NodeSessionState {
-    tcp: Option<ActorRef<crate::net::session::Session>>,
+    tcp: Option<ActorRef<crate::net::session::SessionMessage>>,
     peer_addr: SocketAddr,
     local_addr: SocketAddr,
     name: Option<auth_protocol::NameMessage>,
     auth: AuthenticationState,
-    remote_actors: HashMap<u64, ActorRef<RemoteActor>>,
+    remote_actors: HashMap<u64, ActorRef<RemoteActorMessage>>,
 }
 
 impl NodeSessionState {
@@ -829,7 +834,7 @@ impl Actor for NodeSession {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         stream: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         let peer_addr = stream.peer_addr();
@@ -871,7 +876,7 @@ impl Actor for NodeSession {
 
     async fn post_stop(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         // unhook monitoring sessions
@@ -886,7 +891,7 @@ impl Actor for NodeSession {
 
     async fn handle(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -939,7 +944,7 @@ impl Actor for NodeSession {
 
     async fn handle_supervisor_evt(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {

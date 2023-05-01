@@ -75,7 +75,7 @@ impl Actor for LeafActor {
     type Arguments = ();
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(LeafActorState {})
@@ -91,7 +91,7 @@ impl Actor for LeafActor {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -122,11 +122,11 @@ struct MidLevelActor;
 
 #[derive(Clone)]
 struct MidLevelActorState {
-    leaf_actor: ActorRef<LeafActor>,
+    leaf_actor: ActorRef<LeafActorMessage>,
 }
 
 enum MidLevelActorMessage {
-    GetLeaf(RpcReplyPort<ActorRef<LeafActor>>),
+    GetLeaf(RpcReplyPort<ActorRef<LeafActorMessage>>),
 }
 #[cfg(feature = "cluster")]
 impl ractor::Message for MidLevelActorMessage {}
@@ -139,7 +139,7 @@ impl Actor for MidLevelActor {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         let (leaf_actor, _) =
@@ -157,7 +157,7 @@ impl Actor for MidLevelActor {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -173,7 +173,7 @@ impl Actor for MidLevelActor {
 
     async fn handle_supervisor_evt(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -202,11 +202,11 @@ struct RootActor;
 
 #[derive(Clone)]
 struct RootActorState {
-    mid_level_actor: ActorRef<MidLevelActor>,
+    mid_level_actor: ActorRef<MidLevelActorMessage>,
 }
 
 enum RootActorMessage {
-    GetMidLevel(RpcReplyPort<ActorRef<MidLevelActor>>),
+    GetMidLevel(RpcReplyPort<ActorRef<MidLevelActorMessage>>),
 }
 #[cfg(feature = "cluster")]
 impl ractor::Message for RootActorMessage {}
@@ -219,7 +219,7 @@ impl Actor for RootActor {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         println!("RootActor: Started {myself:?}");
@@ -243,7 +243,7 @@ impl Actor for RootActor {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self>,
+        _myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -259,7 +259,7 @@ impl Actor for RootActor {
 
     async fn handle_supervisor_evt(
         &self,
-        myself: ActorRef<Self>,
+        myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
