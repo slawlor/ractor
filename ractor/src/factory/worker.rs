@@ -192,7 +192,10 @@ where
 
     /// Enqueue a new job to this worker. If the discard threshold has been exceeded
     /// it will discard the oldest elements from the message queue
-    pub(crate) fn enqueue_job(&mut self, mut job: Job<TKey, TMsg>) -> Result<(), MessagingErr> {
+    pub(crate) fn enqueue_job(
+        &mut self,
+        mut job: Job<TKey, TMsg>,
+    ) -> Result<(), MessagingErr<WorkerMessage<TKey, TMsg>>> {
         // track per-job statistics
         self.stats.job_submitted();
 
@@ -223,7 +226,9 @@ where
     }
 
     /// Send a ping to the worker
-    pub(crate) fn send_factory_ping(&mut self) -> Result<(), MessagingErr> {
+    pub(crate) fn send_factory_ping(
+        &mut self,
+    ) -> Result<(), MessagingErr<WorkerMessage<TKey, TMsg>>> {
         if !self.is_ping_pending {
             self.is_ping_pending = true;
             self.actor.cast(WorkerMessage::FactoryPing(Instant::now()))
@@ -246,7 +251,7 @@ where
     pub(crate) fn worker_complete(
         &mut self,
         key: TKey,
-    ) -> Result<Option<JobOptions>, MessagingErr> {
+    ) -> Result<Option<JobOptions>, MessagingErr<WorkerMessage<TKey, TMsg>>> {
         // remove this pending job
         let options = self.curr_jobs.remove(&key);
         // maybe queue up the next job

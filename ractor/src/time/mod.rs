@@ -75,7 +75,7 @@ pub fn send_after<TMessage, F>(
     period: Duration,
     actor: ActorCell,
     msg: F,
-) -> JoinHandle<Result<(), MessagingErr>>
+) -> JoinHandle<Result<(), MessagingErr<TMessage>>>
 where
     TMessage: Message,
     F: Fn() -> TMessage + Send + 'static,
@@ -129,7 +129,11 @@ where
     }
 
     /// Alias of [send_after]
-    pub fn send_after<F>(&self, period: Duration, msg: F) -> JoinHandle<Result<(), MessagingErr>>
+    pub fn send_after<F>(
+        &self,
+        period: Duration,
+        msg: F,
+    ) -> JoinHandle<Result<(), MessagingErr<TMessage>>>
     where
         F: Fn() -> TMessage + Send + 'static,
     {

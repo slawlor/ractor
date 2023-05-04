@@ -90,7 +90,7 @@ where
     /// * `message` - The message to send
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr> {
+    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>> {
         self.inner.send_message::<TMessage>(message)
     }
 

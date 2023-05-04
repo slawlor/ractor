@@ -132,7 +132,7 @@ impl ActorPortSet {
     ///
     /// Returns [Ok(ActorPortMessage)] on a successful message reception, [MessagingErr]
     /// in the event any of the channels is closed.
-    pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr> {
+    pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr<()>> {
         crate::concurrency::select! {
             signal = self.signal_rx.recv() => {
                 signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
@@ -345,7 +345,7 @@ impl ActorCell {
     pub async fn kill_and_wait(
         &self,
         timeout: Option<crate::concurrency::Duration>,
-    ) -> Result<(), RactorErr> {
+    ) -> Result<(), RactorErr<()>> {
         if let Some(to) = timeout {
             match crate::concurrency::timeout(to, self.inner.send_signal_and_wait(Signal::Kill))
                 .await
@@ -380,7 +380,7 @@ impl ActorCell {
         &self,
         reason: Option<String>,
         timeout: Option<crate::concurrency::Duration>,
-    ) -> Result<(), RactorErr> {
+    ) -> Result<(), RactorErr<StopMessage>> {
         if let Some(to) = timeout {
             match crate::concurrency::timeout(to, self.inner.send_stop_and_wait(reason)).await {
                 Err(_) => Err(RactorErr::Timeout),
@@ -400,7 +400,7 @@ impl ActorCell {
     pub(crate) fn send_supervisor_evt(
         &self,
         message: SupervisionEvent,
-    ) -> Result<(), MessagingErr> {
+    ) -> Result<(), MessagingErr<SupervisionEvent>> {
         self.inner.send_supervisor_evt(message)
     }
 
@@ -413,7 +413,7 @@ impl ActorCell {
     /// * `message` - The message to send
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr>
+    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>>
     where
         TMessage: Message,
     {
@@ -426,7 +426,10 @@ impl ActorCell {
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
     #[cfg(feature = "cluster")]
-    pub fn send_serialized(&self, message: SerializedMessage) -> Result<(), MessagingErr> {
+    pub fn send_serialized(
+        &self,
+        message: SerializedMessage,
+    ) -> Result<(), MessagingErr<SerializedMessage>> {
         self.inner.send_serialized(message)
     }
 

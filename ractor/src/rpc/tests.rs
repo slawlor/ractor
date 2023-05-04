@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use crate::concurrency::Duration;
 
-use crate::{call, call_t, cast, forward, Actor, ActorRef};
+use crate::{call, call_t};
+use crate::{cast, forward, Actor, ActorRef};
 use crate::{rpc, ActorProcessingErr};
 
 #[crate::concurrency::test]

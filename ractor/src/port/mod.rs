@@ -41,8 +41,8 @@ impl<TMsg> RpcReplyPort<TMsg> {
     /// * `msg` - The message to send
     ///
     /// Returns [Ok(())] if the message send was successful, [Err(MessagingErr)] otherwise
-    pub fn send(self, msg: TMsg) -> Result<(), MessagingErr> {
-        self.port.send(msg).map_err(|_| MessagingErr::ChannelClosed)
+    pub fn send(self, msg: TMsg) -> Result<(), MessagingErr<TMsg>> {
+        self.port.send(msg).map_err(|t| MessagingErr::SendErr(t))
     }
 
     /// Determine if the port is closed (i.e. the receiver has been dropped)

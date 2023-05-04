@@ -612,6 +612,10 @@ where
                 // not possible. Treat like a channel closed
                 Ok((true, None))
             }
+            Err(MessagingErr::SendErr(_)) => {
+                // not possible. Treat like a channel closed
+                Ok((true, None))
+            }
         }
     }
 

@@ -87,11 +87,16 @@ impl Display for ActorErr {
 }
 
 /// A messaging error has occurred
-#[derive(Debug)]
-pub enum MessagingErr {
+pub enum MessagingErr<T> {
     /// The channel you're trying to send a message too has been dropped/closed.
     /// If you're sending to an [crate::ActorCell] then that means the actor has died
     /// (failure or not).
+    ///
+    /// Includes the message which failed to send
+    SendErr(T),
+
+    /// The channel you're trying to receive from has had all the senders dropped likely
+    /// and is therefore closed
     ChannelClosed,
 
     /// Tried to send a message to an actor with an invalid actor type defined.
@@ -100,20 +105,33 @@ pub enum MessagingErr {
     InvalidActorType,
 }
 
-impl std::error::Error for MessagingErr {}
-
-impl<T> From<tokio::sync::mpsc::error::SendError<T>> for MessagingErr {
-    fn from(_: tokio::sync::mpsc::error::SendError<T>) -> Self {
-        Self::ChannelClosed
-    }
-}
-impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for MessagingErr {
-    fn from(_: tokio::sync::mpsc::error::TrySendError<T>) -> Self {
-        Self::ChannelClosed
+impl<T> std::fmt::Debug for MessagingErr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SendErr(_) => write!(f, "SendErr"),
+            Self::ChannelClosed => write!(f, "RecvErr"),
+            Self::InvalidActorType => write!(f, "InvalidActorType"),
+        }
     }
 }
 
-impl Display for MessagingErr {
+impl<T> std::error::Error for MessagingErr<T> {}
+
+impl<T> From<tokio::sync::mpsc::error::SendError<T>> for MessagingErr<T> {
+    fn from(e: tokio::sync::mpsc::error::SendError<T>) -> Self {
+        Self::SendErr(e.0)
+    }
+}
+impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for MessagingErr<T> {
+    fn from(e: tokio::sync::mpsc::error::TrySendError<T>) -> Self {
+        match e {
+            tokio::sync::mpsc::error::TrySendError::Closed(c) => Self::SendErr(c),
+            tokio::sync::mpsc::error::TrySendError::Full(c) => Self::SendErr(c),
+        }
+    }
+}
+
+impl<T> Display for MessagingErr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ChannelClosed => {
@@ -121,6 +139,9 @@ impl Display for MessagingErr {
             }
             Self::InvalidActorType => {
                 write!(f, "Messaging failed due to the provided actor type not matching the actor's properties")
+            }
+            Self::SendErr(_) => {
+                write!(f, "Messaging failed to enqueue the message to the specified actor, the actor is likely terminated")
             }
         }
     }
