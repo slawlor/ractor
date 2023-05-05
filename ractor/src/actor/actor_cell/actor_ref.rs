@@ -14,7 +14,10 @@ use super::ActorCell;
 
 /// An [ActorRef] is a strongly-typed wrapper over an [ActorCell]
 /// to provide some syntactic wrapping on the requirement to pass
-/// the actor type everywhere
+/// the actor's message type everywhere.
+///
+/// An [ActorRef] is the primary means of communication typically used
+/// when interfacing with [super::Actor]s
 pub struct ActorRef<TMessage>
 where
     TMessage: Message,
@@ -90,7 +93,7 @@ where
     /// * `message` - The message to send
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr> {
+    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>> {
         self.inner.send_message::<TMessage>(message)
     }
 

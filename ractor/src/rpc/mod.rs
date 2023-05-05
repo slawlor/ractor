@@ -5,7 +5,7 @@
 
 //! Remote procedure calls (RPC) are helpful communication primitives to communicate with actors
 //!
-//! There are generally 2 kinds of RPCs, cast and call, and their definition comes from the
+//! There are generally 2 kinds of RPCs, `cast` and `call`, and their definition comes from the
 //! standard [Erlang `gen_server`](https://www.erlang.org/doc/man/gen_server.html#cast-2).
 //! The tl;dr is that `cast` is an send without waiting on a reply while `call` is expecting
 //! a reply from the actor being communicated with.
@@ -26,7 +26,7 @@ mod tests;
 /// * `msg` - The message to send to the actor
 ///
 /// Returns [Ok(())] upon successful send, [Err(MessagingErr)] otherwise
-pub fn cast<TMessage>(actor: &ActorCell, msg: TMessage) -> Result<(), MessagingErr>
+pub fn cast<TMessage>(actor: &ActorCell, msg: TMessage) -> Result<(), MessagingErr<TMessage>>
 where
     TMessage: Message,
 {
@@ -47,7 +47,7 @@ pub async fn call<TMessage, TReply, TMsgBuilder>(
     actor: &ActorCell,
     msg_builder: TMsgBuilder,
     timeout_option: Option<Duration>,
-) -> Result<CallResult<TReply>, MessagingErr>
+) -> Result<CallResult<TReply>, MessagingErr<TMessage>>
 where
     TMessage: Message,
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
@@ -89,7 +89,7 @@ pub async fn multi_call<TMessage, TReply, TMsgBuilder>(
     actors: &[ActorCell],
     msg_builder: TMsgBuilder,
     timeout_option: Option<Duration>,
-) -> Result<Vec<CallResult<TReply>>, MessagingErr>
+) -> Result<Vec<CallResult<TReply>>, MessagingErr<TMessage>>
 where
     TMessage: Message,
     TReply: Send + 'static,
@@ -161,13 +161,14 @@ where
 ///
 /// Returns: A [JoinHandle<CallResult<()>>] which can be awaited to see if the
 /// forward was successful or ignored
+#[allow(clippy::type_complexity)]
 pub fn call_and_forward<TMessage, TForwardMessage, TReply, TMsgBuilder, FwdMapFn>(
     actor: &ActorCell,
     msg_builder: TMsgBuilder,
     response_forward: ActorCell,
     forward_mapping: FwdMapFn,
     timeout_option: Option<Duration>,
-) -> Result<JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
+) -> Result<JoinHandle<CallResult<Result<(), MessagingErr<TForwardMessage>>>>, MessagingErr<TMessage>>
 where
     TMessage: Message,
     TReply: Send + 'static,
@@ -205,7 +206,7 @@ where
     TMessage: Message,
 {
     /// Alias of [cast]
-    pub fn cast(&self, msg: TMessage) -> Result<(), MessagingErr> {
+    pub fn cast(&self, msg: TMessage) -> Result<(), MessagingErr<TMessage>> {
         cast::<TMessage>(&self.inner, msg)
     }
 
@@ -214,7 +215,7 @@ where
         &self,
         msg_builder: TMsgBuilder,
         timeout_option: Option<Duration>,
-    ) -> Result<CallResult<TReply>, MessagingErr>
+    ) -> Result<CallResult<TReply>, MessagingErr<TMessage>>
     where
         TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
     {
@@ -222,13 +223,17 @@ where
     }
 
     /// Alias of [call_and_forward]
+    #[allow(clippy::type_complexity)]
     pub fn call_and_forward<TReply, TForwardMessage, TMsgBuilder, TFwdMessageBuilder>(
         &self,
         msg_builder: TMsgBuilder,
         response_forward: &ActorRef<TForwardMessage>,
         forward_mapping: TFwdMessageBuilder,
         timeout_option: Option<Duration>,
-    ) -> Result<crate::concurrency::JoinHandle<CallResult<Result<(), MessagingErr>>>, MessagingErr>
+    ) -> Result<
+        crate::concurrency::JoinHandle<CallResult<Result<(), MessagingErr<TForwardMessage>>>>,
+        MessagingErr<TMessage>,
+    >
     where
         TReply: Send + 'static,
         TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,

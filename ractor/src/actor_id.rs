@@ -4,7 +4,7 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 //! This module handles everything around actor id's. In the event you have a
-//! remote actor, this id will demonstrate that
+//! remote actor, this id will denote that
 
 use std::{fmt::Display, sync::atomic::AtomicU64};
 

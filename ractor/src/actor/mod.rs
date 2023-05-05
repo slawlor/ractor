@@ -7,7 +7,7 @@
 //!
 //! They are:
 //! [Actor]: The behavior definition for an actor's internal processing logic + state management
-//! [Actor]: Management structure processing the message handler, signals, and supervision events in a loop
+//! [ActorRuntime]: Management structure processing the message handler, signals, and supervision events in a loop
 
 use std::panic::AssertUnwindSafe;
 
@@ -22,7 +22,7 @@ use messages::*;
 
 pub mod actor_cell;
 pub mod errors;
-pub mod supervision;
+mod supervision;
 
 #[cfg(test)]
 mod tests;
@@ -224,8 +224,11 @@ pub trait Actor: Sized + Sync + Send + 'static {
     }
 }
 
-/// [ActorRuntime] is a struct which represents the actor. This struct is consumed by the
-/// `start` operation, but results in an [ActorRef] to communicate and operate with
+/// [ActorRuntime] is a struct which represents the processing actor.
+///
+///  This struct is consumed by the `start` operation, but results in an
+/// [ActorRef] to communicate and operate with along with the [JoinHandle]
+/// representing the actor's async processing loop.
 pub struct ActorRuntime<TActor>
 where
     TActor: Actor,
@@ -609,6 +612,10 @@ where
                 Ok((true, None))
             }
             Err(MessagingErr::InvalidActorType) => {
+                // not possible. Treat like a channel closed
+                Ok((true, None))
+            }
+            Err(MessagingErr::SendErr(_)) => {
                 // not possible. Treat like a channel closed
                 Ok((true, None))
             }

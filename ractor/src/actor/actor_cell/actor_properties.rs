@@ -107,15 +107,20 @@ impl ActorProperties {
         self.status.store(status as u8, Ordering::Relaxed);
     }
 
-    pub fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr> {
-        self.signal.try_send(signal).map_err(|e| e.into())
+    pub fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr<()>> {
+        self.signal
+            .try_send(signal)
+            .map_err(|_| MessagingErr::SendErr(()))
     }
 
-    pub fn send_supervisor_evt(&self, message: SupervisionEvent) -> Result<(), MessagingErr> {
+    pub fn send_supervisor_evt(
+        &self,
+        message: SupervisionEvent,
+    ) -> Result<(), MessagingErr<SupervisionEvent>> {
         self.supervision.send(message).map_err(|e| e.into())
     }
 
-    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr>
+    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>>
     where
         TMessage: Message,
     {
@@ -128,32 +133,42 @@ impl ActorProperties {
         let boxed = message
             .box_message(&self.id)
             .map_err(|_e| MessagingErr::InvalidActorType)?;
-        self.message.send(boxed).map_err(|e| e.into())
+        self.message
+            .send(boxed)
+            .map_err(|e| MessagingErr::SendErr(TMessage::from_boxed(e.0).unwrap()))
     }
 
     #[cfg(feature = "cluster")]
-    pub fn send_serialized(&self, message: SerializedMessage) -> Result<(), MessagingErr> {
+    pub fn send_serialized(
+        &self,
+        message: SerializedMessage,
+    ) -> Result<(), MessagingErr<SerializedMessage>> {
         let boxed = BoxedMessage {
             msg: None,
             serialized_msg: Some(message),
         };
-        self.message.send(boxed).map_err(|e| e.into())
+        self.message
+            .send(boxed)
+            .map_err(|e| MessagingErr::SendErr(e.0.serialized_msg.unwrap()))
     }
 
-    pub fn send_stop(&self, reason: Option<String>) -> Result<(), MessagingErr> {
+    pub fn send_stop(&self, reason: Option<String>) -> Result<(), MessagingErr<StopMessage>> {
         let msg = reason.map(StopMessage::Reason).unwrap_or(StopMessage::Stop);
         self.stop.try_send(msg).map_err(|e| e.into())
     }
 
     /// Send the stop signal, threading in a OneShot sender which notifies when the shutdown is completed
-    pub async fn send_stop_and_wait(&self, reason: Option<String>) -> Result<(), MessagingErr> {
+    pub async fn send_stop_and_wait(
+        &self,
+        reason: Option<String>,
+    ) -> Result<(), MessagingErr<StopMessage>> {
         let mut rx = self.wait_handler.subscribe();
         self.send_stop(reason)?;
         rx.recv().await.map_err(|_| MessagingErr::ChannelClosed)
     }
 
     /// Send the kill signal, threading in a OneShot sender which notifies when the shutdown is completed
-    pub async fn send_signal_and_wait(&self, signal: Signal) -> Result<(), MessagingErr> {
+    pub async fn send_signal_and_wait(&self, signal: Signal) -> Result<(), MessagingErr<()>> {
         // first bind the wait handler
         let mut rx = self.wait_handler.subscribe();
         let _ = self.send_signal(signal);

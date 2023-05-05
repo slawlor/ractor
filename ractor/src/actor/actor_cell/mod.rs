@@ -30,7 +30,7 @@ pub use actor_ref::ActorRef;
 mod actor_properties;
 use actor_properties::ActorProperties;
 
-/// [ActorStatus] represents the status of an actor
+/// [ActorStatus] represents the status of an actor's lifecycle
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
 #[repr(u8)]
 pub enum ActorStatus {
@@ -132,7 +132,7 @@ impl ActorPortSet {
     ///
     /// Returns [Ok(ActorPortMessage)] on a successful message reception, [MessagingErr]
     /// in the event any of the channels is closed.
-    pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr> {
+    pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr<()>> {
         crate::concurrency::select! {
             signal = self.signal_rx.recv() => {
                 signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
@@ -150,8 +150,12 @@ impl ActorPortSet {
     }
 }
 
-/// A handy-dandy reference to and actor and their inner properties
-/// which can be cloned and passed around
+/// An [ActorCell] is a reference to an [Actor]'s communication channels
+/// and provides external access to send messages, stop, kill, and generally
+/// interactor with the underlying [Actor] process.
+///
+/// The input ports contained in the cell will return an error should the
+/// underlying actor have terminated and no longer exist.
 #[derive(Clone)]
 pub struct ActorCell {
     inner: Arc<ActorProperties>,
@@ -307,7 +311,7 @@ impl ActorCell {
 
     /// Link this [super::Actor] to the provided supervisor
     ///
-    /// * `supervisor` - The child to link this [super::Actor] to
+    /// * `supervisor` - The supervisor [super::Actor] of this actor
     pub fn link(&self, supervisor: ActorCell) {
         supervisor.inner.tree.insert_child(self.clone());
         self.inner.tree.set_supervisor(supervisor);
@@ -345,7 +349,7 @@ impl ActorCell {
     pub async fn kill_and_wait(
         &self,
         timeout: Option<crate::concurrency::Duration>,
-    ) -> Result<(), RactorErr> {
+    ) -> Result<(), RactorErr<()>> {
         if let Some(to) = timeout {
             match crate::concurrency::timeout(to, self.inner.send_signal_and_wait(Signal::Kill))
                 .await
@@ -380,7 +384,7 @@ impl ActorCell {
         &self,
         reason: Option<String>,
         timeout: Option<crate::concurrency::Duration>,
-    ) -> Result<(), RactorErr> {
+    ) -> Result<(), RactorErr<StopMessage>> {
         if let Some(to) = timeout {
             match crate::concurrency::timeout(to, self.inner.send_stop_and_wait(reason)).await {
                 Err(_) => Err(RactorErr::Timeout),
@@ -400,7 +404,7 @@ impl ActorCell {
     pub(crate) fn send_supervisor_evt(
         &self,
         message: SupervisionEvent,
-    ) -> Result<(), MessagingErr> {
+    ) -> Result<(), MessagingErr<SupervisionEvent>> {
         self.inner.send_supervisor_evt(message)
     }
 
@@ -413,7 +417,7 @@ impl ActorCell {
     /// * `message` - The message to send
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr>
+    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>>
     where
         TMessage: Message,
     {
@@ -426,7 +430,10 @@ impl ActorCell {
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
     #[cfg(feature = "cluster")]
-    pub fn send_serialized(&self, message: SerializedMessage) -> Result<(), MessagingErr> {
+    pub fn send_serialized(
+        &self,
+        message: SerializedMessage,
+    ) -> Result<(), MessagingErr<SerializedMessage>> {
         self.inner.send_serialized(message)
     }
 

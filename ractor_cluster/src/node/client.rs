@@ -18,7 +18,7 @@ pub enum ClientConnectErr {
     Socket(tokio::io::Error),
     /// Error communicating to the [super::NodeServer] actor. Actor receiving port is
     /// closed
-    Messaging(MessagingErr),
+    Messaging(MessagingErr<super::NodeServerMessage>),
     /// Some error with encryption has occurred
     Encryption(tokio::io::Error),
 }
@@ -45,8 +45,8 @@ impl From<tokio::io::Error> for ClientConnectErr {
     }
 }
 
-impl From<MessagingErr> for ClientConnectErr {
-    fn from(value: MessagingErr) -> Self {
+impl From<MessagingErr<super::NodeServerMessage>> for ClientConnectErr {
+    fn from(value: MessagingErr<super::NodeServerMessage>) -> Self {
         Self::Messaging(value)
     }
 }

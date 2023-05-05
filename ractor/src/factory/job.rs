@@ -3,7 +3,7 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Specification for a job sent to a factory
+//! Specification for a [Job] sent to a factory
 
 use std::fmt::Debug;
 use std::{hash::Hash, time::SystemTime};
@@ -100,6 +100,10 @@ impl BytesConvertable for JobOptions {
 }
 
 /// Represents a job sent to a factory
+///
+/// Depending on the [super::Factory]'s routing scheme the
+/// [Job]'s `key` is utilized to dispatch the job to specific
+/// workers.
 pub struct Job<TKey, TMsg>
 where
     TKey: JobKey,
@@ -109,7 +113,8 @@ where
     pub key: TKey,
     /// The message of the job
     pub msg: TMsg,
-    /// The options of the job
+    /// The job's options, mainly related to timing
+    /// information of the job
     pub options: JobOptions,
 }
 

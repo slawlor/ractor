@@ -12,7 +12,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ractor = "0.7"
+//! ractor = "0.8"
 //! ```
 //!
 //! ## Getting started
@@ -109,12 +109,13 @@
 //! ## Supervision
 //!
 //! Actors in `ractor` also support supervision. This is done by "linking" actors together in a supervisor-child relationship.
-//! A supervisor is "responsible" for the child actor, and as such is notified when the actor starts, stops, and fails (panics).
+//! A supervisor is responsible for the life cycle of the child actor, and as such is notified when the actor starts,
+//! stops, and fails (panics).
 //!
-//! Supervision is presently left to the implementor, but you can see a suite of supervision tests in `crate::actor::tests::supervisor`
-//! for examples on the supported functionality.
+//! Supervision is presently left to the implementor to outline handling of supervision events, but you can see a suite of
+//! supervision tests in `crate::actor::tests::supervisor` for examples on the supported functionality.
 //!
-//! NOTE: panic's in `pre_start` of an actor will cause failures to spawn, rather than supervision notified failurs as the actor hasn't "linked"
+//! NOTE: panic's in `pre_start` of an actor will cause failures to spawn, rather than supervision notified failures as the actor hasn't "linked"
 //! to its supervisor yet. However failures in `post_start`, `handle`, `handle_supervisor_evt`, `post_stop` will notify the supervisor should a failure
 //! occur. See [crate::Actor] documentation for more information
 //!
@@ -187,39 +188,49 @@ pub trait State: std::any::Any + Send + 'static {}
 impl<T: std::any::Any + Send + 'static> State for T {}
 
 /// Error types which can result from Ractor processes
-#[derive(Debug)]
-pub enum RactorErr {
+pub enum RactorErr<T> {
     /// An error occurred spawning
     Spawn(SpawnErr),
     /// An error occurred in messaging (sending/receiving)
-    Messaging(MessagingErr),
+    Messaging(MessagingErr<T>),
     /// An actor encountered an error while processing (canceled or panicked)
     Actor(ActorErr),
     /// A timeout occurred
     Timeout,
 }
 
-impl std::error::Error for RactorErr {}
+impl<T> std::fmt::Debug for RactorErr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Messaging(m) => write!(f, "Messaging({:?})", m),
+            Self::Actor(a) => write!(f, "Actor({:?})", a),
+            Self::Spawn(s) => write!(f, "Spawn({:?})", s),
+            Self::Timeout => write!(f, "Timeout"),
+        }
+    }
+}
 
-impl From<SpawnErr> for RactorErr {
+impl<T> std::error::Error for RactorErr<T> {}
+
+impl<T> From<SpawnErr> for RactorErr<T> {
     fn from(value: SpawnErr) -> Self {
         RactorErr::Spawn(value)
     }
 }
 
-impl From<MessagingErr> for RactorErr {
-    fn from(value: MessagingErr) -> Self {
+impl<T> From<MessagingErr<T>> for RactorErr<T> {
+    fn from(value: MessagingErr<T>) -> Self {
         RactorErr::Messaging(value)
     }
 }
 
-impl From<ActorErr> for RactorErr {
+impl<T> From<ActorErr> for RactorErr<T> {
     fn from(value: ActorErr) -> Self {
         RactorErr::Actor(value)
     }
 }
 
-impl<TResult> From<rpc::CallResult<TResult>> for RactorErr {
+impl<T, TResult> From<rpc::CallResult<TResult>> for RactorErr<T> {
     fn from(value: rpc::CallResult<TResult>) -> Self {
         match value {
             rpc::CallResult::SenderError => RactorErr::Messaging(MessagingErr::ChannelClosed),
@@ -229,7 +240,7 @@ impl<TResult> From<rpc::CallResult<TResult>> for RactorErr {
     }
 }
 
-impl std::fmt::Display for RactorErr {
+impl<T> std::fmt::Display for RactorErr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Actor(actor_err) => {

@@ -204,7 +204,9 @@ macro_rules! forward {
                     )),
                 }
             }
-            Err(e) => Err(e),
+            Err(_) => Err($crate::RactorErr::Messaging(
+                $crate::MessagingErr::ChannelClosed,
+            )),
         }
     }};
     ($actor:expr, $msg:expr, $forward:ident, $forward_mapping:expr, $timeout:expr) => {{
@@ -223,7 +225,9 @@ macro_rules! forward {
                     )),
                 }
             }
-            Err(e) => Err(e),
+            Err(_) => Err($crate::RactorErr::Messaging(
+                $crate::MessagingErr::ChannelClosed,
+            )),
         }
     }};
 }
