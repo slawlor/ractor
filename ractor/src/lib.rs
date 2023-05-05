@@ -199,6 +199,29 @@ pub enum RactorErr<T> {
     Timeout,
 }
 
+impl<T> RactorErr<T> {
+    /// Identify if the error has a message payload contained. If [true],
+    /// You can utilize `try_get_message` to consume the error and extract the message payload
+    /// quickly.
+    ///
+    /// Returns [true] if the error contains a message payload of type `T`, [false] otherwise.
+    pub fn has_message(&self) -> bool {
+        matches!(self, Self::Messaging(MessagingErr::SendErr(_)))
+    }
+    /// Try and extract the message payload from the contained error. This consumes the
+    /// [RactorErr] instance in order to not have require cloning the message payload.
+    /// Should be used in conjunction with `has_message` to not consume the error if not wanted
+    ///
+    /// Returns [Some(`T`)] if there is a message payload, [None] otherwise.
+    pub fn try_get_message(self) -> Option<T> {
+        if let Self::Messaging(MessagingErr::SendErr(msg)) = self {
+            Some(msg)
+        } else {
+            None
+        }
+    }
+}
+
 impl<T> std::fmt::Debug for RactorErr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
