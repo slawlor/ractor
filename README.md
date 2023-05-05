@@ -62,7 +62,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies.
 
 ```toml
 [dependencies]
-ractor = "0.7"
+ractor = "0.8"
 ```
 
 ## Features

@@ -72,34 +72,6 @@ impl SupervisionTree {
         self.children.clear();
     }
 
-    /// Terminate the supervised children after a given actor (including the specified actor).
-    /// This is necessary to support [Erlang's supervision model](https://www.erlang.org/doc/design_principles/sup_princ.html#flags),
-    /// specifically the `rest_for_one` strategy
-    ///
-    /// * `id` - The id of the actor to terminate + all those that follow
-    pub fn terminate_children_after(&self, id: ActorId) {
-        let mut reference_point = u64::MAX;
-        let mut id_map = std::collections::HashMap::new();
-
-        // keep the lock inside this scope on the map
-        {
-            for item in self.children.iter_mut() {
-                id_map.insert(item.value().0, *item.key());
-                if item.value().1.get_id() == id {
-                    reference_point = item.value().0;
-                    break;
-                }
-            }
-        }
-
-        // if there was a reference point, terminate children from that point on
-        if reference_point < u64::MAX {
-            for child in self.children.iter() {
-                child.1.terminate();
-            }
-        }
-    }
-
     /// Determine if the specified actor is a parent of this actor
     pub fn is_child_of(&self, id: ActorId) -> bool {
         if let Some(parent) = &*(self.supervisor.read().unwrap()) {

@@ -5,7 +5,7 @@
 
 //! Remote procedure calls (RPC) are helpful communication primitives to communicate with actors
 //!
-//! There are generally 2 kinds of RPCs, cast and call, and their definition comes from the
+//! There are generally 2 kinds of RPCs, `cast` and `call`, and their definition comes from the
 //! standard [Erlang `gen_server`](https://www.erlang.org/doc/man/gen_server.html#cast-2).
 //! The tl;dr is that `cast` is an send without waiting on a reply while `call` is expecting
 //! a reply from the actor being communicated with.

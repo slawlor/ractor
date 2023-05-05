@@ -14,7 +14,10 @@ use super::ActorCell;
 
 /// An [ActorRef] is a strongly-typed wrapper over an [ActorCell]
 /// to provide some syntactic wrapping on the requirement to pass
-/// the actor type everywhere
+/// the actor's message type everywhere.
+///
+/// An [ActorRef] is the primary means of communication typically used
+/// when interfacing with [super::Actor]s
 pub struct ActorRef<TMessage>
 where
     TMessage: Message,

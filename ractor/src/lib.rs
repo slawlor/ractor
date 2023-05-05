@@ -12,7 +12,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ractor = "0.7"
+//! ractor = "0.8"
 //! ```
 //!
 //! ## Getting started
@@ -109,12 +109,13 @@
 //! ## Supervision
 //!
 //! Actors in `ractor` also support supervision. This is done by "linking" actors together in a supervisor-child relationship.
-//! A supervisor is "responsible" for the child actor, and as such is notified when the actor starts, stops, and fails (panics).
+//! A supervisor is responsible for the life cycle of the child actor, and as such is notified when the actor starts,
+//! stops, and fails (panics).
 //!
-//! Supervision is presently left to the implementor, but you can see a suite of supervision tests in `crate::actor::tests::supervisor`
-//! for examples on the supported functionality.
+//! Supervision is presently left to the implementor to outline handling of supervision events, but you can see a suite of
+//! supervision tests in `crate::actor::tests::supervisor` for examples on the supported functionality.
 //!
-//! NOTE: panic's in `pre_start` of an actor will cause failures to spawn, rather than supervision notified failurs as the actor hasn't "linked"
+//! NOTE: panic's in `pre_start` of an actor will cause failures to spawn, rather than supervision notified failures as the actor hasn't "linked"
 //! to its supervisor yet. However failures in `post_start`, `handle`, `handle_supervisor_evt`, `post_stop` will notify the supervisor should a failure
 //! occur. See [crate::Actor] documentation for more information
 //!

@@ -30,7 +30,7 @@ pub use actor_ref::ActorRef;
 mod actor_properties;
 use actor_properties::ActorProperties;
 
-/// [ActorStatus] represents the status of an actor
+/// [ActorStatus] represents the status of an actor's lifecycle
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
 #[repr(u8)]
 pub enum ActorStatus {
@@ -150,8 +150,12 @@ impl ActorPortSet {
     }
 }
 
-/// A handy-dandy reference to and actor and their inner properties
-/// which can be cloned and passed around
+/// An [ActorCell] is a reference to an [Actor]'s communication channels
+/// and provides external access to send messages, stop, kill, and generally
+/// interactor with the underlying [Actor] process.
+///
+/// The input ports contained in the cell will return an error should the
+/// underlying actor have terminated and no longer exist.
 #[derive(Clone)]
 pub struct ActorCell {
     inner: Arc<ActorProperties>,
@@ -307,7 +311,7 @@ impl ActorCell {
 
     /// Link this [super::Actor] to the provided supervisor
     ///
-    /// * `supervisor` - The child to link this [super::Actor] to
+    /// * `supervisor` - The supervisor [super::Actor] of this actor
     pub fn link(&self, supervisor: ActorCell) {
         supervisor.inner.tree.insert_child(self.clone());
         self.inner.tree.set_supervisor(supervisor);

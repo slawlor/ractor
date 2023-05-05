@@ -92,10 +92,11 @@ pub enum MessagingErr<T> {
     /// If you're sending to an [crate::ActorCell] then that means the actor has died
     /// (failure or not).
     ///
-    /// Includes the message which failed to send
+    /// Includes the message which failed to send so the caller can perform another operation
+    /// with the message if they want to.
     SendErr(T),
 
-    /// The channel you're trying to receive from has had all the senders dropped likely
+    /// The channel you're trying to receive from has had all the senders dropped
     /// and is therefore closed
     ChannelClosed,
 
