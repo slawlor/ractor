@@ -19,16 +19,12 @@ use super::ActorCell;
 /// An [ActorRef] is the primary means of communication typically used
 /// when interfacing with [super::Actor]s
 pub struct ActorRef<TMessage>
-where
-    TMessage: Message,
 {
     pub(crate) inner: ActorCell,
     _tactor: PhantomData<TMessage>,
 }
 
 impl<TMessage> Clone for ActorRef<TMessage>
-where
-    TMessage: Message,
 {
     fn clone(&self) -> Self {
         ActorRef {
@@ -39,8 +35,6 @@ where
 }
 
 impl<TMessage> std::ops::Deref for ActorRef<TMessage>
-where
-    TMessage: Message,
 {
     type Target = ActorCell;
 
@@ -50,8 +44,6 @@ where
 }
 
 impl<TMessage> From<ActorCell> for ActorRef<TMessage>
-where
-    TMessage: Message,
 {
     fn from(value: ActorCell) -> Self {
         Self {
@@ -62,8 +54,6 @@ where
 }
 
 impl<TActor> From<ActorRef<TActor>> for ActorCell
-where
-    TActor: Message,
 {
     fn from(value: ActorRef<TActor>) -> Self {
         value.inner
@@ -71,30 +61,16 @@ where
 }
 
 impl<TMessage> std::fmt::Debug for ActorRef<TMessage>
-where
-    TMessage: Message,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.inner)
     }
 }
 
-impl<TMessage> ActorRef<TMessage>
-where
-    TMessage: Message,
-{
+impl <TMessage> ActorRef<TMessage> {
     /// Retrieve a cloned [ActorCell] representing this [ActorRef]
     pub fn get_cell(&self) -> ActorCell {
         self.inner.clone()
-    }
-
-    /// Send a strongly-typed message, constructing the boxed message on the fly
-    ///
-    /// * `message` - The message to send
-    ///
-    /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>> {
-        self.inner.send_message::<TMessage>(message)
     }
 
     /// Notify the supervisors that a supervision event occurred
@@ -102,6 +78,20 @@ where
     /// * `evt` - The event to send to this [crate::Actor]'s supervisors
     pub fn notify_supervisor(&self, evt: SupervisionEvent) {
         self.inner.notify_supervisor(evt)
+    }
+}
+
+impl<TMessage> ActorRef<TMessage>
+where
+    TMessage: Message,
+{
+    /// Send a strongly-typed message, constructing the boxed message on the fly
+    ///
+    /// * `message` - The message to send
+    ///
+    /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
+    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>> {
+        self.inner.send_message::<TMessage>(message)
     }
 
     // ========================== General Actor Operation Aliases ========================== //
