@@ -77,7 +77,7 @@ pub struct BoxedMessage {
 ///     PrintName,
 /// }
 /// ```
-pub trait Message: Any + Send + Sync + Sized + 'static {
+pub trait Message: Any + Send + Sized + 'static {
     /// Convert a [BoxedMessage] to this concrete type
     #[cfg(feature = "cluster")]
     fn from_boxed(mut m: BoxedMessage) -> Result<Self, BoxedDowncastErr> {
@@ -168,14 +168,12 @@ pub trait Message: Any + Send + Sync + Sized + 'static {
 // Auto-Implement the [Message] trait for all types when NOT in the `cluster` configuration
 // since there's no need for an override
 #[cfg(not(feature = "cluster"))]
-impl<T: Any + Send + Sync + Sized + 'static> Message for T {}
+impl<T: Any + Send + Sized + 'static> Message for T {}
 
 // Blanket implementation for basic types which are directly bytes serializable which
 // are all to be CAST operations
 #[cfg(feature = "cluster")]
-impl<T: Any + Send + Sync + Sized + 'static + crate::serialization::BytesConvertable> Message
-    for T
-{
+impl<T: Any + Send + Sized + 'static + crate::serialization::BytesConvertable> Message for T {
     fn serializable() -> bool {
         true
     }

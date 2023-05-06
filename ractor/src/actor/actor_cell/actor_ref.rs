@@ -18,14 +18,21 @@ use super::ActorCell;
 ///
 /// An [ActorRef] is the primary means of communication typically used
 /// when interfacing with [super::Actor]s
-pub struct ActorRef<TMessage>
-{
+///
+/// The [ActorRef] is SPECIFICALLY marked [Sync], regardless of the message type
+/// because all usages of the message type are to send an owned instance of a message
+/// and in no case is that message instance shared across threads. This is guaranteed
+/// by the underlying Tokio channel usages. Without this manual marking of [Sync] on
+/// [ActorRef], we would need to constrain the message type [Message] to be [Sync] which
+/// is overly restrictive.
+pub struct ActorRef<TMessage> {
     pub(crate) inner: ActorCell,
     _tactor: PhantomData<TMessage>,
 }
 
-impl<TMessage> Clone for ActorRef<TMessage>
-{
+unsafe impl<T> Sync for ActorRef<T> {}
+
+impl<TMessage> Clone for ActorRef<TMessage> {
     fn clone(&self) -> Self {
         ActorRef {
             inner: self.inner.clone(),
@@ -34,8 +41,7 @@ impl<TMessage> Clone for ActorRef<TMessage>
     }
 }
 
-impl<TMessage> std::ops::Deref for ActorRef<TMessage>
-{
+impl<TMessage> std::ops::Deref for ActorRef<TMessage> {
     type Target = ActorCell;
 
     fn deref(&self) -> &Self::Target {
@@ -43,8 +49,7 @@ impl<TMessage> std::ops::Deref for ActorRef<TMessage>
     }
 }
 
-impl<TMessage> From<ActorCell> for ActorRef<TMessage>
-{
+impl<TMessage> From<ActorCell> for ActorRef<TMessage> {
     fn from(value: ActorCell) -> Self {
         Self {
             inner: value,
@@ -53,21 +58,19 @@ impl<TMessage> From<ActorCell> for ActorRef<TMessage>
     }
 }
 
-impl<TActor> From<ActorRef<TActor>> for ActorCell
-{
+impl<TActor> From<ActorRef<TActor>> for ActorCell {
     fn from(value: ActorRef<TActor>) -> Self {
         value.inner
     }
 }
 
-impl<TMessage> std::fmt::Debug for ActorRef<TMessage>
-{
+impl<TMessage> std::fmt::Debug for ActorRef<TMessage> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.inner)
     }
 }
 
-impl <TMessage> ActorRef<TMessage> {
+impl<TMessage> ActorRef<TMessage> {
     /// Retrieve a cloned [ActorCell] representing this [ActorRef]
     pub fn get_cell(&self) -> ActorCell {
         self.inner.clone()

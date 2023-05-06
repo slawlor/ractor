@@ -106,6 +106,8 @@ pub enum MessagingErr<T> {
     InvalidActorType,
 }
 
+unsafe impl<T> Sync for MessagingErr<T> {}
+
 impl<T> std::fmt::Debug for MessagingErr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
