@@ -18,18 +18,21 @@ use super::ActorCell;
 ///
 /// An [ActorRef] is the primary means of communication typically used
 /// when interfacing with [super::Actor]s
-pub struct ActorRef<TMessage>
-where
-    TMessage: Message,
-{
+///
+/// The [ActorRef] is SPECIFICALLY marked [Sync], regardless of the message type
+/// because all usages of the message type are to send an owned instance of a message
+/// and in no case is that message instance shared across threads. This is guaranteed
+/// by the underlying Tokio channel usages. Without this manual marking of [Sync] on
+/// [ActorRef], we would need to constrain the message type [Message] to be [Sync] which
+/// is overly restrictive.
+pub struct ActorRef<TMessage> {
     pub(crate) inner: ActorCell,
     _tactor: PhantomData<TMessage>,
 }
 
-impl<TMessage> Clone for ActorRef<TMessage>
-where
-    TMessage: Message,
-{
+unsafe impl<T> Sync for ActorRef<T> {}
+
+impl<TMessage> Clone for ActorRef<TMessage> {
     fn clone(&self) -> Self {
         ActorRef {
             inner: self.inner.clone(),
@@ -38,10 +41,7 @@ where
     }
 }
 
-impl<TMessage> std::ops::Deref for ActorRef<TMessage>
-where
-    TMessage: Message,
-{
+impl<TMessage> std::ops::Deref for ActorRef<TMessage> {
     type Target = ActorCell;
 
     fn deref(&self) -> &Self::Target {
@@ -49,10 +49,7 @@ where
     }
 }
 
-impl<TMessage> From<ActorCell> for ActorRef<TMessage>
-where
-    TMessage: Message,
-{
+impl<TMessage> From<ActorCell> for ActorRef<TMessage> {
     fn from(value: ActorCell) -> Self {
         Self {
             inner: value,
@@ -61,40 +58,22 @@ where
     }
 }
 
-impl<TActor> From<ActorRef<TActor>> for ActorCell
-where
-    TActor: Message,
-{
+impl<TActor> From<ActorRef<TActor>> for ActorCell {
     fn from(value: ActorRef<TActor>) -> Self {
         value.inner
     }
 }
 
-impl<TMessage> std::fmt::Debug for ActorRef<TMessage>
-where
-    TMessage: Message,
-{
+impl<TMessage> std::fmt::Debug for ActorRef<TMessage> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.inner)
     }
 }
 
-impl<TMessage> ActorRef<TMessage>
-where
-    TMessage: Message,
-{
+impl<TMessage> ActorRef<TMessage> {
     /// Retrieve a cloned [ActorCell] representing this [ActorRef]
     pub fn get_cell(&self) -> ActorCell {
         self.inner.clone()
-    }
-
-    /// Send a strongly-typed message, constructing the boxed message on the fly
-    ///
-    /// * `message` - The message to send
-    ///
-    /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
-    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>> {
-        self.inner.send_message::<TMessage>(message)
     }
 
     /// Notify the supervisors that a supervision event occurred
@@ -102,6 +81,20 @@ where
     /// * `evt` - The event to send to this [crate::Actor]'s supervisors
     pub fn notify_supervisor(&self, evt: SupervisionEvent) {
         self.inner.notify_supervisor(evt)
+    }
+}
+
+impl<TMessage> ActorRef<TMessage>
+where
+    TMessage: Message,
+{
+    /// Send a strongly-typed message, constructing the boxed message on the fly
+    ///
+    /// * `message` - The message to send
+    ///
+    /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
+    pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>> {
+        self.inner.send_message::<TMessage>(message)
     }
 
     // ========================== General Actor Operation Aliases ========================== //

@@ -136,7 +136,7 @@
 
 #![deny(warnings)]
 #![warn(unused_imports)]
-#![warn(unsafe_code)]
+// #![warn(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(unused_crate_dependencies)]
 // #![cfg_attr(docsrs, feature(doc_cfg))]

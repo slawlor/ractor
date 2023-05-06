@@ -25,7 +25,7 @@ A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.e
 a set of generic primitives and helps automate the supervision tree and management of our actors along with the traditional actor message processing logic. It's built *heavily* on `tokio` which is a
 hard requirement for `ractor` (today).
 
-`ractor` is a modern actor framework written in 100% rust with no additional `unsafe` code.
+`ractor` is a modern actor framework written in 100% Rust.
 
 Additionally `ractor` has a companion library, `ractor_cluster` which is needed for `ractor` to be deployed in a distributed (cluster-like) scenario. `ractor_cluster` shouldn't be considered production ready, but it is relatively stable and we'd love your feedback!
 
