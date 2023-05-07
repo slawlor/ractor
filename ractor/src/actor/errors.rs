@@ -106,6 +106,21 @@ pub enum MessagingErr<T> {
     InvalidActorType,
 }
 
+impl<T> MessagingErr<T> {
+    /// Map any message embedded within the error type. This is primarily useful
+    /// for normalizing an error value if the message is not needed.
+    pub fn map<F, U>(self, mapper: F) -> MessagingErr<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            MessagingErr::SendErr(err) => MessagingErr::SendErr(mapper(err)),
+            MessagingErr::ChannelClosed => MessagingErr::ChannelClosed,
+            MessagingErr::InvalidActorType => MessagingErr::InvalidActorType,
+        }
+    }
+}
+
 unsafe impl<T> Sync for MessagingErr<T> {}
 
 impl<T> std::fmt::Debug for MessagingErr<T> {
