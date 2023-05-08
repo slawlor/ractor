@@ -12,6 +12,7 @@ use rand::{thread_rng, Rng};
 pub mod auth_handshake;
 pub mod dist_connect;
 pub mod encryption;
+pub mod name_registry;
 pub mod pg_groups;
 
 fn random_name() -> String {
@@ -32,6 +33,8 @@ pub enum TestCase {
     Encryption(encryption::EncryptionConfig),
     /// Test the transitive connection of a cluster
     DistConnect(dist_connect::DistConnectConfig),
+    /// Test name registry through a ractor cluster
+    NameRegistry(name_registry::NameRegistryConfig),
     /// Not-a-Node: Don't run any test and exit this node with code 0
     Nan,
 }
