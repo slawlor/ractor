@@ -10,7 +10,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::concurrency::Duration;
+use crate::{concurrency::Duration, MessagingErr, RactorErr};
 
 use crate::{
     Actor, ActorCell, ActorProcessingErr, ActorRef, ActorStatus, SpawnErr, SupervisionEvent,
@@ -871,4 +871,11 @@ async fn kill_and_wait() {
         .expect("Failed to wait for actor death");
     // the handle should be done and completed
     assert!(handle.is_finished());
+}
+
+#[test]
+fn test_err_map() {
+    let err: RactorErr<i32> = RactorErr::Messaging(MessagingErr::SendErr(123));
+
+    let _: RactorErr<()> = err.map(|_| ());
 }

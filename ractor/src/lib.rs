@@ -220,6 +220,20 @@ impl<T> RactorErr<T> {
             None
         }
     }
+
+    /// Map any message embedded within the error type. This is primarily useful
+    /// for normalizing an error value if the message is not needed.
+    pub fn map<F, U>(self, mapper: F) -> RactorErr<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            RactorErr::Spawn(err) => RactorErr::Spawn(err),
+            RactorErr::Messaging(err) => RactorErr::Messaging(err.map(mapper)),
+            RactorErr::Actor(err) => RactorErr::Actor(err),
+            RactorErr::Timeout => RactorErr::Timeout,
+        }
+    }
 }
 
 impl<T> std::fmt::Debug for RactorErr<T> {
