@@ -309,9 +309,9 @@ where
         ),
         SpawnErr,
     > {
-        let (actor, ports) = Self::new(name, handler)?;
+        let (actor, ports) = Self::new(name.clone(), handler)?;
         let actor_ref = actor.actor_ref.clone();
-        let join_op = crate::concurrency::spawn(async move {
+        let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
             let (_, handle) = actor.start(ports, startup_args, None).await?;
             Ok(handle)
         });
@@ -351,9 +351,9 @@ where
         ),
         SpawnErr,
     > {
-        let (actor, ports) = Self::new(name, handler)?;
+        let (actor, ports) = Self::new(name.clone(), handler)?;
         let actor_ref = actor.actor_ref.clone();
-        let join_op = crate::concurrency::spawn(async move {
+        let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
             let (_, handle) = actor.start(ports, startup_args, Some(supervisor)).await?;
             Ok(handle)
         });
@@ -456,7 +456,7 @@ where
         let myself_ret = actor_ref.clone();
 
         // run the processing loop, backgrounding the work
-        let handle = crate::concurrency::spawn(async move {
+        let handle = crate::concurrency::spawn_named(actor_ref.get_name().as_deref(), async move {
             let myself = actor_ref.clone();
             let evt = match Self::processing_loop(ports, &mut state, &handler, actor_ref).await {
                 Ok(exit_reason) => SupervisionEvent::ActorTerminated(

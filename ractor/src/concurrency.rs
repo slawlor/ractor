@@ -76,7 +76,29 @@ pub mod tokio_primatives {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        tokio::task::spawn(future)
+        spawn_named(None, future)
+    }
+
+    /// Spawn a (possibly) named task on the executor runtime
+    pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        #[cfg(feature = "tracing")]
+        {
+            let mut builder = tokio::task::Builder::new();
+            if let Some(name) = name {
+                builder = builder.name(name);
+            }
+            builder.spawn(future).expect("Tokio task spawn failed")
+        }
+
+        #[cfg(not(feature = "tracing"))]
+        {
+            let _ = name;
+            tokio::task::spawn(future)
+        }
     }
 
     /// Execute the future up to a timeout
@@ -141,6 +163,16 @@ pub mod async_std_primatives {
         F::Output: Send + 'static,
     {
         async_std::task::spawn(future)
+    }
+
+    /// Spawn a (possibly) named task on the executor runtime
+    pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let _ = name;
+        spawn(future)
     }
 
     /// Execute the future up to a timeout
