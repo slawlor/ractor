@@ -23,6 +23,9 @@ categories = ["actor", "erlang"]
 cluster = []
 default = []
 
+# Requires --cfg=tokio_unstable
+tracing = ["tokio/tracing"]
+
 [dependencies]
 ## Required dependencies
 async-trait = "0.1"
