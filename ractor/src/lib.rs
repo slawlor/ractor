@@ -281,13 +281,25 @@ impl<T> std::fmt::Display for RactorErr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Actor(actor_err) => {
-                write!(f, "{actor_err}")
+                if f.alternate() {
+                    write!(f, "{actor_err:#}")
+                } else {
+                    write!(f, "{actor_err}")
+                }
             }
             Self::Messaging(messaging_err) => {
-                write!(f, "{messaging_err}")
+                if f.alternate() {
+                    write!(f, "{messaging_err:#}")
+                } else {
+                    write!(f, "{messaging_err}")
+                }
             }
             Self::Spawn(spawn_err) => {
-                write!(f, "{spawn_err}")
+                if f.alternate() {
+                    write!(f, "{spawn_err:#}")
+                } else {
+                    write!(f, "{spawn_err}")
+                }
             }
             Self::Timeout => {
                 write!(f, "timeout")
