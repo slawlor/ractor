@@ -319,4 +319,102 @@ async fn test_rpc_call_forwarding() {
     worker_handle.await.expect("Actor stopped with err");
 }
 
-// TODO: test multi_call
+#[crate::concurrency::test]
+async fn test_multi_call() {
+    struct TestActor;
+    enum MessageFormat {
+        Rpc(rpc::RpcReplyPort<String>),
+        Timeout(rpc::RpcReplyPort<String>),
+    }
+    #[cfg(feature = "cluster")]
+    impl crate::Message for MessageFormat {}
+    #[async_trait::async_trait]
+    impl Actor for TestActor {
+        type Msg = MessageFormat;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _this_actor: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            match message {
+                Self::Msg::Rpc(reply) => {
+                    // An error sending means no one is listening anymore (the receiver was dropped),
+                    // so we should shortcut the processing of this message probably!
+                    if !reply.is_closed() {
+                        let _ = reply.send("howdy".to_string());
+                    }
+                }
+                Self::Msg::Timeout(reply) => {
+                    crate::concurrency::sleep(Duration::from_millis(100)).await;
+                    let _ = reply.send("howdy".to_string());
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let mut actors = Vec::new();
+    let mut handles = Vec::new();
+    for _ in 1..10 {
+        let (actor, handle) = Actor::spawn(None, TestActor, ())
+            .await
+            .expect("Failed to start test actor");
+        actors.push(actor);
+        handles.push(handle);
+    }
+
+    // Assert
+    let multi_rpc_result = rpc::multi_call(
+        &actors,
+        MessageFormat::Rpc,
+        Some(Duration::from_millis(100)),
+    )
+    .await
+    .expect("Multi-call failed!");
+    for result in multi_rpc_result {
+        assert!(matches!(result, rpc::CallResult::Success(_)));
+    }
+
+    let multi_rpc_result_timeout = rpc::multi_call(
+        &actors,
+        MessageFormat::Timeout,
+        Some(Duration::from_millis(10)),
+    )
+    .await
+    .expect("Multi-call failed");
+    for result in multi_rpc_result_timeout {
+        assert!(matches!(result, rpc::CallResult::Timeout));
+    }
+
+    // stop an actor, and try and send calls should get SendErr's
+    actors[1].stop(None);
+    crate::concurrency::sleep(Duration::from_millis(25)).await;
+    let multi_rpc_result = rpc::multi_call(
+        &actors,
+        MessageFormat::Rpc,
+        Some(Duration::from_millis(100)),
+    )
+    .await
+    .expect("Multi-call failed!");
+    assert!(matches!(multi_rpc_result[1], rpc::CallResult::SenderError));
+
+    // Cleanup
+    for actor in actors {
+        actor.stop(None);
+    }
+    for handle in handles.into_iter() {
+        handle.await.unwrap();
+    }
+}
