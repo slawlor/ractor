@@ -25,13 +25,24 @@ pub enum SpawnErr {
     ActorAlreadyRegistered(ActorName),
 }
 
-impl std::error::Error for SpawnErr {}
+impl std::error::Error for SpawnErr {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self {
+            Self::StartupPanic(inner) => Some(inner.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 impl Display for SpawnErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::StartupPanic(panic_msg) => {
-                write!(f, "Actor panicked during startup '{panic_msg}'")
+                if f.alternate() {
+                    write!(f, "Actor panicked during startup '{panic_msg:#}'")
+                } else {
+                    write!(f, "Actor panicked during startup '{panic_msg}'")
+                }
             }
             Self::StartupCancelled => {
                 write!(
@@ -71,13 +82,24 @@ pub enum ActorErr {
     Panic(ActorProcessingErr),
 }
 
-impl std::error::Error for ActorErr {}
+impl std::error::Error for ActorErr {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self {
+            Self::Panic(inner) => Some(inner.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 impl Display for ActorErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Panic(panic_msg) => {
-                write!(f, "Actor panicked '{panic_msg}'")
+                if f.alternate() {
+                    write!(f, "Actor panicked '{panic_msg:#}'")
+                } else {
+                    write!(f, "Actor panicked '{panic_msg}'")
+                }
             }
             Self::Cancelled => {
                 write!(f, "Actor operation cancelled")
