@@ -86,7 +86,7 @@ where
 /// Returns [Ok(`Vec<CallResult<TReply>>>`)] upon successful initial sending with the reply from
 /// the [crate::Actor]s, [Err(MessagingErr)] if the initial send operation failed
 pub async fn multi_call<TMessage, TReply, TMsgBuilder>(
-    actors: &[ActorCell],
+    actors: &[ActorRef<TMessage>],
     msg_builder: TMsgBuilder,
     timeout_option: Option<Duration>,
 ) -> Result<Vec<CallResult<TReply>>, MessagingErr<TMessage>>
@@ -103,7 +103,7 @@ where
             Some(duration) => (tx, duration).into(),
             None => tx.into(),
         };
-        actor.send_message::<TMessage>(msg_builder(port))?;
+        actor.cast(msg_builder(port))?;
         rx_ports.push(rx);
     }
 
@@ -135,7 +135,8 @@ where
 
     // we threaded the index in order to maintain ordering from the originally called
     // actors.
-    let mut results = Vec::with_capacity(join_set.len());
+    let mut results = Vec::new();
+    results.resize_with(join_set.len(), || CallResult::Timeout);
     while let Some(result) = join_set.join_next().await {
         match result {
             Ok((i, r)) => results[i] = r,
