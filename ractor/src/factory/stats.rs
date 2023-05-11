@@ -66,11 +66,23 @@ Avg time in factory queue: {}us
 Num expired jobs: {}
 Num discarded jobs: {}
             ",
-            self.ping_timing_us / self.ping_count as u128,
+            if self.ping_count > 0 {
+                self.ping_timing_us / self.ping_count as u128
+            } else {
+                0
+            },
             self.total_processed_job_count,
             self.avg_job_qps(),
-            self.job_processing_latency_usec / self.processed_job_count as u128,
-            self.factory_processing_latency_usec / self.processed_job_count as u128,
+            if self.processed_job_count > 0 {
+                self.job_processing_latency_usec / self.processed_job_count as u128
+            } else {
+                0
+            },
+            if self.processed_job_count > 0 {
+                self.factory_processing_latency_usec / self.processed_job_count as u128
+            } else {
+                0
+            },
             self.total_num_expired_jobs,
             self.total_num_discarded_jobs,
         )
@@ -120,7 +132,10 @@ impl MessageProcessingStats {
             if self.ping_count > RESET_PINGS_AFTER {
                 // When we hit 10min, convert the message timing to an average and reset the counters
                 // this lets us track degradation without being overwhelmed by old (stale) data
-                self.ping_timing_us /= self.ping_count as u128;
+                if self.ping_count > 0 {
+                    self.ping_timing_us /= self.ping_count as u128;
+                }
+
                 self.ping_count = 1;
                 return true;
             }
@@ -160,9 +175,17 @@ impl MessageProcessingStats {
     }
 
     pub(crate) fn avg_job_qps(&self) -> u128 {
-        let us_between_jobs = self.job_incoming_time_us / self.job_count as u128;
+        if self.job_count > 0 {
+            let us_between_jobs = self.job_incoming_time_us / self.job_count as u128;
 
-        MICROS_IN_SEC / us_between_jobs
+            if us_between_jobs > 0 {
+                MICROS_IN_SEC / us_between_jobs
+            } else {
+                0
+            }
+        } else {
+            0
+        }
     }
 
     /// Called each time a job is completed to report factory processing time, worker processing time, total processing time
