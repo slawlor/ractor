@@ -1,5 +1,6 @@
 [workspace]
 
+rust-version = "1.64"
 members = [
     "ractor",
     "ractor_cluster",

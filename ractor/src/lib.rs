@@ -15,6 +15,8 @@
 //! ractor = "0.8"
 //! ```
 //!
+//! The minimum supported Rust version (MSRV) of `ractor` is `1.64`
+//!
 //! ## Getting started
 //!
 //! An example "ping-pong" actor might be the following
