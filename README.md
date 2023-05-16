@@ -65,6 +65,8 @@ Install `ractor` by adding the following to your Cargo.toml dependencies.
 ractor = "0.8"
 ```
 
+The minimum supported Rust version (MSRV) of `ractor` is `1.64`
+
 ## Features
 
 `ractor` exposes a single feature currently, namely:
