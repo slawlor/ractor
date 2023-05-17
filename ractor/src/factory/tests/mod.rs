@@ -18,6 +18,8 @@ use super::{
     WorkerStartContext,
 };
 
+mod worker_lifecycle;
+
 const NUM_TEST_WORKERS: usize = 3;
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq)]
