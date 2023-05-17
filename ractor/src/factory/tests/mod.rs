@@ -76,7 +76,7 @@ impl Actor for TestWorker {
             WorkerMessage::FactoryPing(time) => {
                 state
                     .factory
-                    .cast(FactoryMessage::WorkerPong(state.wid, time))?;
+                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
             }
             WorkerMessage::Dispatch(job) => {
                 log::debug!("Worker received {:?}", job.msg);
@@ -568,7 +568,7 @@ impl Actor for StuckWorker {
             WorkerMessage::FactoryPing(time) => {
                 state
                     .factory
-                    .cast(FactoryMessage::WorkerPong(state.wid, time))?;
+                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
             }
             WorkerMessage::Dispatch(job) => {
                 log::debug!("Worker received {:?}", job.msg);

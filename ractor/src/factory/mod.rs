@@ -302,7 +302,7 @@ where
 
     /// A reply to a factory ping supplying the worker id and the time
     /// of the ping start
-    WorkerPong(WorkerId, Instant),
+    WorkerPong(WorkerId, Duration),
 
     /// Trigger a scan for stuck worker detection
     IdentifyStuckWorkers,
@@ -506,7 +506,7 @@ where
                 }
             }
             FactoryMessage::DoPings(when) => {
-                if state.stats.ping_received(when) {
+                if state.stats.ping_received(when.elapsed()) {
                     state.log_stats(&myself);
                 }
 

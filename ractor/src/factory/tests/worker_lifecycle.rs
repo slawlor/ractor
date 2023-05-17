@@ -53,7 +53,7 @@ impl Actor for MyWorker {
             WorkerMessage::FactoryPing(time) => {
                 state
                     .factory
-                    .cast(FactoryMessage::WorkerPong(state.wid, time))?;
+                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
             }
             WorkerMessage::Dispatch(job) => {
                 log::warn!("Worker received {:?}", job.msg);
