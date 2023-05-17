@@ -239,7 +239,7 @@ where
     }
 
     /// Comes back when a ping went out
-    pub(crate) fn ping_received(&mut self, time: Instant) {
+    pub(crate) fn ping_received(&mut self, time: Duration) {
         if self.stats.ping_received(time) {
             // TODO log metrics ? Should be configurable on the factory level
         }
