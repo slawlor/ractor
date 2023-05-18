@@ -8,7 +8,7 @@
 use std::fmt::Display;
 use std::time::SystemTime;
 
-use crate::concurrency::Instant;
+use crate::concurrency::{Duration, Instant};
 use crate::factory::JobOptions;
 
 const MICROS_IN_SEC: u128 = 1000000;
@@ -123,10 +123,9 @@ impl MessageProcessingStats {
 
     /// Handle a factory ping, and every 10 minutes adjust the stats to the
     /// average + return a flag to state that we reset the ping counter (every RESET_PINGS_AFTER pings)
-    pub(crate) fn ping_received(&mut self, sent_when: Instant) -> bool {
+    pub(crate) fn ping_received(&mut self, duration: Duration) -> bool {
         self.last_ping = Instant::now();
         if self.enabled {
-            let duration = self.last_ping - sent_when;
             self.ping_count += 1;
             self.ping_timing_us += duration.as_micros();
             if self.ping_count > RESET_PINGS_AFTER {

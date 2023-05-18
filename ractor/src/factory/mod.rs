@@ -165,6 +165,45 @@ where
     TMsg: Message,
     TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
 {
+    fn maybe_dequeue(
+        &self,
+        state: &mut FactoryState<TKey, TMsg, TWorker>,
+        who: WorkerId,
+    ) -> Result<(), ActorProcessingErr> {
+        match &self.routing_mode {
+            RoutingMode::Queuer | RoutingMode::StickyQueuer => {
+                // pop + discard expired jobs
+                let mut next_job = None;
+                while let Some(job) = state.messages.pop_front() {
+                    if !job.is_expired() {
+                        next_job = Some(job);
+                        break;
+                    } else {
+                        state.stats.job_ttl_expired();
+                    }
+                }
+                // de-queue another job
+                if let Some(job) = next_job {
+                    if let Some(worker) = state.pool.get_mut(&who).filter(|f| f.is_available()) {
+                        // Check if this worker is now free (should be the case except potentially in a sticky queuer which may automatically
+                        // move to a sticky message)
+                        worker.enqueue_job(job)?;
+                    } else if let Some(worker) =
+                        state.pool.values_mut().find(|worker| worker.is_available())
+                    {
+                        // If that worker is busy, try and scan the workers to find a free worker
+                        worker.enqueue_job(job)?;
+                    } else {
+                        // no free worker, put the message back into the queue where it was (at the front of the queue)
+                        state.messages.push_front(job);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn maybe_enqueue(&self, state: &mut FactoryState<TKey, TMsg, TWorker>, job: Job<TKey, TMsg>) {
         if let Some(limit) = self.discard_threshold {
             state.messages.push_back(job);
@@ -263,7 +302,7 @@ where
 
     /// A reply to a factory ping supplying the worker id and the time
     /// of the ping start
-    WorkerPong(WorkerId, Instant),
+    WorkerPong(WorkerId, Duration),
 
     /// Trigger a scan for stuck worker detection
     IdentifyStuckWorkers,
@@ -448,45 +487,17 @@ where
                 }
             }
             FactoryMessage::Finished(who, job_key) => {
-                if let Some(worker) = state.pool.get_mut(&who) {
+                let wid = if let Some(worker) = state.pool.get_mut(&who) {
                     if let Some(job_options) = worker.worker_complete(job_key)? {
                         // record the job data on the factory
                         state.stats.factory_job_done(&job_options);
                     }
-                }
-
-                match self.routing_mode {
-                    RoutingMode::Queuer | RoutingMode::StickyQueuer => {
-                        // pop + discard expired jobs
-                        let mut next_job = None;
-                        while let Some(job) = state.messages.pop_front() {
-                            if !job.is_expired() {
-                                next_job = Some(job);
-                                break;
-                            } else {
-                                state.stats.job_ttl_expired();
-                            }
-                        }
-                        // de-queue another job
-                        if let Some(job) = next_job {
-                            if let Some(worker) =
-                                state.pool.get_mut(&who).filter(|f| f.is_available())
-                            {
-                                // Check if this worker is now free (should be the case except potentially in a sticky queuer which may automatically
-                                // move to a sticky message)
-                                worker.enqueue_job(job)?;
-                            } else if let Some(worker) =
-                                state.pool.values_mut().find(|worker| worker.is_available())
-                            {
-                                // If that worker is busy, try and scan the workers to find a free worker
-                                worker.enqueue_job(job)?;
-                            } else {
-                                // no free worker, put the message back into the queue where it was (at the front of the queue)
-                                state.messages.push_front(job);
-                            }
-                        }
-                    }
-                    _ => {}
+                    Some(worker.wid)
+                } else {
+                    None
+                };
+                if let Some(wid) = wid {
+                    self.maybe_dequeue(state, wid)?;
                 }
             }
             FactoryMessage::WorkerPong(wid, time) => {
@@ -495,7 +506,7 @@ where
                 }
             }
             FactoryMessage::DoPings(when) => {
-                if state.stats.ping_received(when) {
+                if state.stats.ping_received(when.elapsed()) {
                     state.log_stats(&myself);
                 }
 
@@ -543,7 +554,7 @@ where
     ) -> Result<(), ActorProcessingErr> {
         match message {
             SupervisionEvent::ActorTerminated(who, _, reason) => {
-                if let Some(worker) = state
+                let wid = if let Some(worker) = state
                     .pool
                     .values_mut()
                     .find(|actor| actor.is_pid(who.get_id()))
@@ -563,10 +574,16 @@ where
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
                     worker.replace_worker(replacement, replacement_handle)?;
+                    Some(worker.wid)
+                } else {
+                    None
+                };
+                if let Some(wid) = wid {
+                    self.maybe_dequeue(state, wid)?;
                 }
             }
             SupervisionEvent::ActorPanicked(who, reason) => {
-                if let Some(worker) = state
+                let wid = if let Some(worker) = state
                     .pool
                     .values_mut()
                     .find(|actor| actor.is_pid(who.get_id()))
@@ -586,6 +603,12 @@ where
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
                     worker.replace_worker(replacement, replacement_handle)?;
+                    Some(worker.wid)
+                } else {
+                    None
+                };
+                if let Some(wid) = wid {
+                    self.maybe_dequeue(state, wid)?;
                 }
             }
             _ => {}
