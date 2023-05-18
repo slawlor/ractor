@@ -34,7 +34,7 @@ futures = "0.3"
 log = "0.4"
 once_cell = "1"
 rand = "0.8"
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
 
 [dev-dependencies]
 criterion = "0.3"
