@@ -910,6 +910,9 @@ impl Actor for NodeSession {
                             self.handle_auth(state, auth_message, myself.clone()).await;
                             // If we were not originally authenticated, but now we are, startup the node sync'ing logic
                             if !p_state && state.auth.is_ok() {
+                                self.node_server.cast(
+                                    NodeServerMessage::ConnectionAuthenticated(myself.get_id()),
+                                )?;
                                 self.after_authenticated(myself, state);
                             }
                         }
