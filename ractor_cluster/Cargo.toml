@@ -12,6 +12,7 @@ readme = "README.md"
 homepage = "https://github.com/slawlor/ractor"
 categories = ["actor", "erlang"]
 build = "src/build.rs"
+rust-version = "1.64"
 
 [build-dependencies]
 protobuf-src = "1"
