@@ -67,7 +67,8 @@ pub use net::{IncomingEncryptionMode, NetworkStream};
 pub use node::client::connect as client_connect;
 pub use node::client::connect_enc as client_connect_enc;
 pub use node::{
-    client::ClientConnectErr, NodeServer, NodeServerMessage, NodeSession, NodeSessionMessage,
+    client::ClientConnectErr, NodeEventSubscription, NodeServer, NodeServerMessage, NodeSession,
+    NodeSessionMessage,
 };
 
 // Re-export the procedural macros so people don't need to reference them directly

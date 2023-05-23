@@ -101,6 +101,9 @@ pub enum NodeServerMessage {
         is_server: bool,
     },
 
+    /// This specific node session has authenticated
+    ConnectionAuthenticated(ActorId),
+
     /// A request to check if a session is currently open, and if it is is the ordering such that we should
     /// reject the incoming request
     ///
@@ -123,6 +126,17 @@ pub enum NodeServerMessage {
 
     /// Retrieve the current status of the node server, listing the node sessions
     GetSessions(RpcReplyPort<HashMap<NodeId, NodeServerSessionInformation>>),
+
+    /// Subscribe to node events from the node server
+    SubscribeToEvents {
+        /// The id of this subscription
+        id: String,
+        /// The subscription handler
+        subscription: Box<dyn NodeEventSubscription>,
+    },
+
+    /// Unsubscribe to node events for the given subscription id
+    UnsubscribeToEvents(String),
 }
 
 /// Message from the TCP `ractor_cluster::net::session::Session` actor and the
@@ -234,12 +248,40 @@ impl NodeServerSessionInformation {
     }
 }
 
+/// Trait which is utilized to receive Node events (node session
+/// startup, shutdown, etc).
+///
+/// Node events can be used to try and reconnect node sessions
+/// or handle custom shutdown logic as needed. They methods are
+/// synchronous because ideally they'd be message sends and we
+/// don't want to risk blocking the NodeServer's logic
+pub trait NodeEventSubscription: Send + 'static {
+    /// A node session has started up
+    ///
+    /// * `ses`: The [NodeServerSessionInformation] representing the current state
+    /// of the node session
+    fn node_session_opened(&self, ses: NodeServerSessionInformation);
+
+    /// A node session has shutdown
+    ///
+    /// * `ses`: The [NodeServerSessionInformation] representing the current state
+    /// of the node session
+    fn node_session_disconnected(&self, ses: NodeServerSessionInformation);
+
+    /// A node session authenticated
+    ///
+    /// * `ses`: The [NodeServerSessionInformation] representing the current state
+    /// of the node session
+    fn node_session_authenicated(&self, ses: NodeServerSessionInformation);
+}
+
 /// The state of the node server
 pub struct NodeServerState {
     listener: ActorRef<crate::net::listener::ListenerMessage>,
     node_sessions: HashMap<ActorId, NodeServerSessionInformation>,
     node_id_counter: NodeId,
     this_node_name: auth_protocol::NameMessage,
+    subscriptions: HashMap<String, Box<dyn NodeEventSubscription>>,
 }
 
 impl NodeServerState {
@@ -304,6 +346,7 @@ impl Actor for NodeServer {
                 name: format!("{}@{}", self.node_name, self.hostname),
                 connection_string: format!("{}:{}", self.hostname, self.port),
             },
+            subscriptions: HashMap::new(),
         })
     }
 
@@ -332,19 +375,27 @@ impl Actor for NodeServer {
                 )
                 .await
                 {
-                    state.node_sessions.insert(
-                        actor.get_id(),
-                        NodeServerSessionInformation::new(
-                            actor.clone(),
-                            is_server,
-                            node_id,
-                            peer_addr,
-                        ),
+                    let ses = NodeServerSessionInformation::new(
+                        actor.clone(),
+                        is_server,
+                        node_id,
+                        peer_addr,
                     );
+                    for (_, sub) in state.subscriptions.iter() {
+                        sub.node_session_opened(ses.clone());
+                    }
+                    state.node_sessions.insert(actor.get_id(), ses);
                     state.node_id_counter += 1;
                 } else {
                     // failed to startup actor, drop the socket
                     log::warn!("Failed to startup `NodeSession`, dropping connection");
+                }
+            }
+            Self::Msg::ConnectionAuthenticated(actor_id) => {
+                if let Some(entry) = state.node_sessions.get(&actor_id) {
+                    for (_, sub) in state.subscriptions.iter() {
+                        sub.node_session_authenicated(entry.clone());
+                    }
                 }
             }
             Self::Msg::UpdateSession { actor_id, name } => {
@@ -361,6 +412,12 @@ impl Actor for NodeServer {
                     map.insert(value.node_id, value.clone());
                 }
                 let _ = reply.send(map);
+            }
+            Self::Msg::SubscribeToEvents { id, subscription } => {
+                state.subscriptions.insert(id, subscription);
+            }
+            Self::Msg::UnsubscribeToEvents(id) => {
+                let _ = state.subscriptions.remove(&id);
             }
         }
         Ok(())
@@ -399,7 +456,10 @@ impl Actor for NodeServer {
                                 o.get().peer_name,
                                 msg
                             );
-                            o.remove();
+                            let ses = o.remove();
+                            for (_, sub) in state.subscriptions.iter() {
+                                sub.node_session_disconnected(ses.clone());
+                            }
                         }
                         Entry::Vacant(_) => {
                             log::warn!(
@@ -437,7 +497,10 @@ impl Actor for NodeServer {
                                 o.get().peer_name,
                                 maybe_reason
                             );
-                            o.remove();
+                            let ses = o.remove();
+                            for (_, sub) in state.subscriptions.iter() {
+                                sub.node_session_disconnected(ses.clone());
+                            }
                         }
                         Entry::Vacant(_) => {
                             log::warn!(

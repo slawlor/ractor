@@ -24,6 +24,32 @@ pub struct AuthHandshakeConfig {
     client_host: Option<String>,
 }
 
+struct SubscriptionEventLogger;
+
+impl ractor_cluster::NodeEventSubscription for SubscriptionEventLogger {
+    fn node_session_authenicated(&self, ses: ractor_cluster::node::NodeServerSessionInformation) {
+        log::warn!(
+            "[SubscriptionEventLogger] Node {} ({}) authenticated",
+            ses.node_id,
+            ses.peer_addr
+        );
+    }
+    fn node_session_disconnected(&self, ses: ractor_cluster::node::NodeServerSessionInformation) {
+        log::warn!(
+            "[SubscriptionEventLogger] Node {} ({}) disconnected",
+            ses.node_id,
+            ses.peer_addr
+        );
+    }
+    fn node_session_opened(&self, ses: ractor_cluster::node::NodeServerSessionInformation) {
+        log::warn!(
+            "[SubscriptionEventLogger] Node {} ({}) opened",
+            ses.node_id,
+            ses.peer_addr
+        );
+    }
+}
+
 pub async fn test(config: AuthHandshakeConfig) -> i32 {
     let cookie = "cookie".to_string();
     let hostname = "localhost".to_string();
@@ -42,6 +68,14 @@ pub async fn test(config: AuthHandshakeConfig) -> i32 {
     let (actor, handle) = Actor::spawn(None, server, ())
         .await
         .expect("Failed to start NodeServer");
+
+    let log_sub = Box::new(SubscriptionEventLogger);
+    actor
+        .cast(ractor_cluster::NodeServerMessage::SubscribeToEvents {
+            id: "logger".to_string(),
+            subscription: log_sub,
+        })
+        .expect("Failed to send log subscription");
 
     if let (Some(client_host), Some(client_port)) = (config.client_host, config.client_port) {
         log::info!(
