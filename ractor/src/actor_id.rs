@@ -4,7 +4,11 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 //! This module handles everything around actor id's. In the event you have a
-//! remote actor, this id will denote that
+//! remote actor, the actor's ID will denote not only the actor's instance id, but
+//! the id of the remote node the actor is running on.
+//!
+//! ActorIds are generally helpful in logging and pattern matching, but not directly
+//! used in addressing outside of `ractor_cluster` network-based call internals.
 
 use std::{fmt::Display, sync::atomic::AtomicU64};
 
@@ -32,6 +36,8 @@ impl ActorId {
     }
 
     /// Retrieve the actor's PID
+    ///
+    /// Returns the actor's [u64] instance identifier (process id).
     pub fn pid(&self) -> u64 {
         match self {
             ActorId::Local(pid) => *pid,

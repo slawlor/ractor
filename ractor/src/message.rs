@@ -3,7 +3,9 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Message trait definition for inter-actor messaging
+//! Message trait definition for inter-actor messaging. Additionally
+//! with the `cluster` feature, it controls serialization logic for
+//! over-the-wire inter-actor communications
 
 use std::any::Any;
 

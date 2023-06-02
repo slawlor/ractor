@@ -36,12 +36,6 @@
 //! replace the worker with a new instance and continue processing jobs for that worker. The
 //! factory also maintains the worker's message queue's so messages won't be lost which were in the
 //! "worker"'s queue.
-//!
-//! TODO:
-//! * Batch job processing (incl splitting batches, etc)
-//! * Factory stats
-//! * Factory ping (every 1s to a worker for dead man's switch?)
-//!
 
 use std::collections::{HashMap, VecDeque};
 use std::marker::PhantomData;

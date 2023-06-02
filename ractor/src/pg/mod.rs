@@ -190,6 +190,8 @@ pub(crate) fn leave_all(actor: ActorId) {
 /// Returns all the actors running on the local node in the group `group`.
 ///
 /// * `group_name` - Either a statically named group or scope
+///
+/// Returns a [`Vec<ActorCell>`] representing the members of this paging group
 pub fn get_local_members(group_name: &GroupName) -> Vec<ActorCell> {
     let monitor = get_monitor();
     if let Some(actors) = monitor.map.get(group_name) {
@@ -208,7 +210,7 @@ pub fn get_local_members(group_name: &GroupName) -> Vec<ActorCell> {
 ///
 /// * `group_name` - Either a statically named group or scope
 ///
-/// Returns [Vec<_>] with the associated actors
+/// Returns a [`Vec<ActorCell>`] with the member actors
 pub fn get_members(group_name: &GroupName) -> Vec<ActorCell> {
     let monitor = get_monitor();
     if let Some(actors) = monitor.map.get(group_name) {
@@ -220,7 +222,7 @@ pub fn get_members(group_name: &GroupName) -> Vec<ActorCell> {
 
 /// Return a list of all known groups
 ///
-/// Returns a [Vec<_>] representing all the registered group names
+/// Returns a [`Vec<GroupName>`] representing all the registered group names
 pub fn which_groups() -> Vec<GroupName> {
     let monitor = get_monitor();
     monitor
