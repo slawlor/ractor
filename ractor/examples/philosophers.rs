@@ -20,7 +20,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use ractor::{cast, Actor, ActorId, ActorName, ActorProcessingErr, ActorRef, RpcReplyPort};
+use ractor::{async_trait, cast, Actor, ActorId, ActorName, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::time::{Duration, Instant};
 
 // ============================ Fork Actor ============================ //
@@ -109,7 +109,7 @@ impl Fork {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Actor for Fork {
     type Msg = ForkMessage;
     type State = ForkState;
@@ -322,7 +322,7 @@ impl Philosopher {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Actor for Philosopher {
     type Msg = PhilosopherMessage;
     type State = PhilosopherState;
