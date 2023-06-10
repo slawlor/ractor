@@ -20,7 +20,9 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use ractor::{async_trait, cast, Actor, ActorId, ActorName, ActorProcessingErr, ActorRef, RpcReplyPort};
+use ractor::{
+    async_trait, cast, Actor, ActorId, ActorName, ActorProcessingErr, ActorRef, RpcReplyPort,
+};
 use tokio::time::{Duration, Instant};
 
 // ============================ Fork Actor ============================ //
