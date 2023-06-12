@@ -14,7 +14,7 @@
 
 extern crate ractor;
 
-use ractor::{call_t, Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use ractor::{async_trait, call_t, Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 
 struct Counter;
 
@@ -31,7 +31,7 @@ enum CounterMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for CounterMessage {}
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Actor for Counter {
     type Msg = CounterMessage;
 

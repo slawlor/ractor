@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 
-use ractor::{cast, Actor, ActorId, ActorProcessingErr, ActorRef};
+use ractor::{async_trait, cast, Actor, ActorId, ActorProcessingErr, ActorRef};
 use rand::{thread_rng, Rng};
 
 // ================== Player Actor ================== //
@@ -62,7 +62,7 @@ struct GameMessage(ActorRef<GameManagerMessage>);
 #[cfg(feature = "cluster")]
 impl ractor::Message for GameMessage {}
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Actor for Game {
     type Msg = GameMessage;
 
@@ -140,7 +140,7 @@ impl GameManagerState {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Actor for GameManager {
     type Msg = GameManagerMessage;
 

@@ -14,7 +14,7 @@
 
 extern crate ractor;
 
-use ractor::{cast, Actor, ActorProcessingErr, ActorRef};
+use ractor::{async_trait, cast, Actor, ActorProcessingErr, ActorRef};
 
 pub struct PingPong;
 
@@ -42,7 +42,7 @@ impl Message {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Actor for PingPong {
     type Msg = Message;
 
