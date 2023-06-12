@@ -179,6 +179,7 @@ pub use actor::errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
 pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorRuntime};
 pub use actor_id::ActorId;
+pub use async_trait::async_trait;
 pub use message::Message;
 pub use port::{OutputMessage, OutputPort, RpcReplyPort};
 #[cfg(feature = "cluster")]
