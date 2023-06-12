@@ -8,6 +8,45 @@
 //! They are:
 //! [Actor]: The behavior definition for an actor's internal processing logic + state management
 //! [ActorRuntime]: Management structure processing the message handler, signals, and supervision events in a loop
+//!
+//! ## Actor Supervision
+//!
+//! Supervision is a special notion of "ownership" over actors by a parent (supervisor).
+//! Supervisors are responsible for the lifecycle of a child actor such that they get notified
+//! when a child actor starts, stops, or panics (when possible). The supervisor can then decide
+//! how to handle the event. Should it restart the actor, leave it dead, potentially die itself
+//! notifying the supervisor's supervisor? That's up to the implementation of the [super::Actor]
+//!
+//! This is currently an initial implementation of [Erlang supervisors](https://www.erlang.org/doc/man/supervisor.html)
+//!
+//! An example supervision tree may look like:
+//!
+//! Root/
+//! ├─ Actor A/
+//! │  ├─ Actor A_1/
+//! │  ├─ Actor A_2/
+//! ├─ Actor B/
+//! ├─ Actor C/
+//! │  ├─ Actor C_1/
+//! │  │  ├─ Actor C_1_1/
+//! │  │  │  ├─ Actor C_1_1_1/
+//!
+//! To link actors together in the supervision tree, there are 2 choices.
+//!
+//! 1. [Actor::spawn_linked] which requires supplying the supervisor to the actor upon spawning a child.
+//! This call will link the supervision tree as early as possible in the lifecycle of the actors,
+//! such that a failure or panic in `post_start` will be captured and notify the supervisor
+//! 2. `ActorCell::link` will link actors together after-the-fact, once already spawned. This is helpful
+//! for actors which are originally created independently but have some latent relationship to each
+//! other. However due to startup routines and asynchronous processing, it's unlikely that failures
+//! in `post_start` and any other asynchronous handling will be captured in the supervision tree.
+//!
+//! ## Handling panics
+//!
+//! Another point to consider in actor frameworks are `panic!`s. The actor runtime captures and transforms
+//! a panic in an actor into the string message equivalent upon exit. However the traditional panic will still
+//! log to `stderr` for tracing. You can additionally setup a [panic hook](https://doc.rust-lang.org/std/panic/fn.set_hook.html)
+//! to do things like capturing backtraces on the unwinding panic.
 
 use std::panic::AssertUnwindSafe;
 
