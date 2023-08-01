@@ -18,16 +18,6 @@ struct TestActor;
 #[async_trait::async_trait]
 impl Actor for TestActor {
     type Msg = ();
-    type Arguments = ();
-    type State = ();
-
-    async fn pre_start(
-        &self,
-        _this_actor: crate::ActorRef<Self::Msg>,
-        _: (),
-    ) -> Result<Self::State, ActorProcessingErr> {
-        Ok(())
-    }
 }
 
 #[named]

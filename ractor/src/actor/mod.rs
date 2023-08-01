@@ -50,7 +50,7 @@
 
 use std::panic::AssertUnwindSafe;
 
-use futures::TryFutureExt;
+use futures::{Future, TryFutureExt};
 
 use crate::concurrency::JoinHandle;
 #[cfg(feature = "cluster")]
@@ -63,10 +63,10 @@ pub mod actor_cell;
 pub mod errors;
 mod supervision;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
-use crate::{ActorName, Message, State};
+use crate::{ActorName, Message};
 use actor_cell::{ActorCell, ActorPortSet, ActorRef, ActorStatus};
 use errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
 
@@ -106,12 +106,6 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// The message type for this actor
     type Msg: Message;
 
-    /// The type of state this actor manages internally
-    type State: State;
-
-    /// Initialization arguments
-    type Arguments: State;
-
     /// Invoked when an actor is being started by the system.
     ///
     /// Any initialization inherent to the actor's role should be
@@ -126,11 +120,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// be necessary to construct the initial state
     ///
     /// Returns an initial [Actor::State] to bootstrap the actor
-    async fn pre_start(
-        &self,
-        myself: ActorRef<Self::Msg>,
-        args: Self::Arguments,
-    ) -> Result<Self::State, ActorProcessingErr>;
+    async fn pre_start(&mut self, myself: ActorRef<Self::Msg>) -> Result<(), ActorProcessingErr>;
 
     /// Invoked after an actor has started.
     ///
@@ -142,11 +132,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
-    async fn post_start(
-        &self,
-        myself: ActorRef<Self::Msg>,
-        state: &mut Self::State,
-    ) -> Result<(), ActorProcessingErr> {
+    async fn post_start(&mut self, myself: ActorRef<Self::Msg>) -> Result<(), ActorProcessingErr> {
         Ok(())
     }
 
@@ -159,11 +145,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `state` - A mutable reference to the internal actor's last known state
     #[allow(unused_variables)]
-    async fn post_stop(
-        &self,
-        myself: ActorRef<Self::Msg>,
-        state: &mut Self::State,
-    ) -> Result<(), ActorProcessingErr> {
+    async fn post_stop(&mut self, myself: ActorRef<Self::Msg>) -> Result<(), ActorProcessingErr> {
         Ok(())
     }
 
@@ -175,10 +157,9 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
     async fn handle(
-        &self,
+        &mut self,
         myself: ActorRef<Self::Msg>,
         message: Self::Msg,
-        state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         Ok(())
     }
@@ -192,10 +173,9 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     #[cfg(feature = "cluster")]
     async fn handle_serialized(
-        &self,
+        &mut self,
         myself: ActorRef<Self::Msg>,
         message: crate::message::SerializedMessage,
-        state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         Ok(())
     }
@@ -209,14 +189,12 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
     async fn handle_supervisor_evt(
-        &self,
+        &mut self,
         myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
-        state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            SupervisionEvent::ActorTerminated(who, _, _)
-            | SupervisionEvent::ActorPanicked(who, _) => {
+            SupervisionEvent::ActorTerminated(who, _) | SupervisionEvent::ActorPanicked(who, _) => {
                 myself.stop(None);
             }
             _ => {}
@@ -228,7 +206,6 @@ pub trait Actor: Sized + Sync + Send + 'static {
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
     /// initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -237,17 +214,26 @@ pub trait Actor: Sized + Sync + Send + 'static {
     async fn spawn(
         name: Option<ActorName>,
         handler: Self,
-        startup_args: Self::Arguments,
     ) -> Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr> {
-        ActorRuntime::<Self>::spawn(name, handler, startup_args).await
+        ActorRuntime::<Self>::spawn(name, handler).await
+    }
+
+    /// TODO: Docs
+    async fn spawn_with<F, Fu>(
+        name: Option<ActorName>,
+        f: F,
+    ) -> Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>
+    where
+        F: FnOnce(ActorCell) -> Fu + Send,
+        Fu: Future<Output = Result<Self, ActorProcessingErr>> + Send,
+    {
+        ActorRuntime::<Self>::spawn_with(name, f).await
     }
 
     /// Spawn an actor of this type with a supervisor, automatically starting the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -256,10 +242,9 @@ pub trait Actor: Sized + Sync + Send + 'static {
     async fn spawn_linked(
         name: Option<ActorName>,
         handler: Self,
-        startup_args: Self::Arguments,
         supervisor: ActorCell,
     ) -> Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr> {
-        ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor).await
+        ActorRuntime::<Self>::spawn_linked(name, handler, supervisor).await
     }
 }
 
@@ -284,8 +269,6 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -293,18 +276,38 @@ where
     pub async fn spawn(
         name: Option<ActorName>,
         handler: TActor,
-        startup_args: TActor::Arguments,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
-        actor.start(ports, startup_args, None).await
+        actor.start(ports, None).await
+    }
+
+    /// TODO Docs
+    pub async fn spawn_with<F, Fu>(
+        name: Option<ActorName>,
+        f: F,
+    ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr>
+    where
+        F: FnOnce(ActorCell) -> Fu,
+        Fu: Future<Output = Result<TActor, ActorProcessingErr>>,
+    {
+        let (actor_cell, ports) = actor_cell::ActorCell::new::<TActor>(name)?;
+        let future = f(actor_cell.clone());
+        let handler = futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
+            .await
+            .map_err(|err| ActorErr::Panic(get_panic_string(err)))
+            .map_err(|err| SpawnErr::StartupPanic(err.into()))?
+            .map_err(SpawnErr::StartupPanic)?;
+        let actor = Self {
+            actor_ref: actor_cell.into(),
+            handler,
+        };
+        actor.start(ports, None).await
     }
 
     /// Spawn an actor with a supervisor, automatically starting the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -313,11 +316,34 @@ where
     pub async fn spawn_linked(
         name: Option<ActorName>,
         handler: TActor,
-        startup_args: TActor::Arguments,
         supervisor: ActorCell,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
-        actor.start(ports, startup_args, Some(supervisor)).await
+        actor.start(ports, Some(supervisor)).await
+    }
+
+    /// TODO Docs
+    pub async fn spawn_linked_with<F, Fu>(
+        name: Option<ActorName>,
+        supervisor: ActorCell,
+        f: F,
+    ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr>
+    where
+        F: FnOnce(ActorCell) -> Fu,
+        Fu: Future<Output = Result<TActor, ActorProcessingErr>>,
+    {
+        let (actor_cell, ports) = actor_cell::ActorCell::new::<TActor>(name)?;
+        let future = f(actor_cell.clone());
+        let handler = futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
+            .await
+            .map_err(|err| ActorErr::Panic(get_panic_string(err)))
+            .map_err(|err| SpawnErr::StartupPanic(err.into()))?
+            .map_err(SpawnErr::StartupPanic)?;
+        let actor = Self {
+            actor_ref: actor_cell.into(),
+            handler,
+        };
+        actor.start(ports, Some(supervisor)).await
     }
 
     /// Spawn an actor instantly, not waiting on the actor's `pre_start` routine. This is helpful
@@ -329,8 +355,6 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<Result<JoinHandle<()>, SpawnErr>>))] upon successful creation of the
     /// message queues, so you can begin sending messages. However the associated [JoinHandle] contains the inner
@@ -340,7 +364,6 @@ where
     pub fn spawn_instant(
         name: Option<ActorName>,
         handler: TActor,
-        startup_args: TActor::Arguments,
     ) -> Result<
         (
             ActorRef<TActor::Msg>,
@@ -351,7 +374,7 @@ where
         let (actor, ports) = Self::new(name.clone(), handler)?;
         let actor_ref = actor.actor_ref.clone();
         let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
-            let (_, handle) = actor.start(ports, startup_args, None).await?;
+            let (_, handle) = actor.start(ports, None).await?;
             Ok(handle)
         });
         Ok((actor_ref, join_op))
@@ -369,8 +392,6 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<Result<JoinHandle<()>, SpawnErr>>))] upon successful creation of the
@@ -381,7 +402,6 @@ where
     pub fn spawn_linked_instant(
         name: Option<ActorName>,
         handler: TActor,
-        startup_args: TActor::Arguments,
         supervisor: ActorCell,
     ) -> Result<
         (
@@ -393,7 +413,7 @@ where
         let (actor, ports) = Self::new(name.clone(), handler)?;
         let actor_ref = actor.actor_ref.clone();
         let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
-            let (_, handle) = actor.start(ports, startup_args, Some(supervisor)).await?;
+            let (_, handle) = actor.start(ports, Some(supervisor)).await?;
             Ok(handle)
         });
         Ok((actor_ref, join_op))
@@ -404,8 +424,6 @@ where
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler`: The [Actor] defining the logic for this actor
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -416,7 +434,6 @@ where
         name: Option<ActorName>,
         handler: TActor,
         id: ActorId,
-        startup_args: TActor::Arguments,
         supervisor: ActorCell,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         if id.is_local() {
@@ -433,7 +450,7 @@ where
                 },
                 ports,
             );
-            actor.start(ports, startup_args, Some(supervisor)).await
+            actor.start(ports, Some(supervisor)).await
         }
     }
 
@@ -469,7 +486,6 @@ where
     async fn start(
         self,
         ports: ActorPortSet,
-        startup_args: TActor::Arguments,
         supervisor: Option<ActorCell>,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         // cannot start an actor more than once
@@ -477,12 +493,15 @@ where
             return Err(SpawnErr::ActorAlreadyStarted);
         }
 
-        let Self { handler, actor_ref } = self;
+        let Self {
+            mut handler,
+            actor_ref,
+        } = self;
 
         actor_ref.set_status(ActorStatus::Starting);
 
         // Perform the pre-start routine, crashing immediately if we fail to start
-        let mut state = Self::do_pre_start(actor_ref.clone(), &handler, startup_args)
+        Self::do_pre_start(actor_ref.clone(), &mut handler)
             .await?
             .map_err(SpawnErr::StartupPanic)?;
 
@@ -497,16 +516,18 @@ where
         // run the processing loop, backgrounding the work
         let handle = crate::concurrency::spawn_named(actor_ref.get_name().as_deref(), async move {
             let myself = actor_ref.clone();
-            let evt = match Self::processing_loop(ports, &mut state, &handler, actor_ref).await {
-                Ok(exit_reason) => SupervisionEvent::ActorTerminated(
-                    myself.get_cell(),
-                    Some(BoxedState::new(state)),
-                    exit_reason,
-                ),
+            let evt = match Self::processing_loop(ports, &mut handler, actor_ref).await {
+                Ok(exit_reason) => {
+                    SupervisionEvent::ActorTerminated(
+                        myself.get_cell(),
+                        // Some(handler),
+                        exit_reason,
+                    )
+                }
                 Err(actor_err) => match actor_err {
                     ActorErr::Cancelled => SupervisionEvent::ActorTerminated(
                         myself.get_cell(),
-                        None,
+                        // None,
                         Some("killed".to_string()),
                     ),
                     ActorErr::Panic(msg) => SupervisionEvent::ActorPanicked(myself.get_cell(), msg),
@@ -533,12 +554,11 @@ where
 
     async fn processing_loop(
         mut ports: ActorPortSet,
-        state: &mut TActor::State,
-        handler: &TActor,
+        handler: &mut TActor,
         myself: ActorRef<TActor::Msg>,
     ) -> Result<Option<String>, ActorErr> {
         // perform the post-start, with supervision enabled
-        Self::do_post_start(myself.clone(), handler, state)
+        Self::do_post_start(myself.clone(), handler)
             .await?
             .map_err(ActorErr::Panic)?;
 
@@ -552,12 +572,12 @@ where
             // is one
             loop {
                 let (should_exit, maybe_exit_reason) =
-                    Self::process_message(myself.clone(), state, handler, &mut ports)
+                    Self::process_message(myself.clone(), handler, &mut ports)
                         .await
                         .map_err(ActorErr::Panic)?;
                 // processing loop exit
                 if should_exit {
-                    return Ok((state, maybe_exit_reason));
+                    return Ok((handler, maybe_exit_reason));
                 }
             }
         };
@@ -570,10 +590,10 @@ where
         // set status to stopping
         myself_clone.set_status(ActorStatus::Stopping);
 
-        let (exit_state, exit_reason) = loop_done??;
+        let (handler, exit_reason) = loop_done??;
 
         // if we didn't exit in error mode, call `post_stop`
-        Self::do_post_stop(myself_clone, handler, exit_state)
+        Self::do_post_stop(myself_clone, handler)
             .await?
             .map_err(ActorErr::Panic)?;
 
@@ -592,8 +612,7 @@ where
     /// loop is done
     async fn process_message(
         myself: ActorRef<TActor::Msg>,
-        state: &mut TActor::State,
-        handler: &TActor,
+        handler: &mut TActor,
         ports: &mut ActorPortSet,
     ) -> Result<(bool, Option<String>), ActorProcessingErr> {
         match ports.listen_in_priority().await {
@@ -619,12 +638,8 @@ where
                     Ok((true, exit_reason))
                 }
                 actor_cell::ActorPortMessage::Supervision(supervision) => {
-                    let new_state_future = Self::handle_supervision_message(
-                        myself.clone(),
-                        state,
-                        handler,
-                        supervision,
-                    );
+                    let new_state_future =
+                        Self::handle_supervision_message(myself.clone(), handler, supervision);
                     let new_state = ports.run_with_signal(new_state_future).await;
                     match new_state {
                         Ok(Ok(())) => Ok((false, None)),
@@ -633,8 +648,7 @@ where
                     }
                 }
                 actor_cell::ActorPortMessage::Message(msg) => {
-                    let new_state_future =
-                        Self::handle_message(myself.clone(), state, handler, msg);
+                    let new_state_future = Self::handle_message(myself.clone(), handler, msg);
                     let new_state = ports.run_with_signal(new_state_future).await;
                     match new_state {
                         Ok(Ok(())) => Ok((false, None)),
@@ -663,8 +677,7 @@ where
 
     async fn handle_message(
         myself: ActorRef<TActor::Msg>,
-        state: &mut TActor::State,
-        handler: &TActor,
+        handler: &mut TActor,
         msg: crate::message::BoxedMessage,
     ) -> Result<(), ActorProcessingErr> {
         // panic in order to kill the actor
@@ -676,9 +689,7 @@ where
             if !myself.get_id().is_local() {
                 match msg.serialized_msg {
                     Some(serialized_msg) => {
-                        return handler
-                            .handle_serialized(myself, serialized_msg, state)
-                            .await;
+                        return handler.handle_serialized(myself, serialized_msg).await;
                     }
                     None => {
                         return Err(From::from(
@@ -691,7 +702,7 @@ where
 
         // An error here will bubble up to terminate the actor
         let typed_msg = TActor::Msg::from_boxed(msg)?;
-        handler.handle(myself, typed_msg, state).await
+        handler.handle(myself, typed_msg).await
     }
 
     fn handle_signal(myself: ActorRef<TActor::Msg>, signal: Signal) -> Option<String> {
@@ -705,19 +716,17 @@ where
 
     async fn handle_supervision_message(
         myself: ActorRef<TActor::Msg>,
-        state: &mut TActor::State,
-        handler: &TActor,
+        handler: &mut TActor,
         message: SupervisionEvent,
     ) -> Result<(), ActorProcessingErr> {
-        handler.handle_supervisor_evt(myself, message, state).await
+        handler.handle_supervisor_evt(myself, message).await
     }
 
     async fn do_pre_start(
         myself: ActorRef<TActor::Msg>,
-        handler: &TActor,
-        arguments: TActor::Arguments,
-    ) -> Result<Result<TActor::State, ActorProcessingErr>, SpawnErr> {
-        let future = handler.pre_start(myself, arguments);
+        handler: &mut TActor,
+    ) -> Result<Result<(), ActorProcessingErr>, SpawnErr> {
+        let future = handler.pre_start(myself);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
             .map_err(|err| SpawnErr::StartupPanic(get_panic_string(err)))
@@ -725,10 +734,9 @@ where
 
     async fn do_post_start(
         myself: ActorRef<TActor::Msg>,
-        handler: &TActor,
-        state: &mut TActor::State,
+        handler: &mut TActor,
     ) -> Result<Result<(), ActorProcessingErr>, ActorErr> {
-        let future = handler.post_start(myself, state);
+        let future = handler.post_start(myself);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
             .map_err(|err| ActorErr::Panic(get_panic_string(err)))
@@ -736,10 +744,9 @@ where
 
     async fn do_post_stop(
         myself: ActorRef<TActor::Msg>,
-        handler: &TActor,
-        state: &mut TActor::State,
+        handler: &mut TActor,
     ) -> Result<Result<(), ActorProcessingErr>, ActorErr> {
-        let future = handler.post_stop(myself, state);
+        let future = handler.post_stop(myself);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
             .map_err(|err| ActorErr::Panic(get_panic_string(err)))

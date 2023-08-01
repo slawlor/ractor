@@ -88,7 +88,7 @@ pub enum SupervisionEvent {
     /// and was provided
     ActorTerminated(
         super::actor_cell::ActorCell,
-        Option<BoxedState>,
+        // Option<BoxedState>,
         Option<String>,
     ),
     /// An actor panicked
@@ -114,7 +114,7 @@ impl std::fmt::Display for SupervisionEvent {
             SupervisionEvent::ActorStarted(actor) => {
                 write!(f, "Started actor {actor:?}")
             }
-            SupervisionEvent::ActorTerminated(actor, _, reason) => {
+            SupervisionEvent::ActorTerminated(actor, reason) => {
                 if let Some(r) = reason {
                     write!(f, "Stopped actor {actor:?} (reason = {r})")
                 } else {
