@@ -17,8 +17,37 @@ use tokio::time::Duration;
 
 // ============================== Main ============================== //
 
+fn init_logging() {
+    let dir = tracing_subscriber::filter::Directive::from(tracing::Level::DEBUG);
+
+    use std::io::stderr;
+    use std::io::IsTerminal;
+    use tracing_glog::Glog;
+    use tracing_glog::GlogFields;
+    use tracing_subscriber::filter::EnvFilter;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::Registry;
+
+    let fmt = tracing_subscriber::fmt::Layer::default()
+        .with_ansi(stderr().is_terminal())
+        .with_writer(std::io::stderr)
+        .event_format(Glog::default().with_timer(tracing_glog::LocalTime::default()))
+        .fmt_fields(GlogFields::default());
+
+    let filter = vec![dir]
+        .into_iter()
+        .fold(EnvFilter::from_default_env(), |filter, directive| {
+            filter.add_directive(directive)
+        });
+
+    let subscriber = Registry::default().with(filter).with(fmt);
+    tracing::subscriber::set_global_default(subscriber).expect("to set global subscriber");
+}
+
 #[tokio::main]
 async fn main() {
+    init_logging();
+
     let (root, handle) = Actor::spawn(Some("root".to_string()), RootActor, ())
         .await
         .expect("Failed to start root actor");
@@ -100,7 +129,7 @@ impl Actor for LeafActor {
                 panic!("LeafActor: Oh crap!");
             }
             Self::Msg::NoOp => {
-                println!("LeafActor: No-op!");
+                tracing::info!("LeafActor: No-op!");
             }
         }
         Ok(())
@@ -181,7 +210,7 @@ impl Actor for MidLevelActor {
             SupervisionEvent::ActorPanicked(dead_actor, panic_msg)
                 if dead_actor.get_id() == state.leaf_actor.get_id() =>
             {
-                println!("MidLevelActor: {dead_actor:?} panicked with '{panic_msg}'");
+                tracing::info!("MidLevelActor: {dead_actor:?} panicked with '{panic_msg}'");
 
                 panic!(
                     "MidLevelActor: Mid-level actor panicking because Leaf actor panicked with '{}'",
@@ -189,7 +218,7 @@ impl Actor for MidLevelActor {
                 );
             }
             other => {
-                println!("MidLevelActor: received supervisor event '{other}'");
+                tracing::info!("MidLevelActor: received supervisor event '{other}'");
             }
         }
         Ok(())
@@ -222,7 +251,7 @@ impl Actor for RootActor {
         myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
-        println!("RootActor: Started {myself:?}");
+        tracing::info!("RootActor: Started {myself:?}");
         let (mid_level_actor, _) = Actor::spawn_linked(
             Some("mid-level".to_string()),
             MidLevelActor,
@@ -267,13 +296,13 @@ impl Actor for RootActor {
             SupervisionEvent::ActorPanicked(dead_actor, panic_msg)
                 if dead_actor.get_id() == state.mid_level_actor.get_id() =>
             {
-                println!("RootActor: {dead_actor:?} panicked with '{panic_msg}'");
+                tracing::info!("RootActor: {dead_actor:?} panicked with '{panic_msg}'");
 
-                println!("RootActor: Terminating root actor, all my kids are dead!");
+                tracing::info!("RootActor: Terminating root actor, all my kids are dead!");
                 myself.stop(Some("Everyone died :(".to_string()));
             }
             other => {
-                println!("RootActor: received supervisor event '{other}'");
+                tracing::info!("RootActor: received supervisor event '{other}'");
             }
         }
         Ok(())

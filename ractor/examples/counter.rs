@@ -43,6 +43,7 @@ impl Actor for Counter {
         _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
+        tracing::info!("Starting the counter actor");
         // create the initial state
         Ok(CounterState { count: 0 })
     }
@@ -53,6 +54,7 @@ impl Actor for Counter {
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        tracing::info!("Counting actor handle message...");
         match message {
             CounterMessage::Increment(how_much) => {
                 state.count += how_much;
@@ -70,8 +72,37 @@ impl Actor for Counter {
     }
 }
 
+fn init_logging() {
+    let dir = tracing_subscriber::filter::Directive::from(tracing::Level::DEBUG);
+
+    use std::io::stderr;
+    use std::io::IsTerminal;
+    use tracing_glog::Glog;
+    use tracing_glog::GlogFields;
+    use tracing_subscriber::filter::EnvFilter;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::Registry;
+
+    let fmt = tracing_subscriber::fmt::Layer::default()
+        .with_ansi(stderr().is_terminal())
+        .with_writer(std::io::stderr)
+        .event_format(Glog::default().with_timer(tracing_glog::LocalTime::default()))
+        .fmt_fields(GlogFields::default());
+
+    let filter = vec![dir]
+        .into_iter()
+        .fold(EnvFilter::from_default_env(), |filter, directive| {
+            filter.add_directive(directive)
+        });
+
+    let subscriber = Registry::default().with(filter).with(fmt);
+    tracing::subscriber::set_global_default(subscriber).expect("to set global subscriber");
+}
+
 #[tokio::main]
 async fn main() {
+    init_logging();
+
     let (actor, handle) = Actor::spawn(None, Counter, ())
         .await
         .expect("Failed to start actor!");
@@ -90,7 +121,7 @@ async fn main() {
 
         let rpc_result = call_t!(actor, CounterMessage::Retrieve, 10);
 
-        println!(
+        tracing::info!(
             "Count is: {}",
             rpc_result.expect("RPC failed to reply successfully")
         );

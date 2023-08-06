@@ -143,6 +143,11 @@
 #![warn(unused_crate_dependencies)]
 // #![cfg_attr(docsrs, feature(doc_cfg))]
 
+#[cfg(test)]
+use tracing_glog as _;
+#[cfg(test)]
+use tracing_subscriber as _;
+
 /// An actor's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
 pub type ActorName = String;
 

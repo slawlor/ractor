@@ -80,14 +80,14 @@ impl Fork {
                     state.clean = false;
                 }
                 Some(other_owner) => {
-                    println!(
+                    tracing::info!(
                         "ERROR Received `UsingFork` from {:?}. Real owner is {:?}",
                         who,
                         other_owner.get_name().unwrap()
                     );
                 }
                 None => {
-                    println!("ERROR Received `UsingFork` from {who:?}. Real owner is `None`");
+                    tracing::info!("ERROR Received `UsingFork` from {who:?}. Real owner is `None`");
                 }
             },
             ForkMessage::PutForkDown(who) => match &state.owned_by {
@@ -96,14 +96,16 @@ impl Fork {
                     state.clean = true;
                 }
                 Some(other_owner) => {
-                    println!(
+                    tracing::info!(
                         "ERROR Received `PutForkDown` from {:?}. Real owner is {:?}",
                         who,
                         other_owner.get_name().unwrap()
                     );
                 }
                 None => {
-                    println!("ERROR Received `PutForkDown` from {who:?}. Real owner is `None`");
+                    tracing::info!(
+                        "ERROR Received `PutForkDown` from {who:?}. Real owner is `None`"
+                    );
                 }
             },
         }
@@ -376,13 +378,13 @@ impl Actor for Philosopher {
                                 self.request_missing_forks(&myself, state);
                             }
                             PhilosopherMode::Hungry => {
-                                println!(
+                                tracing::info!(
                                     "ERROR: {} Got `BecomeHungry` while hungry!",
                                     myself.get_name().unwrap()
                                 );
                             }
                             PhilosopherMode::Eating => {
-                                println!(
+                                tracing::info!(
                                     "ERROR: {} Got `BecomeHungry` while eating!",
                                     myself.get_name().unwrap()
                                 );
@@ -414,7 +416,7 @@ impl Actor for Philosopher {
                             .cast(ForkMessage::PutForkDown(myself.get_id()));
                     }
                 } else {
-                    println!(
+                    tracing::info!(
                         "ERROR: {} received a `GiveUpFork` from an unknown fork!",
                         myself.get_name().unwrap()
                     );
@@ -442,7 +444,7 @@ impl Actor for Philosopher {
                     state.right.has = true;
                     state.right.requested = false;
                 } else {
-                    println!(
+                    tracing::info!(
                         "ERROR: {} received a `ReceiveFork` from an unknown fork!",
                         myself.get_name().unwrap()
                     );
@@ -458,8 +460,37 @@ impl Actor for Philosopher {
     }
 }
 
+fn init_logging() {
+    let dir = tracing_subscriber::filter::Directive::from(tracing::Level::DEBUG);
+
+    use std::io::stderr;
+    use std::io::IsTerminal;
+    use tracing_glog::Glog;
+    use tracing_glog::GlogFields;
+    use tracing_subscriber::filter::EnvFilter;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::Registry;
+
+    let fmt = tracing_subscriber::fmt::Layer::default()
+        .with_ansi(stderr().is_terminal())
+        .with_writer(std::io::stderr)
+        .event_format(Glog::default().with_timer(tracing_glog::LocalTime::default()))
+        .fmt_fields(GlogFields::default());
+
+    let filter = vec![dir]
+        .into_iter()
+        .fold(EnvFilter::from_default_env(), |filter, directive| {
+            filter.add_directive(directive)
+        });
+
+    let subscriber = Registry::default().with(filter).with(fmt);
+    tracing::subscriber::set_global_default(subscriber).expect("to set global subscriber");
+}
+
 #[tokio::main]
 async fn main() {
+    init_logging();
+
     // TODO: move configuration to CLAP args
     let time_slice = Duration::from_millis(10);
     let run_time = Duration::from_secs(5);
@@ -535,8 +566,8 @@ async fn main() {
     while all_handles.join_next().await.is_some() {}
 
     // print metrics
-    println!("Simulation results");
+    tracing::info!("Simulation results");
     for (who, metric) in results {
-        println!("{who}: {metric:?}");
+        tracing::info!("{who}: {metric:?}");
     }
 }
