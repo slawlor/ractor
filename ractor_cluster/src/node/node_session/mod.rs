@@ -465,7 +465,7 @@ impl NodeSession {
                             )
                             .await
                         {
-                            tracing::error!("Failed to spawn remote actor with {}", spawn_err);
+                            tracing::error!("Failed to spawn remote actor with {spawn_err}");
                         } else {
                             tracing::debug!("Spawned remote actor");
                         }
@@ -478,8 +478,7 @@ impl NodeSession {
                                 .stop_and_wait(Some("remote".to_string()), None)
                                 .await?;
                             tracing::debug!(
-                                "Actor {} on node {} exited, terminating local `RemoteActor` {}",
-                                pid,
+                                "Actor {pid} on node {} exited, terminating local `RemoteActor` {}",
                                 self.node_id,
                                 actor.get_id()
                             );
@@ -505,13 +504,12 @@ impl NodeSession {
                         .duration_since(ts)
                         .expect("Time went backwards")
                         .as_millis();
-                    tracing::debug!("Ping -> Pong took {}ms", delta_ms);
+                    tracing::debug!("Ping -> Pong took {delta_ms}ms");
                     if delta_ms > 50 {
                         tracing::warn!(
-                            "Super long ping detected {} - {} ({}ms)",
+                            "Super long ping detected {} - {} ({delta_ms}ms)",
                             state.local_addr,
                             state.peer_addr,
-                            delta_ms
                         );
                     }
                     // schedule next ping
@@ -528,10 +526,7 @@ impl NodeSession {
                                 cells.push(actor.get_cell());
                             }
                             Err(spawn_err) => {
-                                tracing::error!(
-                                    "Failed to spawn remote actor with '{}'",
-                                    spawn_err
-                                );
+                                tracing::error!("Failed to spawn remote actor with '{spawn_err}'");
                             }
                         }
                     }
@@ -628,7 +623,7 @@ impl NodeSession {
                                     )
                                     .await
                                     {
-                                        tracing::warn!("Node transitive connection, failed to connect to {} with '{}'", session_name.connection_string, connect_err);
+                                        tracing::warn!("Node transitive connection, failed to connect to {} with '{connect_err}'", session_name.connection_string);
                                     }
                                 });
                             }
@@ -954,17 +949,15 @@ impl Actor for NodeSession {
             SupervisionEvent::ActorPanicked(actor, msg) => {
                 if state.is_tcp_actor(actor.get_id()) {
                     tracing::error!(
-                        "Node session {:?}'s TCP session panicked with '{}'",
-                        state.name,
-                        msg
+                        "Node session {:?}'s TCP session panicked with '{msg}'",
+                        state.name
                     );
                     myself.stop(Some("tcp_session_err".to_string()));
                 } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().pid()) {
                     tracing::warn!(
-                        "Node session {:?} had a remote actor ({}) panic with {}",
+                        "Node session {:?} had a remote actor ({}) panic with {msg}",
                         state.name,
                         actor.get_id(),
-                        msg
                     );
                     actor.kill();
 
@@ -977,10 +970,9 @@ impl Actor for NodeSession {
                         .get_or_spawn_remote_actor(&myself, name, pid, state)
                         .await?;
                 } else {
-                    tracing::error!("NodeSesion {:?} received an unknown child panic superivision message from {} - '{}'",
+                    tracing::error!("NodeSesion {:?} received an unknown child panic superivision message from {} - '{msg}'",
                         state.name,
-                        actor.get_id(),
-                        msg
+                        actor.get_id()
                     );
                 }
             }
@@ -991,18 +983,16 @@ impl Actor for NodeSession {
                     // TODO: resilient connection?
                 } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().pid()) {
                     tracing::debug!(
-                        "NodeSession {:?} received a child exit with reason '{:?}'",
-                        state.name,
-                        maybe_reason
+                        "NodeSession {:?} received a child exit with reason '{maybe_reason:?}'",
+                        state.name
                     );
                     actor
                         .stop_and_wait(Some("remote_exit".to_string()), None)
                         .await?;
                 } else {
-                    tracing::warn!("NodeSession {:?} received an unknown child actor exit event from {} - '{:?}'",
+                    tracing::warn!("NodeSession {:?} received an unknown child actor exit event from {} - '{maybe_reason:?}'",
                         state.name,
                         actor.get_id(),
-                        maybe_reason,
                     );
                 }
             }

@@ -110,10 +110,7 @@ impl Actor for Listener {
                                     stream: enc_stream,
                                 }),
                                 Err(some_err) => {
-                                    tracing::warn!(
-                                        "Error establishing secure socket: {}",
-                                        some_err
-                                    );
+                                    tracing::warn!("Error establishing secure socket: {some_err}");
                                     None
                                 }
                             }
@@ -128,14 +125,11 @@ impl Actor for Listener {
                                 is_server: true
                             }
                         );
-                        tracing::info!("TCP Session opened for {}", addr);
+                        tracing::info!("TCP Session opened for {addr}");
                     }
                 }
                 Err(socket_accept_error) => {
-                    tracing::warn!(
-                        "Error accepting socket {} on Node server",
-                        socket_accept_error
-                    );
+                    tracing::warn!("Error accepting socket {socket_accept_error} on Node server");
                 }
             }
         }

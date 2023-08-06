@@ -115,8 +115,7 @@ impl Actor for PingPongActor {
             }
             Self::Msg::Rpc(request, reply) => {
                 tracing::info!(
-                    "Received an RPC of '{}' replying in kind to {} remote actors",
-                    request,
+                    "Received an RPC of '{request}' replying in kind to {} remote actors",
                     remote_actors.len()
                 );
                 let reply_msg = format!("{request}.");

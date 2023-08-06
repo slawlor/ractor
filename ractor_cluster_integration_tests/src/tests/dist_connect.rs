@@ -58,11 +58,7 @@ pub async fn test(config: DistConnectConfig) -> i32 {
 
     // If this server should connect to a client server, initiate that connection
     if let (Some(client_host), Some(client_port)) = (config.client_host, config.client_port) {
-        tracing::info!(
-            "Connecting to remote NodeServer at {}:{}",
-            client_host,
-            client_port
-        );
+        tracing::info!("Connecting to remote NodeServer at {client_host}:{client_port}");
         if let Err(error) =
             ractor_cluster::node::client::connect(&actor, format!("{client_host}:{client_port}"))
                 .await
@@ -71,10 +67,8 @@ pub async fn test(config: DistConnectConfig) -> i32 {
             return -3;
         } else {
             tracing::info!(
-                "Client connected {} to {}:{}",
-                config.node_name,
-                client_host,
-                client_port
+                "Client connected {} to {client_host}:{client_port}",
+                config.node_name
             );
         }
     }
@@ -113,7 +107,7 @@ pub async fn test(config: DistConnectConfig) -> i32 {
         rpc_reply = ractor::call_t!(actor, ractor_cluster::NodeServerMessage::GetSessions, 200);
     }
 
-    tracing::info!("Terminating test - code {}", err_code);
+    tracing::info!("Terminating test - code {err_code}");
 
     // Let the other nodes exist for some time to make sure we get to a stable network state before actually terminating nodes
     sleep(Duration::from_millis(500)).await;

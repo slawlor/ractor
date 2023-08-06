@@ -124,11 +124,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         .expect("Ping pong actor failed to start up!");
 
     if let (Some(client_host), Some(client_port)) = (config.client_host, config.client_port) {
-        tracing::info!(
-            "Connecting to remote NodeServer at {}:{}",
-            client_host,
-            client_port
-        );
+        tracing::info!("Connecting to remote NodeServer at {client_host}:{client_port}");
         if let Err(error) =
             ractor_cluster::client_connect(&actor, format!("{client_host}:{client_port}")).await
         {
@@ -158,7 +154,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
             );
             match is_authenticated {
                 Err(err) => {
-                    tracing::warn!("NodeSession returned error on rpc query {}", err);
+                    tracing::warn!("NodeSession returned error on rpc query {err}");
                     break;
                 }
                 Ok(false) => {
@@ -199,8 +195,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
                 }
                 Err(err) => {
                     tracing::error!(
-                        "Failed to communicate with test actor or messaging timeout '{}'",
-                        err
+                        "Failed to communicate with test actor or messaging timeout '{err}'"
                     );
                     return -4;
                 }
@@ -211,7 +206,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         tracing::warn!("Failed to authenticate, failing test");
     }
 
-    tracing::info!("Terminating test - code {}", err_code);
+    tracing::info!("Terminating test - code {err_code}");
 
     sleep(Duration::from_millis(250)).await;
 

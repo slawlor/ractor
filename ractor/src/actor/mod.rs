@@ -620,9 +620,8 @@ where
                         }
                         StopMessage::Reason(reason) => {
                             tracing::trace!(
-                                "Actor {:?} stopped with reason '{}'",
+                                "Actor {:?} stopped with reason '{reason}'",
                                 myself.get_id(),
-                                reason
                             );
                             Some(reason)
                         }

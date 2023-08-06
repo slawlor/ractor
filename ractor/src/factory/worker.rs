@@ -183,7 +183,7 @@ where
                 .keys()
                 .cloned()
                 .fold(String::new(), |a, key| format!("{a}\nJob key: {key:?}"));
-            tracing::warn!("Stuck worker: {}. Last jobs:\n{}", self.wid, key_strings);
+            tracing::warn!("Stuck worker: {}. Last jobs:\n{key_strings}", self.wid);
             true
         } else {
             false

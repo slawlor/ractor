@@ -80,7 +80,7 @@ impl Session {
         .await
         {
             Err(err) => {
-                tracing::error!("Failed to spawn session writer actor: {}", err);
+                tracing::error!("Failed to spawn session writer actor: {err}");
                 Err(err)
             }
             Ok((a, _)) => {
@@ -174,19 +174,17 @@ impl Actor for Session {
         match message {
             Self::Msg::Send(msg) => {
                 tracing::debug!(
-                    "SEND: {} -> {} - '{:?}'",
+                    "SEND: {} -> {} - '{msg:?}'",
                     self.local_addr,
-                    self.peer_addr,
-                    msg
+                    self.peer_addr
                 );
                 let _ = state.writer.cast(SessionWriterMessage::WriteObject(msg));
             }
             Self::Msg::ObjectAvailable(msg) => {
                 tracing::debug!(
-                    "RECEIVE {} <- {} - '{:?}'",
+                    "RECEIVE {} <- {} - '{msg:?}'",
                     self.local_addr,
                     self.peer_addr,
-                    msg
                 );
                 let _ = self
                     .handler
@@ -207,11 +205,11 @@ impl Actor for Session {
         match message {
             SupervisionEvent::ActorPanicked(actor, panic_msg) => {
                 if actor.get_id() == state.reader.get_id() {
-                    tracing::error!("TCP Session's reader panicked with '{}'", panic_msg);
+                    tracing::error!("TCP Session's reader panicked with '{panic_msg}'");
                 } else if actor.get_id() == state.writer.get_id() {
-                    tracing::error!("TCP Session's writer panicked with '{}'", panic_msg);
+                    tracing::error!("TCP Session's writer panicked with '{panic_msg}'");
                 } else {
-                    tracing::error!("TCP Session received a child panic from an unknown child actor ({}) - '{}'", actor.get_id(), panic_msg);
+                    tracing::error!("TCP Session received a child panic from an unknown child actor ({}) - '{panic_msg}'", actor.get_id());
                 }
                 myself.stop(Some("child_panic".to_string()));
             }
@@ -221,7 +219,7 @@ impl Actor for Session {
                 } else if actor.get_id() == state.writer.get_id() {
                     tracing::debug!("TCP Session's writer exited");
                 } else {
-                    tracing::warn!("TCP Session received a child exit from an unknown child actor ({}) - '{:?}'", actor.get_id(), exit_reason);
+                    tracing::warn!("TCP Session received a child exit from an unknown child actor ({}) - '{exit_reason:?}'", actor.get_id());
                 }
                 myself.stop(Some("child_terminate".to_string()));
             }
@@ -341,7 +339,7 @@ impl Actor for SessionWriter {
 
                     let encoded_data = msg.encode_length_delimited_to_vec();
                     if let Err(write_err) = stream.write_u64(encoded_data.len() as u64).await {
-                        tracing::warn!("Error writing to the stream '{}'", write_err);
+                        tracing::warn!("Error writing to the stream '{write_err}'");
                     } else {
                         tracing::trace!(
                             "Wrote length, writing payload (len={})",
@@ -349,7 +347,7 @@ impl Actor for SessionWriter {
                         );
                         // now send the object
                         if let Err(write_err) = stream.write_all(&encoded_data).await {
-                            tracing::warn!("Error writing to the stream '{}'", write_err);
+                            tracing::warn!("Error writing to the stream '{write_err}'");
                             myself.stop(Some("channel_closed".to_string()));
                             return Ok(());
                         }
@@ -426,7 +424,7 @@ impl Actor for SessionReader {
                 if let Some(stream) = &mut state.reader {
                     match stream.read_u64().await {
                         Ok(length) => {
-                            tracing::trace!("Payload length message ({}) received", length);
+                            tracing::trace!("Payload length message ({length}) received");
                             let _ = myself.cast(SessionReaderMessage::ReadObject(length));
                             return Ok(());
                         }
@@ -437,7 +435,7 @@ impl Actor for SessionReader {
                             myself.stop(Some("channel_closed".to_string()));
                         }
                         Err(_other_err) => {
-                            tracing::trace!("Error ({:?}) on stream", _other_err);
+                            tracing::trace!("Error ({_other_err:?}) on stream");
                             // some other TCP error, more handling necessary
                         }
                     }
@@ -463,8 +461,7 @@ impl Actor for SessionReader {
                                 }
                                 Err(decode_err) => {
                                     tracing::error!(
-                                        "Error decoding network message: '{}'. Discarding",
-                                        decode_err
+                                        "Error decoding network message: '{decode_err}'. Discarding"
                                     );
                                 }
                             }

@@ -114,11 +114,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
         .expect("Failed to start NodeServer");
 
     if let (Some(client_host), Some(client_port)) = (config.client_host, config.client_port) {
-        tracing::info!(
-            "Connecting to remote NodeServer at {}:{}",
-            client_host,
-            client_port
-        );
+        tracing::info!("Connecting to remote NodeServer at {client_host}:{client_port}");
         if let Err(error) = ractor_cluster::client_connect_enc(
             &actor,
             format!("{client_host}:{client_port}"),
@@ -172,7 +168,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
             );
             match is_authenticated {
                 Err(err) => {
-                    tracing::warn!("NodeSession returned error on rpc query {}", err);
+                    tracing::warn!("NodeSession returned error on rpc query {err}");
                     break;
                 }
                 Ok(false) => {
@@ -189,7 +185,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
         rpc_reply = ractor::call_t!(actor, ractor_cluster::NodeServerMessage::GetSessions, 200);
     }
 
-    tracing::info!("Terminating test - code {}", err_code);
+    tracing::info!("Terminating test - code {err_code}");
 
     sleep(Duration::from_millis(250)).await;
 

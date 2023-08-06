@@ -265,7 +265,7 @@ where
             format!("======== Factory ({}) stats ========\n", factory.get_id())
         };
 
-        tracing::debug!("{}\n{}", factory_identifier, self.stats);
+        tracing::debug!("{factory_identifier}\n{}", self.stats);
         self.stats.reset_global_counters();
     }
 }
@@ -554,10 +554,9 @@ where
                     .find(|actor| actor.is_pid(who.get_id()))
                 {
                     tracing::warn!(
-                        "Factory {:?}'s worker {} terminated with {:?}",
+                        "Factory {:?}'s worker {} terminated with {reason:?}",
                         myself.get_name(),
-                        worker.wid,
-                        reason
+                        worker.wid
                     );
                     let new_worker = state.worker_builder.build(worker.wid);
                     let spec = WorkerStartContext {
@@ -583,10 +582,9 @@ where
                     .find(|actor| actor.is_pid(who.get_id()))
                 {
                     tracing::warn!(
-                        "Factory {:?}'s worker {} panicked with {}",
+                        "Factory {:?}'s worker {} panicked with {reason}",
                         myself.get_name(),
-                        worker.wid,
-                        reason
+                        worker.wid
                     );
                     let new_worker = state.worker_builder.build(worker.wid);
                     let spec = WorkerStartContext {
