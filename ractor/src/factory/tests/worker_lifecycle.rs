@@ -56,7 +56,7 @@ impl Actor for MyWorker {
                     .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
             }
             WorkerMessage::Dispatch(job) => {
-                log::warn!("Worker received {:?}", job.msg);
+                tracing::warn!("Worker received {:?}", job.msg);
 
                 match job.msg {
                     MyWorkerMessage::Boom => {

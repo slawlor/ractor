@@ -13,10 +13,11 @@ publish = false
 [dependencies]
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
-env_logger = "0.10"
-log = "0.4"
 ractor = { path="../ractor", features = ["cluster"] }
 ractor_cluster = { path = "../ractor_cluster" }
 # ractor_cluster_derive = { path = "../ractor_cluster_derive" }
 # rustyrepl = "0.1"
-tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing"] }
+tracing = "0.1"
+tracing-glog = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"]}

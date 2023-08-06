@@ -4,6 +4,17 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 use std::env;
+use std::io::stderr;
+use std::io::IsTerminal;
+
+use clap::Parser;
+use rustyrepl::{Repl, ReplCommandProcessor};
+use tracing_glog::Glog;
+use tracing_glog::GlogFields;
+use tracing_subscriber::filter::Directive;
+use tracing_subscriber::filter::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::Registry;
 
 mod repl;
 mod tests;
@@ -15,9 +26,6 @@ mod tests;
 mod derive_macro_tests;
 #[cfg(test)]
 mod ractor_forward_port_tests;
-
-use clap::Parser;
-use rustyrepl::{Repl, ReplCommandProcessor};
 
 #[derive(Debug, clap::Subcommand)]
 enum Command {
@@ -34,6 +42,14 @@ enum Command {
 struct Args {
     #[command(subcommand)]
     command: Command,
+
+    /// Set the logging level based on the set of filter directives.
+    ///
+    /// Normal logging levels are supported (e.g. trace, debug, info, warn,
+    /// error), but it's possible to set verbosity for specific spans and
+    /// events.
+    #[clap(short, long, default_value = "info", use_value_delimiter = true)]
+    log: Vec<Directive>,
 }
 
 // MAIN //
@@ -45,7 +61,7 @@ async fn main() {
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "debug");
     }
-    env_logger::builder().format_timestamp_millis().init();
+    init_logging(args.log);
 
     let repl_processor = repl::TestRepl;
     match args.command {
@@ -63,10 +79,27 @@ async fn main() {
                     out.expect("Failed to process command");
                 }
                 _ = tokio::signal::ctrl_c() => {
-                    log::info!("CTRL-C pressed, exiting test");
+                    tracing::info!("CTRL-C pressed, exiting test");
                 }
             }
         }
     }
-    log::info!("Test exiting");
+    tracing::info!("Test exiting");
+}
+
+fn init_logging(directives: Vec<Directive>) {
+    let fmt = tracing_subscriber::fmt::Layer::default()
+        .with_ansi(stderr().is_terminal())
+        .with_writer(std::io::stderr)
+        .event_format(Glog::default().with_timer(tracing_glog::LocalTime::default()))
+        .fmt_fields(GlogFields);
+
+    let filter = directives
+        .into_iter()
+        .fold(EnvFilter::from_default_env(), |filter, directive| {
+            filter.add_directive(directive)
+        });
+
+    let subscriber = Registry::default().with(filter).with(fmt);
+    tracing::subscriber::set_global_default(subscriber).expect("to set global subscriber");
 }

@@ -50,13 +50,13 @@ pub(crate) async fn test_auth_handshake(port_a: u16, port_b: u16, valid_cookies:
     if let Err(error) =
         ractor_cluster::node::client::connect(&actor_b, format!("127.0.0.1:{port_a}")).await
     {
-        log::error!("Failed to connect with error {error}")
+        tracing::error!("Failed to connect with error {error}")
     } else {
-        log::info!("Client connected NodeServer b to NodeServer a");
+        tracing::info!("Client connected NodeServer b to NodeServer a");
     }
 
     ractor::concurrency::sleep(Duration::from_millis(10000)).await;
-    log::warn!("Terminating test");
+    tracing::warn!("Terminating test");
 
     // cleanup
     actor_a.stop(None);
@@ -105,7 +105,7 @@ impl Actor for PingPongActor {
             .collect::<Vec<_>>();
         match message {
             Self::Msg::Ping => {
-                log::info!(
+                tracing::info!(
                     "Received a ping, replying in kind to {} remote actors",
                     remote_actors.len()
                 );
@@ -114,9 +114,8 @@ impl Actor for PingPongActor {
                 }
             }
             Self::Msg::Rpc(request, reply) => {
-                log::info!(
-                    "Received an RPC of '{}' replying in kind to {} remote actors",
-                    request,
+                tracing::info!(
+                    "Received an RPC of '{request}' replying in kind to {} remote actors",
                     remote_actors.len()
                 );
                 let reply_msg = format!("{request}.");
@@ -151,9 +150,9 @@ pub(crate) async fn startup_ping_pong_test_node(port: u16, connect_client: Optio
         if let Err(error) =
             ractor_cluster::node::client::connect(&actor, format!("127.0.0.1:{cport}")).await
         {
-            log::error!("Failed to connect with error {error}")
+            tracing::error!("Failed to connect with error {error}")
         } else {
-            log::info!("Client connected to NdoeServer");
+            tracing::info!("Client connected to NdoeServer");
         }
     }
 

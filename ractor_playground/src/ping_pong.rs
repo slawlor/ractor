@@ -43,7 +43,7 @@ impl Actor for PingPong {
         myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
-        println!("pre_start called");
+        tracing::info!("pre_start called");
         // startup the event processing
         myself.send_message(Message::Ping).unwrap();
         // create the initial state
@@ -55,7 +55,7 @@ impl Actor for PingPong {
         _this_actor: ActorRef<Self::Msg>,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        println!("post_start called");
+        tracing::info!("post_start called");
         Ok(())
     }
 
@@ -65,7 +65,7 @@ impl Actor for PingPong {
         _this_actor: ActorRef<Self::Msg>,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        println!("post_stop called");
+        tracing::info!("post_stop called");
         Ok(())
     }
 
@@ -80,7 +80,7 @@ impl Actor for PingPong {
             myself.send_message(message.next()).unwrap();
             *state += 1;
         } else {
-            println!();
+            tracing::info!("");
             myself.stop(None);
             // don't send another message, rather stop the agent after 10 iterations
         }

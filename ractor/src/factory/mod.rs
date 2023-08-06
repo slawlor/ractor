@@ -265,7 +265,7 @@ where
             format!("======== Factory ({}) stats ========\n", factory.get_id())
         };
 
-        log::debug!("{}\n{}", factory_identifier, self.stats);
+        tracing::debug!("{factory_identifier}\n{}", self.stats);
         self.stats.reset_global_counters();
     }
 }
@@ -517,7 +517,7 @@ where
                 if let Some(dmd) = &self.dead_mans_switch {
                     for worker in state.pool.values() {
                         if worker.is_stuck(dmd.detection_timeout) && dmd.kill_worker {
-                            log::info!(
+                            tracing::info!(
                                 "Factory {:?} killing stuck worker {}",
                                 myself.get_name(),
                                 worker.wid
@@ -553,11 +553,10 @@ where
                     .values_mut()
                     .find(|actor| actor.is_pid(who.get_id()))
                 {
-                    log::warn!(
-                        "Factory {:?}'s worker {} terminated with {:?}",
+                    tracing::warn!(
+                        "Factory {:?}'s worker {} terminated with {reason:?}",
                         myself.get_name(),
-                        worker.wid,
-                        reason
+                        worker.wid
                     );
                     let new_worker = state.worker_builder.build(worker.wid);
                     let spec = WorkerStartContext {
@@ -582,11 +581,10 @@ where
                     .values_mut()
                     .find(|actor| actor.is_pid(who.get_id()))
                 {
-                    log::warn!(
-                        "Factory {:?}'s worker {} panicked with {}",
+                    tracing::warn!(
+                        "Factory {:?}'s worker {} panicked with {reason}",
                         myself.get_name(),
-                        worker.wid,
-                        reason
+                        worker.wid
                     );
                     let new_worker = state.worker_builder.build(worker.wid);
                     let spec = WorkerStartContext {

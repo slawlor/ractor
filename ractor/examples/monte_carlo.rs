@@ -157,10 +157,10 @@ impl Actor for GameManager {
         // that they should start their games.
 
         let game_conditions = GameState::default();
-        println!("Starting funds: ${}", game_conditions.funds);
-        println!("Wager per round: ${}", game_conditions.wager);
-        println!("Rounds per game: {}", game_conditions.total_rounds);
-        println!("Running simulations...");
+        tracing::info!("Starting funds: ${}", game_conditions.funds);
+        tracing::info!("Wager per round: ${}", game_conditions.wager);
+        tracing::info!("Rounds per game: {}", game_conditions.total_rounds);
+        tracing::info!("Running simulations...");
         for _ in 0..num_games {
             let (actor, _) = Actor::spawn_linked(None, Game, (), myself.clone().into())
                 .await
@@ -191,8 +191,8 @@ impl Actor for GameManager {
                 .sum::<i64>()
                 / state.total_games as i64;
 
-            println!("Simulations ran: {}", state.results.len());
-            println!("Final average funds: ${average_funds}");
+            tracing::info!("Simulations ran: {}", state.results.len());
+            tracing::info!("Final average funds: ${average_funds}");
 
             myself.stop(None);
         }
@@ -202,8 +202,37 @@ impl Actor for GameManager {
 
 const NUM_GAMES: u32 = 100;
 
+fn init_logging() {
+    let dir = tracing_subscriber::filter::Directive::from(tracing::Level::DEBUG);
+
+    use std::io::stderr;
+    use std::io::IsTerminal;
+    use tracing_glog::Glog;
+    use tracing_glog::GlogFields;
+    use tracing_subscriber::filter::EnvFilter;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::Registry;
+
+    let fmt = tracing_subscriber::fmt::Layer::default()
+        .with_ansi(stderr().is_terminal())
+        .with_writer(std::io::stderr)
+        .event_format(Glog::default().with_timer(tracing_glog::LocalTime::default()))
+        .fmt_fields(GlogFields);
+
+    let filter = vec![dir]
+        .into_iter()
+        .fold(EnvFilter::from_default_env(), |filter, directive| {
+            filter.add_directive(directive)
+        });
+
+    let subscriber = Registry::default().with(filter).with(fmt);
+    tracing::subscriber::set_global_default(subscriber).expect("to set global subscriber");
+}
+
 #[tokio::main]
 async fn main() {
+    init_logging();
+
     // create the supervisor
     let manager = GameManager;
     // spawn it off and wait for it to complete/exit
