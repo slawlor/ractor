@@ -69,7 +69,7 @@ impl Actor for PingPongActor {
             .collect::<Vec<_>>();
         match message {
             Self::Msg::Ping => {
-                log::info!(
+                tracing::info!(
                     "Received a ping, replying in kind to {} remote actors",
                     remote_actors.len()
                 );
@@ -124,7 +124,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         .expect("Ping pong actor failed to start up!");
 
     if let (Some(client_host), Some(client_port)) = (config.client_host, config.client_port) {
-        log::info!(
+        tracing::info!(
             "Connecting to remote NodeServer at {}:{}",
             client_host,
             client_port
@@ -132,15 +132,15 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         if let Err(error) =
             ractor_cluster::client_connect(&actor, format!("{client_host}:{client_port}")).await
         {
-            log::error!("Failed to connect with error {error}");
+            tracing::error!("Failed to connect with error {error}");
             return -3;
         } else {
-            log::info!("Client connected NodeServer b to NodeServer a");
+            tracing::info!("Client connected NodeServer b to NodeServer a");
         }
     }
 
     let mut err_code = -1;
-    log::info!("Waiting for NodeSession status updates");
+    tracing::info!("Waiting for NodeSession status updates");
 
     let mut rpc_reply = ractor::call_t!(actor, ractor_cluster::NodeServerMessage::GetSessions, 200);
     while rpc_reply.is_ok() {
@@ -158,7 +158,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
             );
             match is_authenticated {
                 Err(err) => {
-                    log::warn!("NodeSession returned error on rpc query {}", err);
+                    tracing::warn!("NodeSession returned error on rpc query {}", err);
                     break;
                 }
                 Ok(false) => {
@@ -166,7 +166,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
                 }
                 Ok(true) => {
                     err_code = 0;
-                    log::info!("Authentication succeeded. Exiting test");
+                    tracing::info!("Authentication succeeded. Exiting test");
                     break;
                 }
             }
@@ -184,21 +184,21 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         while rpc_result.is_ok() {
             let duration: Duration = Instant::now() - tic;
             if duration.as_millis() > PING_PONG_ALLOTED_MS {
-                log::error!("Ping pong actor didn't complete in allotted time");
+                tracing::error!("Ping pong actor didn't complete in allotted time");
                 return -1;
             }
 
             match rpc_result {
                 Ok(true) => {
                     // test completed
-                    log::info!("Ping pong actor is completed");
+                    tracing::info!("Ping pong actor is completed");
                     break;
                 }
                 Ok(_) => {
                     // test still WIP
                 }
                 Err(err) => {
-                    log::error!(
+                    tracing::error!(
                         "Failed to communicate with test actor or messaging timeout '{}'",
                         err
                     );
@@ -208,10 +208,10 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
             rpc_result = ractor::call_t!(test_actor, PingPongActorMessage::IsDone, 500);
         }
     } else {
-        log::warn!("Failed to authenticate, failing test");
+        tracing::warn!("Failed to authenticate, failing test");
     }
 
-    log::info!("Terminating test - code {}", err_code);
+    tracing::info!("Terminating test - code {}", err_code);
 
     sleep(Duration::from_millis(250)).await;
 

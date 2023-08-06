@@ -41,7 +41,7 @@ pub async fn test(config: DistConnectConfig) -> i32 {
         },
     );
 
-    log::info!("Starting NodeServer on port {}", config.server_port);
+    tracing::info!("Starting NodeServer on port {}", config.server_port);
     // startup the node server
     let (actor, handle) = Actor::spawn(None, server, ())
         .await
@@ -58,7 +58,7 @@ pub async fn test(config: DistConnectConfig) -> i32 {
 
     // If this server should connect to a client server, initiate that connection
     if let (Some(client_host), Some(client_port)) = (config.client_host, config.client_port) {
-        log::info!(
+        tracing::info!(
             "Connecting to remote NodeServer at {}:{}",
             client_host,
             client_port
@@ -67,10 +67,10 @@ pub async fn test(config: DistConnectConfig) -> i32 {
             ractor_cluster::node::client::connect(&actor, format!("{client_host}:{client_port}"))
                 .await
         {
-            log::error!("Failed to connect with error {error}");
+            tracing::error!("Failed to connect with error {error}");
             return -3;
         } else {
-            log::info!(
+            tracing::info!(
                 "Client connected {} to {}:{}",
                 config.node_name,
                 client_host,
@@ -80,7 +80,7 @@ pub async fn test(config: DistConnectConfig) -> i32 {
     }
 
     let mut err_code = -1;
-    log::info!("Waiting for NodeSession status updates");
+    tracing::info!("Waiting for NodeSession status updates");
 
     let mut rpc_reply = ractor::call_t!(actor, ractor_cluster::NodeServerMessage::GetSessions, 200);
     let tic = Instant::now();
@@ -89,7 +89,7 @@ pub async fn test(config: DistConnectConfig) -> i32 {
         let time: Duration = Instant::now() - tic;
         if time.as_millis() > DIST_CONNECT_TIME_ALLOWANCE_MS {
             err_code = -2;
-            log::error!(
+            tracing::error!(
                 "The dist-connect test time has been going on for over > {}ms. Failing the test",
                 time.as_millis()
             );
@@ -103,8 +103,8 @@ pub async fn test(config: DistConnectConfig) -> i32 {
             .collect::<Vec<_>>();
         if values.len() >= 2 {
             // Our node as at least 2 connections
-            log::debug!("Connected session information: {:?}", values);
-            log::info!("Transitive connections succeeded. Exiting");
+            tracing::debug!("Connected session information: {:?}", values);
+            tracing::info!("Transitive connections succeeded. Exiting");
             err_code = 0;
             break;
         }
@@ -113,7 +113,7 @@ pub async fn test(config: DistConnectConfig) -> i32 {
         rpc_reply = ractor::call_t!(actor, ractor_cluster::NodeServerMessage::GetSessions, 200);
     }
 
-    log::info!("Terminating test - code {}", err_code);
+    tracing::info!("Terminating test - code {}", err_code);
 
     // Let the other nodes exist for some time to make sure we get to a stable network state before actually terminating nodes
     sleep(Duration::from_millis(500)).await;

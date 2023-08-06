@@ -81,7 +81,7 @@ where
         is_server: false,
     })?;
 
-    log::info!("TCP Session opened for {}", addr);
+    tracing::info!("TCP Session opened for {}", addr);
     Ok(())
 }
 
@@ -124,6 +124,6 @@ where
         is_server: false,
     })?;
 
-    log::info!("TCP Session opened for {}", addr);
+    tracing::info!("TCP Session opened for {}", addr);
     Ok(())
 }

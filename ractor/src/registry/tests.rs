@@ -60,7 +60,7 @@ async fn test_duplicate_registration() {
         }
     }
 
-    log::debug!(
+    tracing::debug!(
         "{:?}",
         crate::registry::ActorRegistryErr::AlreadyRegistered("Some name".to_string())
     );
@@ -374,7 +374,7 @@ mod pid_registry_tests {
         monitor_handle.await.expect("Actor cleanup failed");
 
         let ev = PidLifecycleEvent::Spawn(test_actor.get_cell());
-        log::debug!("{:?}", ev);
-        log::debug!("{:?}", PidLifecycleEvent::Terminate(test_actor.get_cell()));
+        tracing::debug!("{:?}", ev);
+        tracing::debug!("{:?}", PidLifecycleEvent::Terminate(test_actor.get_cell()));
     }
 }

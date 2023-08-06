@@ -31,7 +31,7 @@ impl ReplCommandProcessor<TestCase> for TestRepl {
         };
 
         if code < 0 {
-            log::error!("Test failed with code {}", code);
+            tracing::error!("Test failed with code {}", code);
             // BLOW UP THE WORLD!
             std::process::exit(code);
         }

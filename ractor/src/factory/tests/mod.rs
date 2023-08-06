@@ -79,7 +79,7 @@ impl Actor for TestWorker {
                     .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
             }
             WorkerMessage::Dispatch(job) => {
-                log::debug!("Worker received {:?}", job.msg);
+                tracing::debug!("Worker received {:?}", job.msg);
 
                 self.counter.fetch_add(1, Ordering::Relaxed);
 
@@ -571,7 +571,7 @@ impl Actor for StuckWorker {
                     .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
             }
             WorkerMessage::Dispatch(job) => {
-                log::debug!("Worker received {:?}", job.msg);
+                tracing::debug!("Worker received {:?}", job.msg);
 
                 if let Some(timeout_ms) = self.slow {
                     crate::concurrency::sleep(Duration::from_millis(timeout_ms)).await;

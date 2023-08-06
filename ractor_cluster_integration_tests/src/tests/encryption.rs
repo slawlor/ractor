@@ -75,7 +75,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
     let trust_anchors = ca_certs.iter().map(|cert| {
         let ta =
             webpki::TrustAnchor::try_from_cert_der(&cert[..]).expect("Failed to build TrustAnchor");
-        log::warn!(
+        tracing::warn!(
             "CA Cert SUB={}",
             String::from_utf8(ta.subject.to_vec()).unwrap_or("n/a".to_string())
         );
@@ -107,14 +107,14 @@ pub async fn test(config: EncryptionConfig) -> i32 {
         None,
     );
 
-    log::info!("Starting NodeServer on port {}", config.server_port);
+    tracing::info!("Starting NodeServer on port {}", config.server_port);
 
     let (actor, handle) = Actor::spawn(None, server, ())
         .await
         .expect("Failed to start NodeServer");
 
     if let (Some(client_host), Some(client_port)) = (config.client_host, config.client_port) {
-        log::info!(
+        tracing::info!(
             "Connecting to remote NodeServer at {}:{}",
             client_host,
             client_port
@@ -127,15 +127,15 @@ pub async fn test(config: EncryptionConfig) -> i32 {
         )
         .await
         {
-            log::error!("Failed to connect with error {error}");
+            tracing::error!("Failed to connect with error {error}");
             return -3;
         } else {
-            log::info!("Client connected NodeServer b to NodeServer a");
+            tracing::info!("Client connected NodeServer b to NodeServer a");
         }
     }
 
     let mut err_code = -1;
-    log::info!("Waiting for NodeSession status updates");
+    tracing::info!("Waiting for NodeSession status updates");
 
     let mut rpc_reply = ractor::call_t!(actor, ractor_cluster::NodeServerMessage::GetSessions, 200);
     let mut tic = None;
@@ -145,7 +145,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
             let time: Duration = Instant::now() - timestamp;
             if time.as_millis() > AUTH_TIME_ALLOWANCE_MS {
                 err_code = -2;
-                log::error!(
+                tracing::error!(
                     "The authentcation time has been going on for over > {}ms. Failing the test",
                     time.as_millis()
                 );
@@ -172,7 +172,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
             );
             match is_authenticated {
                 Err(err) => {
-                    log::warn!("NodeSession returned error on rpc query {}", err);
+                    tracing::warn!("NodeSession returned error on rpc query {}", err);
                     break;
                 }
                 Ok(false) => {
@@ -180,7 +180,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
                 }
                 Ok(true) => {
                     err_code = 0;
-                    log::info!("Authentication succeeded. Exiting test");
+                    tracing::info!("Authentication succeeded. Exiting test");
                     break;
                 }
             }
@@ -189,7 +189,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
         rpc_reply = ractor::call_t!(actor, ractor_cluster::NodeServerMessage::GetSessions, 200);
     }
 
-    log::info!("Terminating test - code {}", err_code);
+    tracing::info!("Terminating test - code {}", err_code);
 
     sleep(Duration::from_millis(250)).await;
 

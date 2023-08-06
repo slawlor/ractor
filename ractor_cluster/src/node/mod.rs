@@ -388,7 +388,7 @@ impl Actor for NodeServer {
                     state.node_id_counter += 1;
                 } else {
                     // failed to startup actor, drop the socket
-                    log::warn!("Failed to startup `NodeSession`, dropping connection");
+                    tracing::warn!("Failed to startup `NodeSession`, dropping connection");
                 }
             }
             Self::Msg::ConnectionAuthenticated(actor_id) => {
@@ -432,7 +432,7 @@ impl Actor for NodeServer {
         match message {
             SupervisionEvent::ActorPanicked(actor, msg) => {
                 if state.listener.get_id() == actor.get_id() {
-                    log::error!(
+                    tracing::error!(
                         "The Node server's TCP listener failed with '{}'. Respawning!",
                         msg
                     );
@@ -451,7 +451,7 @@ impl Actor for NodeServer {
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
                         Entry::Occupied(o) => {
-                            log::warn!(
+                            tracing::warn!(
                                 "Node session {:?} panicked with '{}'",
                                 o.get().peer_name,
                                 msg
@@ -462,7 +462,7 @@ impl Actor for NodeServer {
                             }
                         }
                         Entry::Vacant(_) => {
-                            log::warn!(
+                            tracing::warn!(
                                 "An unknown actor ({:?}) panicked with '{}'",
                                 actor.get_id(),
                                 msg
@@ -473,7 +473,7 @@ impl Actor for NodeServer {
             }
             SupervisionEvent::ActorTerminated(actor, _, maybe_reason) => {
                 if state.listener.get_id() == actor.get_id() {
-                    log::error!(
+                    tracing::error!(
                         "The Node server's TCP listener exited with '{:?}'. Respawning!",
                         maybe_reason
                     );
@@ -492,7 +492,7 @@ impl Actor for NodeServer {
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
                         Entry::Occupied(o) => {
-                            log::warn!(
+                            tracing::warn!(
                                 "Node session {:?} exited with '{:?}'",
                                 o.get().peer_name,
                                 maybe_reason
@@ -503,7 +503,7 @@ impl Actor for NodeServer {
                             }
                         }
                         Entry::Vacant(_) => {
-                            log::warn!(
+                            tracing::warn!(
                                 "An unknown actor ({:?}) exited with '{:?}'",
                                 actor.get_id(),
                                 maybe_reason

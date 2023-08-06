@@ -265,7 +265,7 @@ where
             format!("======== Factory ({}) stats ========\n", factory.get_id())
         };
 
-        log::debug!("{}\n{}", factory_identifier, self.stats);
+        tracing::debug!("{}\n{}", factory_identifier, self.stats);
         self.stats.reset_global_counters();
     }
 }
@@ -517,7 +517,7 @@ where
                 if let Some(dmd) = &self.dead_mans_switch {
                     for worker in state.pool.values() {
                         if worker.is_stuck(dmd.detection_timeout) && dmd.kill_worker {
-                            log::info!(
+                            tracing::info!(
                                 "Factory {:?} killing stuck worker {}",
                                 myself.get_name(),
                                 worker.wid
@@ -553,7 +553,7 @@ where
                     .values_mut()
                     .find(|actor| actor.is_pid(who.get_id()))
                 {
-                    log::warn!(
+                    tracing::warn!(
                         "Factory {:?}'s worker {} terminated with {:?}",
                         myself.get_name(),
                         worker.wid,
@@ -582,7 +582,7 @@ where
                     .values_mut()
                     .find(|actor| actor.is_pid(who.get_id()))
                 {
-                    log::warn!(
+                    tracing::warn!(
                         "Factory {:?}'s worker {} panicked with {}",
                         myself.get_name(),
                         worker.wid,

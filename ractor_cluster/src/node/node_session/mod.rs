@@ -127,7 +127,7 @@ impl NodeSession {
             return;
         }
         if state.auth.is_close() {
-            log::info!(
+            tracing::info!(
                 "Node Session {} is shutting down due to authentication failure",
                 self.node_id
             );
@@ -214,16 +214,16 @@ impl NodeSession {
                 }
 
                 if let auth::ClientAuthenticationProcess::Close = &next {
-                    log::info!(
+                    tracing::info!(
                         "Node Session {} is shutting down due to authentication failure",
                         self.node_id
                     );
                     myself.stop(Some("auth_fail".to_string()));
                 }
                 if let auth::ClientAuthenticationProcess::Ok = &next {
-                    log::info!("Node Session {} is authenticated", self.node_id);
+                    tracing::info!("Node Session {} is authenticated", self.node_id);
                 }
-                log::debug!("Next client auth state: {:?}", next);
+                tracing::debug!("Next client auth state: {:?}", next);
                 state.auth = AuthenticationState::AsClient(next);
             }
             AuthenticationState::AsServer(server_auth) => {
@@ -324,16 +324,16 @@ impl NodeSession {
                 }
 
                 if let auth::ServerAuthenticationProcess::Close = &next {
-                    log::info!(
+                    tracing::info!(
                         "Node Session {} is shutting down due to authentication failure",
                         self.node_id
                     );
                     myself.stop(Some("auth_fail".to_string()));
                 }
                 if let auth::ServerAuthenticationProcess::Ok(_) = &next {
-                    log::info!("Node Session {} is authenticated", self.node_id);
+                    tracing::info!("Node Session {} is authenticated", self.node_id);
                 }
-                log::debug!("Next server auth state: {:?}", next);
+                tracing::debug!("Next server auth state: {:?}", next);
                 state.auth = AuthenticationState::AsServer(next);
             }
         }
@@ -346,7 +346,7 @@ impl NodeSession {
         myself: ActorRef<super::NodeSessionMessage>,
     ) {
         if !state.auth.is_ok() {
-            log::warn!("Inter-node message received on unauthenticated NodeSession");
+            tracing::warn!("Inter-node message received on unauthenticated NodeSession");
             return;
         }
 
@@ -448,7 +448,7 @@ impl NodeSession {
         myself: ActorRef<super::NodeSessionMessage>,
     ) -> Result<(), ActorProcessingErr> {
         if !state.auth.is_ok() {
-            log::warn!("Control message received on unauthenticated NodeSession");
+            tracing::warn!("Control message received on unauthenticated NodeSession");
             return Ok(());
         }
 
@@ -465,9 +465,9 @@ impl NodeSession {
                             )
                             .await
                         {
-                            log::error!("Failed to spawn remote actor with {}", spawn_err);
+                            tracing::error!("Failed to spawn remote actor with {}", spawn_err);
                         } else {
-                            log::debug!("Spawned remote actor");
+                            tracing::debug!("Spawned remote actor");
                         }
                     }
                 }
@@ -477,7 +477,7 @@ impl NodeSession {
                             actor
                                 .stop_and_wait(Some("remote".to_string()), None)
                                 .await?;
-                            log::debug!(
+                            tracing::debug!(
                                 "Actor {} on node {} exited, terminating local `RemoteActor` {}",
                                 pid,
                                 self.node_id,
@@ -505,9 +505,9 @@ impl NodeSession {
                         .duration_since(ts)
                         .expect("Time went backwards")
                         .as_millis();
-                    log::debug!("Ping -> Pong took {}ms", delta_ms);
+                    tracing::debug!("Ping -> Pong took {}ms", delta_ms);
                     if delta_ms > 50 {
-                        log::warn!(
+                        tracing::warn!(
                             "Super long ping detected {} - {} ({}ms)",
                             state.local_addr,
                             state.peer_addr,
@@ -528,13 +528,16 @@ impl NodeSession {
                                 cells.push(actor.get_cell());
                             }
                             Err(spawn_err) => {
-                                log::error!("Failed to spawn remote actor with '{}'", spawn_err);
+                                tracing::error!(
+                                    "Failed to spawn remote actor with '{}'",
+                                    spawn_err
+                                );
                             }
                         }
                     }
                     // join the remote actors to the local PG group
                     if !cells.is_empty() {
-                        log::debug!(
+                        tracing::debug!(
                             "PG Join group '{}' for {} remote actors",
                             join.group,
                             cells.len()
@@ -551,7 +554,7 @@ impl NodeSession {
                     }
                     // join the remote actors to the local PG group
                     if !cells.is_empty() {
-                        log::debug!(
+                        tracing::debug!(
                             "PG Leave group '{}' for {} remote actors",
                             leave.group,
                             cells.len()
@@ -566,7 +569,7 @@ impl NodeSession {
                         500
                     );
                     if let Ok(sessions) = existing_sessions {
-                        log::info!(
+                        tracing::info!(
                             "{:?}",
                             sessions
                                 .values()
@@ -625,7 +628,7 @@ impl NodeSession {
                                     )
                                     .await
                                     {
-                                        log::warn!("Node transitive connection, failed to connect to {} with '{}'", session_name.connection_string, connect_err);
+                                        tracing::warn!("Node transitive connection, failed to connect to {} with '{}'", session_name.connection_string, connect_err);
                                     }
                                 });
                             }
@@ -643,7 +646,7 @@ impl NodeSession {
         myself: ActorRef<super::NodeSessionMessage>,
         state: &mut NodeSessionState,
     ) {
-        log::info!(
+        tracing::info!(
             "Session authenticated on NodeSession {} - ({:?})",
             self.node_id,
             state.peer_addr
@@ -895,7 +898,7 @@ impl Actor for NodeSession {
                 || self.this_node_name.name == peer.name
             {
                 // self-connection detected, exit session
-                log::warn!("Cannot establish a connection to self. Exiting");
+                tracing::warn!("Cannot establish a connection to self. Exiting");
                 myself.stop(Some("self_connection".to_string()));
                 return Ok(());
             }
@@ -950,14 +953,14 @@ impl Actor for NodeSession {
             SupervisionEvent::ActorStarted(_) => {}
             SupervisionEvent::ActorPanicked(actor, msg) => {
                 if state.is_tcp_actor(actor.get_id()) {
-                    log::error!(
+                    tracing::error!(
                         "Node session {:?}'s TCP session panicked with '{}'",
                         state.name,
                         msg
                     );
                     myself.stop(Some("tcp_session_err".to_string()));
                 } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().pid()) {
-                    log::warn!(
+                    tracing::warn!(
                         "Node session {:?} had a remote actor ({}) panic with {}",
                         state.name,
                         actor.get_id(),
@@ -974,7 +977,7 @@ impl Actor for NodeSession {
                         .get_or_spawn_remote_actor(&myself, name, pid, state)
                         .await?;
                 } else {
-                    log::error!("NodeSesion {:?} received an unknown child panic superivision message from {} - '{}'",
+                    tracing::error!("NodeSesion {:?} received an unknown child panic superivision message from {} - '{}'",
                         state.name,
                         actor.get_id(),
                         msg
@@ -983,11 +986,11 @@ impl Actor for NodeSession {
             }
             SupervisionEvent::ActorTerminated(actor, _, maybe_reason) => {
                 if state.is_tcp_actor(actor.get_id()) {
-                    log::info!("NodeSession {:?} connection closed", state.name);
+                    tracing::info!("NodeSession {:?} connection closed", state.name);
                     myself.stop(Some("tcp_session_closed".to_string()));
                     // TODO: resilient connection?
                 } else if let Some(actor) = state.remote_actors.remove(&actor.get_id().pid()) {
-                    log::debug!(
+                    tracing::debug!(
                         "NodeSession {:?} received a child exit with reason '{:?}'",
                         state.name,
                         maybe_reason
@@ -996,7 +999,7 @@ impl Actor for NodeSession {
                         .stop_and_wait(Some("remote_exit".to_string()), None)
                         .await?;
                 } else {
-                    log::warn!("NodeSession {:?} received an unknown child actor exit event from {} - '{:?}'",
+                    tracing::warn!("NodeSession {:?} received an unknown child actor exit event from {} - '{:?}'",
                         state.name,
                         actor.get_id(),
                         maybe_reason,
