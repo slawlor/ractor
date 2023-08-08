@@ -281,7 +281,7 @@ Lastly is that we would need to change some of the ownership properties that `ra
 
 ## Contributors
 
-The original authors of `ractor` are Sean Lawlor (@slawlor), Dillon George (@dillonrg), and Evan Au (@afterdusk). To learn more about contributing to `ractor` please see [CONTRIBUTING.md](https://github.com/slawlor/ractor/blob/main/CONTRIBUTING.md).
+The original author of `ractor` is Sean Lawlor (@slawlor). To learn more about contributing to `ractor` please see [CONTRIBUTING.md](https://github.com/slawlor/ractor/blob/main/CONTRIBUTING.md).
 
 ## License
 
