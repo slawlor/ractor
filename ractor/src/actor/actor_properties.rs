@@ -48,7 +48,7 @@ impl ActorProperties {
     where
         TActor: Actor,
     {
-        Self::new_remote::<TActor>(name, crate::actor_id::get_new_local_id())
+        Self::new_remote::<TActor>(name, crate::actor::actor_id::get_new_local_id())
     }
 
     pub fn new_remote<TActor>(

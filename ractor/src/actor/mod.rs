@@ -59,15 +59,18 @@ pub mod messages;
 use messages::*;
 
 pub mod actor_cell;
-pub mod errors;
+pub mod actor_id;
+pub(crate) mod actor_properties;
+pub mod actor_ref;
 mod supervision;
 
 #[cfg(test)]
 mod tests;
 
+use crate::errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
 use crate::{ActorName, Message, State};
-use actor_cell::{ActorCell, ActorPortSet, ActorRef, ActorStatus};
-use errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
+use actor_cell::{ActorCell, ActorPortSet, ActorStatus};
+use actor_ref::ActorRef;
 
 pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> ActorProcessingErr {
     match e.downcast::<String>() {
@@ -511,7 +514,8 @@ where
         // run the processing loop, backgrounding the work
         let handle = crate::concurrency::spawn_named(actor_ref.get_name().as_deref(), async move {
             let myself = actor_ref.clone();
-            let evt = match Self::processing_loop(ports, &mut state, &handler, actor_ref, id, name).await
+            let evt = match Self::processing_loop(ports, &mut state, &handler, actor_ref, id, name)
+                .await
             {
                 Ok(exit_reason) => SupervisionEvent::ActorTerminated(
                     myself.get_cell(),

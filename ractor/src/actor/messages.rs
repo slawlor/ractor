@@ -13,9 +13,8 @@ use std::any::Any;
 use std::fmt::Debug;
 
 use crate::message::BoxedDowncastErr;
+use crate::ActorProcessingErr;
 use crate::State;
-
-use super::errors::ActorProcessingErr;
 
 /// A "boxed" message denoting a strong-type message
 /// but generic so it can be passed around without type
