@@ -53,4 +53,21 @@ async fn handle(&self, myself: ActorRef<Self::Msg>, message: Self::Msg, state: &
 
 In this model, the underlying framework will send a message to the actor after the period elapses so the actor's message handler does the necessary processing on a period.
 
+## Factories: Managing the queue for an actor and parallel processing
+
+What happens when you want the following behavior in an actor context?
+
+1. A bounded queue, with backpressure support, for an actor
+2. Parallel processing of messages (beyond a single sequential processor)
+
+This is where you want to start looking at a [Factory](https://docs.rs/ractor/latest/ractor/factory/struct.Factory.html). The [documentation on the introduction to a factory](https://docs.rs/ractor/latest/ractor/factory/index.html) has a good overview for the motivation and use-cases for a factory, however the tl;dr is that a factory manages a pool of `worker`s which are discrete processing units. They are all identical for a given factory, and the factory is responsible for dispatching work and managing queueing.
+
+The factory can be used with a single worker as well, which essentially gives you automated maintenance of the worker lifecycle along with queueing management.
+
+Some related discussions/issues which might be relevant if you have a question!
+
+1. Concurrent long-running async tasks: [Issue 133](https://github.com/slawlor/ractor/issues/133)
+2. Why jobs aren't cloneable [Issue 91](https://github.com/slawlor/ractor/issues/91)
+3. Performance discussions [Discussion 92](https://github.com/slawlor/ractor/discussions/92)
+
 ## More to come

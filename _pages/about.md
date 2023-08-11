@@ -24,11 +24,10 @@ Additionally we wrote `ractor` without building on some kind of "Runtime" or "Sy
 
 We currently have full support for:
 
-1. Single-threaded message processing
+1. Sequential message processing
 2. Actor supervision tree
 3. Remote procedure calls to actors in the `rpc` module
 4. Timers in the `time` module
 5. Named actor registry (`registry` module) from [Erlang's `Registered processes`](https://www.erlang.org/doc/reference_manual/processes.html)
 6. Process groups (`ractor::pg` module) from [Erlang's `pg` module](https://www.erlang.org/doc/man/pg.html)
-
-On our roadmap is to add more of the Erlang functionality including potentially a distributed actor cluster.
+7. Preliminary support for distributed actors in a cluster format.
