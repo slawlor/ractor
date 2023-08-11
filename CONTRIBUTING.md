@@ -1,4 +1,5 @@
 # Contributing to this library
+
 We want to make contributing to this project as easy and transparent as
 possible.
 
@@ -17,7 +18,7 @@ We actively welcome your pull requests!
 
 ## Issues
 
-We use GitHub issues to track issues. 
+We use GitHub issues to track issues.
 
 For reported bugs, please ensure your description is clear and has sufficient instructions to be able to reproduce the issue.
 

@@ -125,7 +125,7 @@ Besides that, just write your actor as you would. The actor itself will live whe
 
 ## Contributors
 
-The original authors of `ractor` are Sean Lawlor (@slawlor), Dillon George (@dillonrg), and Evan Au (@afterdusk). To learn more about contributing to `ractor` please see [CONTRIBUTING.md](https://github.com/slawlor/ractor/blob/main/CONTRIBUTING.md)
+The original author of `ractor` is Sean Lawlor (@slawlor). To learn more about contributing to `ractor` please see [CONTRIBUTING.md](https://github.com/slawlor/ractor/blob/main/CONTRIBUTING.md)
 
 ## License
 
