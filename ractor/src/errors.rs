@@ -186,3 +186,126 @@ impl<T> Display for MessagingErr<T> {
         }
     }
 }
+
+/// Error types which can result from Ractor processes
+pub enum RactorErr<T> {
+    /// An error occurred spawning
+    Spawn(SpawnErr),
+    /// An error occurred in messaging (sending/receiving)
+    Messaging(MessagingErr<T>),
+    /// An actor encountered an error while processing (canceled or panicked)
+    Actor(ActorErr),
+    /// A timeout occurred
+    Timeout,
+}
+
+impl<T> RactorErr<T> {
+    /// Identify if the error has a message payload contained. If [true],
+    /// You can utilize `try_get_message` to consume the error and extract the message payload
+    /// quickly.
+    ///
+    /// Returns [true] if the error contains a message payload of type `T`, [false] otherwise.
+    pub fn has_message(&self) -> bool {
+        matches!(self, Self::Messaging(MessagingErr::SendErr(_)))
+    }
+    /// Try and extract the message payload from the contained error. This consumes the
+    /// [RactorErr] instance in order to not have require cloning the message payload.
+    /// Should be used in conjunction with `has_message` to not consume the error if not wanted
+    ///
+    /// Returns [Some(`T`)] if there is a message payload, [None] otherwise.
+    pub fn try_get_message(self) -> Option<T> {
+        if let Self::Messaging(MessagingErr::SendErr(msg)) = self {
+            Some(msg)
+        } else {
+            None
+        }
+    }
+
+    /// Map any message embedded within the error type. This is primarily useful
+    /// for normalizing an error value if the message is not needed.
+    pub fn map<F, U>(self, mapper: F) -> RactorErr<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            RactorErr::Spawn(err) => RactorErr::Spawn(err),
+            RactorErr::Messaging(err) => RactorErr::Messaging(err.map(mapper)),
+            RactorErr::Actor(err) => RactorErr::Actor(err),
+            RactorErr::Timeout => RactorErr::Timeout,
+        }
+    }
+}
+
+impl<T> std::fmt::Debug for RactorErr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Messaging(m) => write!(f, "Messaging({:?})", m),
+            Self::Actor(a) => write!(f, "Actor({:?})", a),
+            Self::Spawn(s) => write!(f, "Spawn({:?})", s),
+            Self::Timeout => write!(f, "Timeout"),
+        }
+    }
+}
+
+impl<T> std::error::Error for RactorErr<T> {}
+
+impl<T> From<SpawnErr> for RactorErr<T> {
+    fn from(value: SpawnErr) -> Self {
+        RactorErr::Spawn(value)
+    }
+}
+
+impl<T> From<MessagingErr<T>> for RactorErr<T> {
+    fn from(value: MessagingErr<T>) -> Self {
+        RactorErr::Messaging(value)
+    }
+}
+
+impl<T> From<ActorErr> for RactorErr<T> {
+    fn from(value: ActorErr) -> Self {
+        RactorErr::Actor(value)
+    }
+}
+
+impl<T, TResult> From<crate::rpc::CallResult<TResult>> for RactorErr<T> {
+    fn from(value: crate::rpc::CallResult<TResult>) -> Self {
+        match value {
+            crate::rpc::CallResult::SenderError => {
+                RactorErr::Messaging(MessagingErr::ChannelClosed)
+            }
+            crate::rpc::CallResult::Timeout => RactorErr::Timeout,
+            _ => panic!("A successful `CallResult` cannot be mapped to a `RactorErr`"),
+        }
+    }
+}
+
+impl<T> std::fmt::Display for RactorErr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Actor(actor_err) => {
+                if f.alternate() {
+                    write!(f, "{actor_err:#}")
+                } else {
+                    write!(f, "{actor_err}")
+                }
+            }
+            Self::Messaging(messaging_err) => {
+                if f.alternate() {
+                    write!(f, "{messaging_err:#}")
+                } else {
+                    write!(f, "{messaging_err}")
+                }
+            }
+            Self::Spawn(spawn_err) => {
+                if f.alternate() {
+                    write!(f, "{spawn_err:#}")
+                } else {
+                    write!(f, "{spawn_err}")
+                }
+            }
+            Self::Timeout => {
+                write!(f, "timeout")
+            }
+        }
+    }
+}

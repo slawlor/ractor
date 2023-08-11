@@ -84,7 +84,7 @@ impl<TMessage> ActorRef<TMessage> {
     }
 }
 
-impl<TMessage> ActorRef<TMessage>
+impl<TMessage> crate::actor::ActorRef<TMessage>
 where
     TMessage: Message,
 {
@@ -104,10 +104,10 @@ where
     /// Try and retrieve a strongly-typed actor from the registry.
     ///
     /// Alias of [crate::registry::where_is]
-    pub fn where_is(name: ActorName) -> Option<ActorRef<TMessage>> {
+    pub fn where_is(name: ActorName) -> Option<crate::actor::ActorRef<TMessage>> {
         if let Some(actor) = crate::registry::where_is(name) {
             // check the type id when pulling from the registry
-            if actor.inner.type_id == TypeId::of::<TMessage>() {
+            if actor.get_type_id() == TypeId::of::<TMessage>() {
                 Some(actor.into())
             } else {
                 None

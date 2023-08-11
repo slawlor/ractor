@@ -59,15 +59,18 @@ pub mod messages;
 use messages::*;
 
 pub mod actor_cell;
-pub mod errors;
+pub mod actor_id;
+pub(crate) mod actor_properties;
+pub mod actor_ref;
 mod supervision;
 
 #[cfg(test)]
 mod tests;
 
+use crate::errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
 use crate::{ActorName, Message, State};
-use actor_cell::{ActorCell, ActorPortSet, ActorRef, ActorStatus};
-use errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
+use actor_cell::{ActorCell, ActorPortSet, ActorStatus};
+use actor_ref::ActorRef;
 
 pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> ActorProcessingErr {
     match e.downcast::<String>() {
@@ -274,6 +277,7 @@ where
     actor_ref: ActorRef<TActor::Msg>,
     handler: TActor,
     id: ActorId,
+    name: Option<String>,
 }
 
 impl<TActor> ActorRuntime<TActor>
@@ -426,11 +430,13 @@ where
         } else {
             let (actor_cell, ports) = actor_cell::ActorCell::new_remote::<TActor>(name, id)?;
             let id = actor_cell.get_id();
+            let name = actor_cell.get_name();
             let (actor, ports) = (
                 Self {
                     actor_ref: actor_cell.into(),
                     handler,
                     id,
+                    name,
                 },
                 ports,
             );
@@ -447,11 +453,13 @@ where
     fn new(name: Option<ActorName>, handler: TActor) -> Result<(Self, ActorPortSet), SpawnErr> {
         let (actor_cell, ports) = actor_cell::ActorCell::new::<TActor>(name)?;
         let id = actor_cell.get_id();
+        let name = actor_cell.get_name();
         Ok((
             Self {
                 actor_ref: actor_cell.into(),
                 handler,
                 id,
+                name,
             },
             ports,
         ))
@@ -469,7 +477,7 @@ where
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
     /// the actor failed to start
-    #[tracing::instrument(name = "Actor", skip(self, ports, startup_args, supervisor), fields(id = self.id.to_string()))]
+    #[tracing::instrument(name = "Actor", skip(self, ports, startup_args, supervisor), fields(id = self.id.to_string(), name = self.name))]
     async fn start(
         self,
         ports: ActorPortSet,
@@ -485,6 +493,7 @@ where
             handler,
             actor_ref,
             id,
+            name,
         } = self;
 
         actor_ref.set_status(ActorStatus::Starting);
@@ -505,7 +514,8 @@ where
         // run the processing loop, backgrounding the work
         let handle = crate::concurrency::spawn_named(actor_ref.get_name().as_deref(), async move {
             let myself = actor_ref.clone();
-            let evt = match Self::processing_loop(ports, &mut state, &handler, actor_ref, id).await
+            let evt = match Self::processing_loop(ports, &mut state, &handler, actor_ref, id, name)
+                .await
             {
                 Ok(exit_reason) => SupervisionEvent::ActorTerminated(
                     myself.get_cell(),
@@ -540,13 +550,14 @@ where
         Ok((myself_ret, handle))
     }
 
-    #[tracing::instrument(name = "Actor", skip(ports, state, handler, myself, _id), fields(id = _id.to_string()))]
+    #[tracing::instrument(name = "Actor", skip(ports, state, handler, myself, _id, _name), fields(id = _id.to_string(), name = _name))]
     async fn processing_loop(
         mut ports: ActorPortSet,
         state: &mut TActor::State,
         handler: &TActor,
         myself: ActorRef<TActor::Msg>,
         _id: ActorId,
+        _name: Option<String>,
     ) -> Result<Option<String>, ActorErr> {
         // perform the post-start, with supervision enabled
         Self::do_post_start(myself.clone(), handler, state)

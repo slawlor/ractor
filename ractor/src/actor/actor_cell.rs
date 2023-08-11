@@ -9,26 +9,22 @@
 //! the internal properties, ports, states, etc. [ActorCell] is the basic primitive
 //! for references to a given actor and its communication channels
 
+use std::any::TypeId;
 use std::sync::Arc;
 
-use super::errors::MessagingErr;
 use super::messages::{Signal, StopMessage};
 use super::SupervisionEvent;
+use crate::actor::actor_properties::ActorProperties;
 use crate::concurrency::{
     MpscReceiver as BoundedInputPortReceiver, MpscUnboundedReceiver as InputPortReceiver,
 };
+use crate::errors::MessagingErr;
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
 use crate::RactorErr;
 use crate::{Actor, ActorName, SpawnErr};
 use crate::{ActorId, Message};
-
-pub mod actor_ref;
-pub use actor_ref::ActorRef;
-
-mod actor_properties;
-use actor_properties::ActorProperties;
 
 /// [ActorStatus] represents the status of an actor's lifecycle
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
@@ -442,6 +438,10 @@ impl ActorCell {
     /// * `evt` - The event to send to this [super::Actor]'s supervisors
     pub fn notify_supervisor(&self, evt: SupervisionEvent) {
         self.inner.tree.notify_supervisor(evt)
+    }
+
+    pub(crate) fn get_type_id(&self) -> TypeId {
+        self.inner.type_id
     }
 
     // ================== Test Utilities ================== //

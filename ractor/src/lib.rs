@@ -143,20 +143,11 @@
 #![warn(unused_crate_dependencies)]
 // #![cfg_attr(docsrs, feature(doc_cfg))]
 
-#[cfg(test)]
-use tracing_glog as _;
-#[cfg(test)]
-use tracing_subscriber as _;
-
-/// An actor's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
-pub type ActorName = String;
-
-/// A process group's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
-pub type GroupName = String;
+// ======================== Modules ======================== //
 
 pub mod actor;
-pub mod actor_id;
 pub mod concurrency;
+pub mod errors;
 pub mod factory;
 pub mod macros;
 pub mod message;
@@ -168,150 +159,44 @@ pub mod rpc;
 pub mod serialization;
 pub mod time;
 
+// ======================== Test Modules and blind imports ======================== //
+
 #[cfg(test)]
 mod tests;
-
 #[cfg(test)]
 use criterion as _;
 #[cfg(test)]
 use paste as _;
 #[cfg(test)]
 use rand as _;
+#[cfg(test)]
+use tracing_glog as _;
+#[cfg(test)]
+use tracing_subscriber as _;
 
-// re-exports
-pub use actor::actor_cell::{ActorCell, ActorRef, ActorStatus, ACTIVE_STATES};
-pub use actor::errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
+// ======================== Re-exports ======================== //
+
+pub use actor::actor_cell::{ActorCell, ActorStatus, ACTIVE_STATES};
+pub use actor::actor_id::ActorId;
+pub use actor::actor_ref::ActorRef;
 pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorRuntime};
-pub use actor_id::ActorId;
 pub use async_trait::async_trait;
+pub use errors::{ActorErr, ActorProcessingErr, MessagingErr, RactorErr, SpawnErr};
 pub use message::Message;
 pub use port::{OutputMessage, OutputPort, RpcReplyPort};
 #[cfg(feature = "cluster")]
 pub use serialization::BytesConvertable;
 
+// ======================== Type aliases and Trait definitions ======================== //
+
+/// An actor's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
+pub type ActorName = String;
+
+/// A process group's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
+pub type GroupName = String;
+
 /// Represents the state of an actor. Must be safe
 /// to send between threads (same bounds as a [Message])
 pub trait State: std::any::Any + Send + 'static {}
 impl<T: std::any::Any + Send + 'static> State for T {}
-
-/// Error types which can result from Ractor processes
-pub enum RactorErr<T> {
-    /// An error occurred spawning
-    Spawn(SpawnErr),
-    /// An error occurred in messaging (sending/receiving)
-    Messaging(MessagingErr<T>),
-    /// An actor encountered an error while processing (canceled or panicked)
-    Actor(ActorErr),
-    /// A timeout occurred
-    Timeout,
-}
-
-impl<T> RactorErr<T> {
-    /// Identify if the error has a message payload contained. If [true],
-    /// You can utilize `try_get_message` to consume the error and extract the message payload
-    /// quickly.
-    ///
-    /// Returns [true] if the error contains a message payload of type `T`, [false] otherwise.
-    pub fn has_message(&self) -> bool {
-        matches!(self, Self::Messaging(MessagingErr::SendErr(_)))
-    }
-    /// Try and extract the message payload from the contained error. This consumes the
-    /// [RactorErr] instance in order to not have require cloning the message payload.
-    /// Should be used in conjunction with `has_message` to not consume the error if not wanted
-    ///
-    /// Returns [Some(`T`)] if there is a message payload, [None] otherwise.
-    pub fn try_get_message(self) -> Option<T> {
-        if let Self::Messaging(MessagingErr::SendErr(msg)) = self {
-            Some(msg)
-        } else {
-            None
-        }
-    }
-
-    /// Map any message embedded within the error type. This is primarily useful
-    /// for normalizing an error value if the message is not needed.
-    pub fn map<F, U>(self, mapper: F) -> RactorErr<U>
-    where
-        F: FnOnce(T) -> U,
-    {
-        match self {
-            RactorErr::Spawn(err) => RactorErr::Spawn(err),
-            RactorErr::Messaging(err) => RactorErr::Messaging(err.map(mapper)),
-            RactorErr::Actor(err) => RactorErr::Actor(err),
-            RactorErr::Timeout => RactorErr::Timeout,
-        }
-    }
-}
-
-impl<T> std::fmt::Debug for RactorErr<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Messaging(m) => write!(f, "Messaging({:?})", m),
-            Self::Actor(a) => write!(f, "Actor({:?})", a),
-            Self::Spawn(s) => write!(f, "Spawn({:?})", s),
-            Self::Timeout => write!(f, "Timeout"),
-        }
-    }
-}
-
-impl<T> std::error::Error for RactorErr<T> {}
-
-impl<T> From<SpawnErr> for RactorErr<T> {
-    fn from(value: SpawnErr) -> Self {
-        RactorErr::Spawn(value)
-    }
-}
-
-impl<T> From<MessagingErr<T>> for RactorErr<T> {
-    fn from(value: MessagingErr<T>) -> Self {
-        RactorErr::Messaging(value)
-    }
-}
-
-impl<T> From<ActorErr> for RactorErr<T> {
-    fn from(value: ActorErr) -> Self {
-        RactorErr::Actor(value)
-    }
-}
-
-impl<T, TResult> From<rpc::CallResult<TResult>> for RactorErr<T> {
-    fn from(value: rpc::CallResult<TResult>) -> Self {
-        match value {
-            rpc::CallResult::SenderError => RactorErr::Messaging(MessagingErr::ChannelClosed),
-            rpc::CallResult::Timeout => RactorErr::Timeout,
-            _ => panic!("A successful `CallResult` cannot be mapped to a `RactorErr`"),
-        }
-    }
-}
-
-impl<T> std::fmt::Display for RactorErr<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Actor(actor_err) => {
-                if f.alternate() {
-                    write!(f, "{actor_err:#}")
-                } else {
-                    write!(f, "{actor_err}")
-                }
-            }
-            Self::Messaging(messaging_err) => {
-                if f.alternate() {
-                    write!(f, "{messaging_err:#}")
-                } else {
-                    write!(f, "{messaging_err}")
-                }
-            }
-            Self::Spawn(spawn_err) => {
-                if f.alternate() {
-                    write!(f, "{spawn_err:#}")
-                } else {
-                    write!(f, "{spawn_err}")
-                }
-            }
-            Self::Timeout => {
-                write!(f, "timeout")
-            }
-        }
-    }
-}
