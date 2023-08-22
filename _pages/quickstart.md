@@ -32,7 +32,7 @@ that's going to print "Hello world" for every message sent to it. Let's begin by
 actor and filling in the necessary bits. We'll start with out message definition
 
 ```rust
-enum MyFirstActorMessage {
+pub enum MyFirstActorMessage {
     /// Print's hello world
     PrintHelloWorld,
 }
@@ -43,7 +43,7 @@ Then we follow up with the most basic required actor definition
 ```rust
 use ractor::{Actor, ActorRef, ActorProcessingErr};
 
-type MyFirstActor;
+pub struct MyFirstActor;
 
 #[async_trait::async_trait]
 impl Actor for MyFirstActor {
@@ -51,7 +51,7 @@ impl Actor for MyFirstActor {
     type Msg = MyFirstActorMessage;
     type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self::Msg>, arguments: Self::Arguments)
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _arguments: Self::Arguments)
         -> Result<Self::State, ActorProcessingErr> 
     {
         Ok(())
@@ -81,13 +81,13 @@ impl Actor for MyFirstActor {
     type Msg = MyFirstActorMessage;
     type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self::Msg>, arguments: Self::Arguments)
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _arguments: Self::Arguments)
         -> Result<Self::State, ActorProcessingErr>
     {
         Ok(())
     }
 
-    async fn handle(&self, myself: ActorRef<Self::Msg>, message: Self::Msg, state: &mut Self::State) 
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, message: Self::Msg, _state: &mut Self::State) 
         -> Result<(), ActorProcessingErr>
     {
         match message {
@@ -108,7 +108,7 @@ the queue.
 Let's wire it all up into a proper program now.
 
 ```rust
-[tokio::main]
+#[tokio::main]
 async fn main() {
     // Build an ActorRef along with a JoinHandle which lives for the life of the 
     // actor. Most of the time we drop this handle, but it's handy in the 
@@ -138,14 +138,14 @@ in its lifecycle, let's see what that might look like.
 ```rust
 use ractor::{Actor, ActorRef, ActorProcessingErr, RpcReplyPort};
 
-enum MyFirstActorMessage {
+pub enum MyFirstActorMessage {
     /// Print's hello world
     PrintHelloWorld,
     /// Replies with how many hello worlds have occurred
     HowManyHelloWorlds(RpcReplyPort<u16>),
 }
 
-type MyFirstActor;
+pub struct MyFirstActor;
 
 #[async_trait::async_trait]
 impl Actor for MyFirstActor {
@@ -153,13 +153,13 @@ impl Actor for MyFirstActor {
     type Msg = MyFirstActorMessage;
     type Arguments = ();
 
-    async fn pre_start(&self, myself: ActorRef<Self::Msg>, arguments: Self::Arguments)
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _arguments: Self::Arguments)
         -> Result<Self::State, ActorProcessingErr>
     {
         Ok(0)
     }
 
-    async fn handle(&self, myself: ActorRef<Self::Msg>, message: Self::Msg, state: &mut Self::State) 
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, message: Self::Msg, state: &mut Self::State) 
         -> Result<(), ActorProcessingErr>
     {
         match message {
@@ -190,7 +190,7 @@ There's a bit to unpack here, so let's start with the basics.
 Very similar to the non-stateful example, we'll wire it up as such!
 
 ```rust
-[tokio::main]
+#[tokio::main]
 async fn main() {
     // Build an ActorRef along with a JoinHandle which lives for the life of the 
     // actor. Most of the time we drop this handle, but it's handy in the 
