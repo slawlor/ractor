@@ -10,7 +10,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::{concurrency::Duration, MessagingErr, RactorErr};
+use crate::{common_test::periodic_check, concurrency::Duration, MessagingErr, RactorErr};
 
 use crate::{
     Actor, ActorCell, ActorProcessingErr, ActorRef, ActorStatus, SpawnErr, SupervisionEvent,
@@ -23,6 +23,7 @@ struct EmptyMessage;
 impl crate::Message for EmptyMessage {}
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_panic_on_start_captured() {
     struct TestActor;
 
@@ -46,6 +47,7 @@ async fn test_panic_on_start_captured() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_error_on_start_captured() {
     struct TestActor;
 
@@ -69,6 +71,7 @@ async fn test_error_on_start_captured() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_stop_higher_priority_over_messages() {
     let message_counter = Arc::new(AtomicU8::new(0u8));
 
@@ -137,7 +140,7 @@ async fn test_stop_higher_priority_over_messages() {
     // now wait enough time for the first iteration to complete
     crate::concurrency::sleep(Duration::from_millis(150)).await;
 
-    println!("Counter: {}", message_counter.load(Ordering::Relaxed));
+    tracing::info!("Counter: {}", message_counter.load(Ordering::Relaxed));
 
     // actor should have "stopped"
     assert_eq!(ActorStatus::Stopped, actor.get_status());
@@ -147,6 +150,7 @@ async fn test_stop_higher_priority_over_messages() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_kill_terminates_work() {
     struct TestActor;
 
@@ -192,6 +196,7 @@ async fn test_kill_terminates_work() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_stop_does_not_terminate_async_work() {
     struct TestActor;
 
@@ -228,7 +233,7 @@ async fn test_stop_does_not_terminate_async_work() {
     actor
         .send_message(EmptyMessage)
         .expect("Failed to send message to actor");
-    crate::concurrency::sleep(Duration::from_millis(2)).await;
+    crate::concurrency::sleep(Duration::from_millis(10)).await;
     actor.stop(None);
 
     // async work should complete, so we're still "running" sleeping
@@ -236,14 +241,17 @@ async fn test_stop_does_not_terminate_async_work() {
     assert_eq!(ActorStatus::Running, actor.get_status());
     assert!(!handle.is_finished());
 
-    crate::concurrency::sleep(Duration::from_millis(100)).await;
-    // now enough time has passed, so we have processed the next message, which is stop
-    // so we should be dead now
-    assert_eq!(ActorStatus::Stopped, actor.get_status());
+    periodic_check(
+        || ActorStatus::Stopped == actor.get_status(),
+        Duration::from_millis(500),
+    )
+    .await;
+
     assert!(handle.is_finished());
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_kill_terminates_supervision_work() {
     struct TestActor;
 
@@ -291,6 +299,7 @@ async fn test_kill_terminates_supervision_work() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_sending_message_to_invalid_actor_type() {
     struct TestActor1;
     struct TestMessage1;
@@ -348,6 +357,7 @@ async fn test_sending_message_to_invalid_actor_type() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_sending_message_to_dead_actor() {
     struct TestActor;
 
@@ -381,6 +391,7 @@ async fn test_sending_message_to_dead_actor() {
 
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_serialized_cast() {
     use crate::message::{BoxedDowncastErr, SerializedMessage};
     use crate::Message;
@@ -449,9 +460,11 @@ async fn test_serialized_cast() {
         .send_serialized(serialized)
         .expect("Serialized message send failed!");
 
-    crate::concurrency::sleep(Duration::from_millis(100)).await;
-
-    assert_eq!(1, counter.load(Ordering::Relaxed));
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 1,
+        Duration::from_secs(2),
+    )
+    .await;
 
     // cleanup
     actor.stop(None);
@@ -493,6 +506,7 @@ where
 
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_serialized_rpc() {
     use crate::message::{BoxedDowncastErr, SerializedMessage};
     use crate::{Message, RpcReplyPort};
@@ -589,8 +603,11 @@ async fn test_serialized_rpc() {
         .expect("Failed to get reply from actor (within 100ms)");
     assert_eq!(data, "hello".to_string());
 
-    crate::concurrency::sleep(Duration::from_millis(100)).await;
-    assert_eq!(1, counter.load(Ordering::Relaxed));
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 1,
+        Duration::from_secs(2),
+    )
+    .await;
 
     // cleanup
     actor.stop(None);
@@ -599,6 +616,7 @@ async fn test_serialized_rpc() {
 
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_remote_actor() {
     use crate::message::{BoxedDowncastErr, SerializedMessage};
     use crate::{ActorId, ActorRuntime, Message};
@@ -692,9 +710,11 @@ async fn test_remote_actor() {
         .send_message(TestRemoteMessage)
         .expect("Failed to send non-serialized message to RemoteActor");
 
-    crate::concurrency::sleep(Duration::from_millis(100)).await;
-
-    assert_eq!(1, counter.load(Ordering::Relaxed));
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 1,
+        Duration::from_secs(2),
+    )
+    .await;
 
     // cleanup
     actor.stop(None);
@@ -705,6 +725,7 @@ async fn test_remote_actor() {
 
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn spawning_local_actor_as_remote_fails() {
     use crate::ActorProcessingErr;
 
@@ -761,6 +782,7 @@ async fn spawning_local_actor_as_remote_fails() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn instant_spawns() {
     let counter = Arc::new(AtomicU8::new(0));
 
@@ -803,9 +825,12 @@ async fn instant_spawns() {
     // actor is still starting up
     assert_eq!(0, counter.load(Ordering::Relaxed));
 
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
-    // actor is started now and processing messages
-    assert_eq!(10, counter.load(Ordering::Relaxed));
+    // check messages processed
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 10,
+        Duration::from_secs(2),
+    )
+    .await;
 
     // Cleanup
     actor.stop(None);
@@ -818,6 +843,7 @@ async fn instant_spawns() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn stop_and_wait() {
     struct SlowActor;
     #[async_trait::async_trait]
@@ -846,6 +872,7 @@ async fn stop_and_wait() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn kill_and_wait() {
     struct SlowActor;
     #[async_trait::async_trait]
@@ -874,6 +901,7 @@ async fn kill_and_wait() {
 }
 
 #[test]
+#[tracing_test::traced_test]
 fn test_err_map() {
     let err: RactorErr<i32> = RactorErr::Messaging(MessagingErr::SendErr(123));
 

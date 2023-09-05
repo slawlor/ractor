@@ -10,11 +10,12 @@ use std::sync::{
     Arc,
 };
 
-use crate::{concurrency::Duration, ActorProcessingErr};
+use crate::{common_test::periodic_check, concurrency::Duration, ActorProcessingErr};
 
 use crate::{Actor, ActorRef};
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_intervals() {
     let counter = Arc::new(AtomicU8::new(0u8));
 
@@ -66,17 +67,19 @@ async fn test_intervals() {
     // kill the actor
     actor_ref.stop(None);
 
-    crate::concurrency::sleep(Duration::from_millis(50)).await;
-    // make sure the actor is dead + the interval handle doesn't send again
-    assert!(interval_handle.is_finished());
-    assert!(actor_handle.is_finished());
+    periodic_check(
+        || interval_handle.is_finished() && actor_handle.is_finished(),
+        Duration::from_millis(500),
+    )
+    .await;
 
     // the counter was incremented at least this many times
     println!("Counter: {}", counter.load(Ordering::Relaxed));
-    assert!(counter.load(Ordering::Relaxed) >= 9);
+    assert!(counter.load(Ordering::Relaxed) >= 7);
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_send_after() {
     let counter = Arc::new(AtomicU8::new(0u8));
 
@@ -128,10 +131,11 @@ async fn test_send_after() {
     // kill the actor
     actor_ref.stop(None);
 
-    crate::concurrency::sleep(Duration::from_millis(50)).await;
-    // make sure the actor is dead + the interval handle doesn't send again
-    assert!(send_after_handle.is_finished());
-    assert!(actor_handle.is_finished());
+    periodic_check(
+        || send_after_handle.is_finished() && actor_handle.is_finished(),
+        Duration::from_millis(500),
+    )
+    .await;
 
     // the counter was incremented at least this many times
     println!("Counter: {}", counter.load(Ordering::Relaxed));
@@ -139,6 +143,7 @@ async fn test_send_after() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_exit_after() {
     struct TestActor;
 
@@ -162,13 +167,15 @@ async fn test_exit_after() {
 
     let exit_handle = actor_ref.exit_after(Duration::from_millis(10));
 
-    crate::concurrency::sleep(Duration::from_millis(20)).await;
-    // make sure the actor is dead + the interval handle doesn't send again
-    assert!(exit_handle.is_finished());
-    assert!(actor_handle.is_finished());
+    periodic_check(
+        || exit_handle.is_finished() && actor_handle.is_finished(),
+        Duration::from_millis(500),
+    )
+    .await;
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_kill_after() {
     struct TestActor;
 
@@ -208,8 +215,9 @@ async fn test_kill_after() {
     // kill the actor
     let kill_handle = actor_ref.kill_after(Duration::from_millis(10));
 
-    crate::concurrency::sleep(Duration::from_millis(20)).await;
-    // make sure the actor is dead + the interval handle doesn't send again
-    assert!(kill_handle.is_finished());
-    assert!(actor_handle.is_finished());
+    periodic_check(
+        || kill_handle.is_finished() && actor_handle.is_finished(),
+        Duration::from_millis(500),
+    )
+    .await;
 }

@@ -12,6 +12,7 @@ use crate::ActorRef;
 use crate::RactorErr;
 
 #[test]
+#[tracing_test::traced_test]
 fn test_error_conversions() {
     let spawn = crate::SpawnErr::StartupCancelled;
     let ractor_err = RactorErr::<()>::from(crate::SpawnErr::StartupCancelled);
@@ -38,6 +39,7 @@ fn test_error_conversions() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_error_message_extraction() {
     struct TestActor;
 
