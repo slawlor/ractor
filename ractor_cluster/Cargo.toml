@@ -30,7 +30,7 @@ rand = "0.8"
 rustls = { version = "0.20" }
 sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "io-util", "tracing"]}
-tokio-rustls = { version = "0.23" }
+tokio-rustls = { version = "0.24" }
 tracing = "0.1"
 
 ## Optional dependencies

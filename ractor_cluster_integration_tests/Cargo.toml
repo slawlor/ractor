@@ -17,7 +17,7 @@ clap = { version = "4", features = ["derive"] }
 ractor = { path = "../ractor" }
 ractor_cluster = { path = "../ractor_cluster" }
 rand = "0.8"
-tokio-rustls = { version = "0.23" }
+tokio-rustls = { version = "0.24" }
 rustls = "0.20"
 rustls-pemfile = "1.0"
 rustyrepl = { version = "0.2", features = ["async"] }
