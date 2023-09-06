@@ -10,6 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
+        rust: [stable]
 
     steps:
     - uses: hecrj/setup-rust-action@v2
