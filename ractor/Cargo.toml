@@ -36,7 +36,7 @@ tokio = { version = "1", features = ["sync", "time", "rt", "macros", "tracing"] 
 tracing = { version = "0.1", features = ["attributes"] }
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.5"
 function_name = "0.3"
 paste = "1"
 rand = "0.8"

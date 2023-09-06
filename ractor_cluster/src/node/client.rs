@@ -90,7 +90,7 @@ where
 /// * `node_server` - The [super::NodeServer] which will own this new connection session
 /// * `address` - The network address to send the connection to. Must implement [ToSocketAddrs]
 /// * `encryption_settings` - The [tokio_rustls::TlsConnector] which is configured to encrypt the socket
-/// * `domain` - The server name we're connecting to ([rustls::ServerName])
+/// * `domain` - The server name we're connecting to ([tokio_rustls::rustls::ServerName])
 ///
 /// Returns: [Ok(())] if the connection was successful and the [super::NodeSession] was started. Handshake will continue
 /// automatically. Results in a [Err(ClientConnectError)] if any part of the process failed to initiate
@@ -98,7 +98,7 @@ pub async fn connect_enc<T>(
     node_server: &ActorRef<super::NodeServerMessage>,
     address: T,
     encryption_settings: tokio_rustls::TlsConnector,
-    domain: rustls::ServerName,
+    domain: tokio_rustls::rustls::ServerName,
 ) -> Result<(), ClientConnectErr>
 where
     T: ToSocketAddrs,
