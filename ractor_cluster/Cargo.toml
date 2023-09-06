@@ -16,7 +16,7 @@ rust-version = "1.64"
 
 [build-dependencies]
 protobuf-src = "1"
-prost-build = { version = "0.11" }
+prost-build = { version = "0.12" }
 
 [dependencies]
 ## Required dependencies
