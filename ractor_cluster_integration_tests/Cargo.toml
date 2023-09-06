@@ -17,11 +17,11 @@ clap = { version = "4", features = ["derive"] }
 ractor = { path = "../ractor" }
 ractor_cluster = { path = "../ractor_cluster" }
 rand = "0.8"
-tokio-rustls = { version = "0.23" }
-rustls = "0.20"
+tokio-rustls = { version = "0.24" }
 rustls-pemfile = "1.0"
 rustyrepl = { version = "0.2", features = ["async"] }
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing"] }
 tracing = "0.1"
 tracing-glog = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"]}
+webpki = "0.22"
