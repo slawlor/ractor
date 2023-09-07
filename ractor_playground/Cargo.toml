@@ -19,5 +19,5 @@ ractor_cluster = { path = "../ractor_cluster" }
 # rustyrepl = "0.1"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing"] }
 tracing = "0.1"
-tracing-glog = "0.2"
+tracing-glog = "0.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"]}
