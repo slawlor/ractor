@@ -87,7 +87,7 @@ fn init_logging() {
         .with_ansi(stderr().is_terminal())
         .with_writer(std::io::stderr)
         .event_format(Glog::default().with_timer(tracing_glog::LocalTime::default()))
-        .fmt_fields(GlogFields);
+        .fmt_fields(GlogFields::default().compact());
 
     let filter = vec![dir]
         .into_iter()
