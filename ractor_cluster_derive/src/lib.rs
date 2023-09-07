@@ -78,7 +78,7 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
             .collect::<Vec<_>>();
         // Build the deserialize handlers for both casts and calls
         let casts = enum_data.variants.iter().filter_map(|variant| {
-            let is_call = variant.attrs.iter().any(|attr| attr.path.is_ident("rpc"));
+            let is_call = variant.attrs.iter().any(|attr| attr.path().is_ident("rpc"));
             if !is_call {
                 Some(impl_cast_variant_deserialize(variant))
             } else {
@@ -86,7 +86,7 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
             }
         });
         let calls = enum_data.variants.iter().filter_map(|variant| {
-            let is_call = variant.attrs.iter().any(|attr| attr.path.is_ident("rpc"));
+            let is_call = variant.attrs.iter().any(|attr| attr.path().is_ident("rpc"));
             if is_call {
                 Some(impl_call_variant_deserialize(variant))
             } else {
@@ -145,7 +145,7 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
 fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
     let name = &variant.ident;
     let variant_name = name.to_string();
-    let is_call = variant.attrs.iter().any(|attr| attr.path.is_ident("rpc"));
+    let is_call = variant.attrs.iter().any(|attr| attr.path().is_ident("rpc"));
     if is_call {
         match &variant.fields {
             Fields::Unit => panic!("RPC Calls must have a `RpcReplyPort<T>`"),
