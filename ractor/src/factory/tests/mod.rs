@@ -11,7 +11,12 @@ use std::{
     },
 };
 
-use crate::{concurrency::Duration, factory::DiscardHandler, Actor, ActorProcessingErr, ActorRef};
+use crate::{
+    common_test::{periodic_async_check, periodic_check},
+    concurrency::Duration,
+    factory::DiscardHandler,
+    Actor, ActorProcessingErr, ActorRef,
+};
 
 use super::{
     CustomHashFunction, Factory, FactoryMessage, Job, JobOptions, RoutingMode, WorkerMessage,
@@ -79,7 +84,7 @@ impl Actor for TestWorker {
                     .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
             }
             WorkerMessage::Dispatch(job) => {
-                tracing::debug!("Worker received {:?}", job.msg);
+                tracing::trace!("Worker received {:?}", job.msg);
 
                 self.counter.fetch_add(1, Ordering::Relaxed);
 
@@ -137,6 +142,7 @@ impl super::WorkerBuilder<TestWorker> for InsanelySlowWorkerBuilder {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_dispatch_key_persistent() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -167,22 +173,21 @@ async fn test_dispatch_key_persistent() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    periodic_check(
+        || worker_counters[0].load(Ordering::Relaxed) == 999,
+        Duration::from_secs(5),
+    )
+    .await;
 
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
-
-    // assert
-    let all_counter = worker_counters[0].load(Ordering::Relaxed);
-    assert_eq!(999, all_counter);
 }
 
 // TODO: This test should probably use like a slow queuer or something to check we move to the next item, etc
@@ -217,28 +222,31 @@ async fn test_dispatch_queuer() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    periodic_check(
+        || {
+            let all_counter: u16 = worker_counters
+                .iter()
+                .map(|w| w.load(Ordering::Relaxed))
+                .sum();
+            all_counter == 999
+        },
+        Duration::from_secs(5),
+    )
+    .await;
 
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
-
-    // assert
-    let all_counter: u16 = worker_counters
-        .iter()
-        .map(|w| w.load(Ordering::Relaxed))
-        .sum();
-    assert_eq!(999, all_counter);
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_dispatch_round_robin() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -269,26 +277,29 @@ async fn test_dispatch_round_robin() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    periodic_check(
+        || {
+            worker_counters
+                .iter()
+                .all(|counter| counter.load(Ordering::Relaxed) == 333)
+        },
+        Duration::from_secs(5),
+    )
+    .await;
 
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
-
-    // assert
-    for counter in worker_counters {
-        assert_eq!(333, counter.load(Ordering::Relaxed));
-    }
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_dispatch_random() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -319,28 +330,31 @@ async fn test_dispatch_random() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    periodic_check(
+        || {
+            let all_counter: u16 = worker_counters
+                .iter()
+                .map(|w| w.load(Ordering::Relaxed))
+                .sum();
+            all_counter == 999
+        },
+        Duration::from_secs(5),
+    )
+    .await;
 
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
-
-    // assert
-    let all_counter: u16 = worker_counters
-        .iter()
-        .map(|w| w.load(Ordering::Relaxed))
-        .sum();
-    assert_eq!(999, all_counter);
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_dispatch_custom_hashing() {
     struct MyHasher<TKey>
     where
@@ -389,25 +403,28 @@ async fn test_dispatch_custom_hashing() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    periodic_check(
+        || {
+            let all_counter = worker_counters[2].load(Ordering::Relaxed);
+            all_counter == 999
+        },
+        Duration::from_secs(5),
+    )
+    .await;
 
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
-
-    // assert
-    let all_counter = worker_counters[2].load(Ordering::Relaxed);
-    assert_eq!(999, all_counter);
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_dispatch_sticky_queueing() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -439,28 +456,30 @@ async fn test_dispatch_sticky_queueing() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    periodic_check(
+        || {
+            worker_counters
+                .iter()
+                .map(|c| c.load(Ordering::Relaxed))
+                .any(|count| count == 5)
+        },
+        Duration::from_secs(5),
+    )
+    .await;
 
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
-
-    // assert
-    // one worker got all 5 messages due to sticky queueing
-    assert!(worker_counters
-        .iter()
-        .map(|c| c.load(Ordering::Relaxed))
-        .any(|count| count == 5));
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_discards_on_queuer() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -511,27 +530,28 @@ async fn test_discards_on_queuer() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
+    // each worker only got 1 message, then "slept"
+    periodic_check(
+        || {
+            worker_counters
+                .iter()
+                .map(|c| c.load(Ordering::Relaxed))
+                .all(|count| count == 1)
+        },
+        Duration::from_secs(5),
+    )
+    .await;
 
     // wait for factory termination
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
-
-    // assert
-
-    // each worker only got 1 message, then "slept"
-    assert!(worker_counters
-        .iter()
-        .map(|c| c.load(Ordering::Relaxed))
-        .all(|count| count == 1));
 
     // 5 messages should be left in the factory's queue, while the remaining should get "discarded"
     // (3 in workers) + (5 in queue) + (100 discarded) = 108, the number of msgs we sent to the factory
@@ -588,6 +608,7 @@ impl Actor for StuckWorker {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_stuck_workers() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -637,30 +658,31 @@ async fn test_stuck_workers() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(500)).await;
+    periodic_check(
+        || {
+            worker_counters
+                .iter()
+                .map(|c| c.load(Ordering::Relaxed))
+                .all(|count| count > 1)
+        },
+        Duration::from_secs(5),
+    )
+    .await;
 
     // wait for factory termination
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
-
-    // assert
-
-    // each worker only got 1 message, then "slept"
-    assert!(worker_counters
-        .iter()
-        .map(|c| c.load(Ordering::Relaxed))
-        .all(|count| count > 1));
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_worker_pings() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -674,6 +696,7 @@ async fn test_worker_pings() {
     let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::KeyPersistent,
+        collect_worker_stats: true,
         ..Default::default()
     };
     let (factory, factory_handle) =
@@ -691,24 +714,26 @@ async fn test_worker_pings() {
             .expect("Failed to send to factory");
     }
 
-    // give some time to process all the messages
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
-
-    let stats =
-        crate::call_t!(factory, FactoryMessage::GetStats, 200).expect("Failed to get statistics");
-    assert!(stats.ping_count > 0);
+    periodic_async_check(
+        || async {
+            let stats = crate::call_t!(factory, FactoryMessage::GetStats, 200)
+                .expect("Failed to get statistics");
+            stats.ping_count > 0
+        },
+        Duration::from_secs(5),
+    )
+    .await;
 
     factory.stop(None);
     factory_handle.await.unwrap();
 
-    println!(
+    tracing::info!(
         "Counters: [{}] [{}] [{}]",
         worker_counters[0].load(Ordering::Relaxed),
         worker_counters[1].load(Ordering::Relaxed),
         worker_counters[2].load(Ordering::Relaxed)
     );
 
-    // assert
     let all_counter = worker_counters[0].load(Ordering::Relaxed);
     assert_eq!(999, all_counter);
 }

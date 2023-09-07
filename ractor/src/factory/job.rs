@@ -334,6 +334,7 @@ mod tests {
     type TheJob = Job<TestKey, TestMessage>;
 
     #[test]
+    #[tracing_test::traced_test]
     fn test_job_serialization() {
         // Check Cast variant
         let job_a = TheJob {
@@ -395,6 +396,7 @@ mod tests {
     }
 
     #[test]
+    #[tracing_test::traced_test]
     fn test_factory_message_serialization() {
         let job_a = TheJob {
             key: TestKey { item: 123 },

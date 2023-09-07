@@ -6,6 +6,7 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
+use crate::common_test::periodic_check;
 use crate::concurrency::Duration;
 use ::function_name::named;
 
@@ -32,6 +33,7 @@ impl Actor for TestActor {
 
 #[named]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_basic_group() {
     let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
@@ -52,6 +54,7 @@ async fn test_basic_group() {
 
 #[named]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_multiple_members_in_group() {
     let group = function_name!().to_string();
 
@@ -88,6 +91,7 @@ async fn test_multiple_members_in_group() {
 
 #[named]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_multiple_groups() {
     let group_a = concat!(function_name!(), "_a").to_string();
     let group_b = concat!(function_name!(), "_b").to_string();
@@ -132,6 +136,7 @@ async fn test_multiple_groups() {
 
 #[named]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_actor_leaves_pg_group_on_shutdown() {
     let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
@@ -156,6 +161,7 @@ async fn test_actor_leaves_pg_group_on_shutdown() {
 
 #[named]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_actor_leaves_pg_group_manually() {
     let group = function_name!().to_string();
 
@@ -191,6 +197,7 @@ async fn test_actor_leaves_pg_group_manually() {
 
 #[named]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_pg_monitoring() {
     let group = function_name!().to_string();
 
@@ -272,8 +279,11 @@ async fn test_pg_monitoring() {
         .expect("Failed to start test actor");
 
     // the monitor is notified async, so we need to wait a tiny bit
-    crate::concurrency::sleep(Duration::from_millis(100)).await;
-    assert_eq!(1, counter.load(Ordering::Relaxed));
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 1,
+        Duration::from_millis(500),
+    )
+    .await;
 
     // kill the pg member
     test_actor.stop(None);
@@ -289,6 +299,7 @@ async fn test_pg_monitoring() {
 #[named]
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn local_vs_remote_pg_members() {
     use crate::ActorRuntime;
 

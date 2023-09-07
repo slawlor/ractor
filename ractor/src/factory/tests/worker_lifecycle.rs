@@ -7,6 +7,7 @@ use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use crate::common_test::periodic_check;
 use crate::concurrency::sleep;
 use crate::concurrency::Duration;
 use crate::Actor;
@@ -93,6 +94,7 @@ impl WorkerBuilder<MyWorker> for MyWorkerBuilder {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_worker_death_restarts_and_gets_next_message() {
     let counter = Arc::new(AtomicU16::new(0));
     let worker_builder = MyWorkerBuilder {
@@ -140,11 +142,12 @@ async fn test_worker_death_restarts_and_gets_next_message() {
             }))
             .expect("Failed to send message to factory");
     }
-    // now wait for everything to propogate
-    sleep(Duration::from_millis(150)).await;
 
-    // check the counter state
-    assert_eq!(5, counter.load(Ordering::Relaxed));
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 5,
+        Duration::from_secs(2),
+    )
+    .await;
 
     // Cleanup
     factory.stop(None);

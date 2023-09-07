@@ -15,6 +15,7 @@ use crate::{Actor, ActorRef};
 use super::*;
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_single_forward() {
     struct TestActor;
     enum TestActorMessage {
@@ -78,6 +79,7 @@ async fn test_single_forward() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_50_receivers() {
     struct TestActor;
     enum TestActorMessage {

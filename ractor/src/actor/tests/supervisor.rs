@@ -10,11 +10,15 @@ use std::sync::{
     Arc,
 };
 
-use crate::{concurrency::Duration, message::BoxedDowncastErr, ActorProcessingErr};
+use crate::{
+    common_test::periodic_check, concurrency::Duration, message::BoxedDowncastErr,
+    ActorProcessingErr,
+};
 
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervision_panic_in_post_startup() {
     struct Child;
     struct Supervisor {
@@ -102,6 +106,7 @@ async fn test_supervision_panic_in_post_startup() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervision_error_in_post_startup() {
     struct Child;
     struct Supervisor {
@@ -189,6 +194,7 @@ async fn test_supervision_error_in_post_startup() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervision_panic_in_handle() {
     struct Child;
     struct Supervisor {
@@ -285,6 +291,7 @@ async fn test_supervision_panic_in_handle() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervision_error_in_handle() {
     struct Child;
     struct Supervisor {
@@ -381,6 +388,7 @@ async fn test_supervision_error_in_handle() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervision_panic_in_post_stop() {
     struct Child;
     struct Supervisor {
@@ -461,6 +469,7 @@ async fn test_supervision_panic_in_post_stop() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervision_error_in_post_stop() {
     struct Child;
     struct Supervisor {
@@ -543,6 +552,7 @@ async fn test_supervision_error_in_post_stop() {
 /// Test that a panic in the supervisor's handling propagates to
 /// the supervisor's supervisor
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervision_panic_in_supervisor_handle() {
     struct Child;
     struct Midpoint;
@@ -684,6 +694,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
 /// Test that a panic in the supervisor's handling propagates to
 /// the supervisor's supervisor
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervision_error_in_supervisor_handle() {
     struct Child;
     struct Midpoint;
@@ -823,6 +834,7 @@ async fn test_supervision_error_in_supervisor_handle() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_killing_a_supervisor_terminates_children() {
     struct Child;
     struct Supervisor;
@@ -895,6 +907,7 @@ async fn test_killing_a_supervisor_terminates_children() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn instant_supervised_spawns() {
     let counter = Arc::new(AtomicU8::new(0));
 
@@ -967,9 +980,12 @@ async fn instant_supervised_spawns() {
     // actor is still starting up
     assert_eq!(0, counter.load(Ordering::Relaxed));
 
-    crate::concurrency::sleep(Duration::from_millis(250)).await;
-    // actor is started now and processing messages
-    assert_eq!(10, counter.load(Ordering::Relaxed));
+    // wait for everything processed
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 10,
+        Duration::from_secs(2),
+    )
+    .await;
 
     // Cleanup
     supervisor.stop(None);
@@ -985,6 +1001,7 @@ async fn instant_supervised_spawns() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_supervisor_captures_dead_childs_state() {
     struct Child;
     struct Supervisor {

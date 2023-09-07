@@ -8,6 +8,7 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
+use crate::common_test::periodic_check;
 use crate::concurrency::Duration;
 
 use crate::{call, call_t};
@@ -15,6 +16,7 @@ use crate::{cast, forward, Actor, ActorRef};
 use crate::{rpc, ActorProcessingErr};
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_rpc_cast() {
     let counter = Arc::new(AtomicU8::new(0u8));
 
@@ -61,11 +63,11 @@ async fn test_rpc_cast() {
     actor_ref.cast(()).expect("Failed to send message");
     cast!(actor_ref, ()).unwrap();
 
-    // make sure they have time to process
-    crate::concurrency::sleep(Duration::from_millis(100)).await;
-
-    // assert the actor received 2 cast requests
-    assert_eq!(3, counter.load(Ordering::Relaxed));
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 3,
+        Duration::from_millis(500),
+    )
+    .await;
 
     // cleanup
     actor_ref.stop(None);
@@ -73,6 +75,7 @@ async fn test_rpc_cast() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_rpc_call() {
     struct TestActor;
     enum MessageFormat {
@@ -158,15 +161,15 @@ async fn test_rpc_call() {
 
     // cleanup
     actor_ref.stop(None);
+    periodic_check(|| handle.is_finished(), Duration::from_millis(200)).await;
 
-    crate::concurrency::sleep(Duration::from_millis(200)).await;
-
+    // an rpc after the actor is dead fails
     let rpc_send_fail = call!(actor_ref, MessageFormat::Rpc);
     assert!(rpc_send_fail.is_err());
-    handle.await.expect("Actor stopped with err");
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_rpc_call_forwarding() {
     struct Worker;
 
@@ -320,6 +323,7 @@ async fn test_rpc_call_forwarding() {
 }
 
 #[crate::concurrency::test]
+#[tracing_test::traced_test]
 async fn test_multi_call() {
     struct TestActor;
     enum MessageFormat {
@@ -400,7 +404,7 @@ async fn test_multi_call() {
 
     // stop an actor, and try and send calls should get SendErr's
     actors[1].stop(None);
-    crate::concurrency::sleep(Duration::from_millis(25)).await;
+
     let multi_rpc_result = rpc::multi_call(
         &actors,
         MessageFormat::Rpc,
