@@ -101,8 +101,7 @@ impl Actor for Game {
                     id: myself.get_id(),
                     results: state.results_vec.clone(),
                 }
-            )
-            .expect("Failed to send message");
+            )?;
             // Because the `GameManager` is monitoring this actor we can stop this actor
             myself.stop(None);
         }
