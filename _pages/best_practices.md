@@ -6,9 +6,9 @@ layout: single
 author_profile: false
 ---
 
-## Should actors be long lived or short lived?
+## Should actors be long-lived or short-lived?
 
-General guidance is that actors should be long lived. There's a historical reason here (Erlang patterns are typically long-lived `gen_server`s).
+General guidance is that actors should be long-lived. There's a historical reason here (Erlang patterns are typically long-lived `gen_server`s).
 The other reason, internally to ractor, is there's non-trivial overhead spawning and creating the actor. Not only from the real actor spawn, creating
 necessary dependent resources and actor ref's, but also from any overhead incurred in the actor's `pre_start` routine.
 

@@ -1,6 +1,6 @@
 ---
 permalink: /quickstart/
-title: "Quick start"
+title: "Quickstart"
 toc: true
 layout: single
 author_profile: false
@@ -22,7 +22,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies
 
 ```toml
 [dependencies]
-ractor = "0.8"
+ractor = "0.9"
 ```
 
 ## Your first actor
@@ -116,7 +116,7 @@ async fn main() {
     // have completed)
     let (actor, actor_handle) = Actor::spawn(None, MyFirstActor, ()).await.expect("Actor failed to start");
     
-    for i in 1..10 {
+    for _i in 0..10 {
         // Sends a message, with no reply
         actor.cast(MyFirstActorMessage::PrintHelloWorld).expect("Failed to send message to actor");
     }
@@ -201,7 +201,7 @@ async fn main() {
             .await
             .expect("Actor failed to start");
     
-    for i in 1..10 {
+    for _i in 0..10 {
         // Sends a message, with no reply
         actor.cast(MyFirstActorMessage::PrintHelloWorld)
             .expect("Failed to send message to actor");
