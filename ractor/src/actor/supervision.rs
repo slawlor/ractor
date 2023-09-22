@@ -64,12 +64,18 @@ impl SupervisionTree {
     /// from the supervision tree since the supervisor is shutting down
     /// and can't deal with superivison events anyways
     pub fn terminate_all_children(&self) {
-        for kvp in self.children.iter() {
-            let child = &kvp.value().1;
-            child.terminate();
-            child.clear_supervisor();
-        }
+        let cells = self
+            .children
+            .iter()
+            .map(|r| r.1.clone())
+            .collect::<Vec<_>>();
+        // wipe local children to prevent double-link problems
         self.children.clear();
+
+        for cell in cells {
+            cell.terminate();
+            cell.clear_supervisor();
+        }
     }
 
     /// Determine if the specified actor is a parent of this actor

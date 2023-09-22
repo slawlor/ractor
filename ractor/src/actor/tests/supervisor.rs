@@ -1104,3 +1104,45 @@ async fn test_supervisor_captures_dead_childs_state() {
 
 // TODO: Still to be tested
 // 1. terminate_children_after()
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_supervisor_double_link() {
+    struct Who;
+
+    #[crate::async_trait]
+    impl Actor for Who {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (a, ah) = Actor::spawn(None, Who, ())
+        .await
+        .expect("Failed to start a");
+    let (b, bh) = Actor::spawn(None, Who, ())
+        .await
+        .expect("Failed to start b");
+
+    a.link(b.get_cell());
+    b.link(a.get_cell());
+
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
+
+    // stopping b should kill a since they're linked (or vice-versa)
+    b.stop(None);
+
+    // This panics if double-link, unlinking fails
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
+
+    ah.await.unwrap();
+    bh.await.unwrap();
+}
