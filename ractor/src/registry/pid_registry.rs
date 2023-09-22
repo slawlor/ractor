@@ -15,7 +15,10 @@ use once_cell::sync::OnceCell;
 
 use crate::{ActorCell, ActorId, SupervisionEvent};
 
-/// Represents a change in group or scope membership
+/// Represents a change ocurring to some actor in the global process registry. Only relevant in
+/// cluster enabled functionality.
+///
+/// It represents actors spawning and exiting, irrespective of procress groups.
 #[derive(Clone)]
 pub enum PidLifecycleEvent {
     /// Some actors joined a group

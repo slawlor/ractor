@@ -536,7 +536,10 @@ where
             myself.terminate();
 
             // notify supervisors of the actor's death
-            myself.notify_supervisor(evt);
+            myself.notify_supervisor_and_monitors(evt);
+
+            // clear any monitor actors
+            myself.clear_monitors();
 
             // unlink superisors
             if let Some(sup) = supervisor {
@@ -565,7 +568,7 @@ where
             .map_err(ActorErr::Panic)?;
 
         myself.set_status(ActorStatus::Running);
-        myself.notify_supervisor(SupervisionEvent::ActorStarted(myself.get_cell()));
+        myself.notify_supervisor_and_monitors(SupervisionEvent::ActorStarted(myself.get_cell()));
 
         let myself_clone = myself.clone();
 

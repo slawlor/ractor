@@ -30,6 +30,8 @@ use crate::ActorId;
 pub struct SupervisionTree {
     children: DashMap<ActorId, (u64, ActorCell)>,
     supervisor: Arc<RwLock<Option<ActorCell>>>,
+    monitors: DashMap<ActorId, ActorCell>,
+    monitored: DashMap<ActorId, ActorCell>,
     start_order: AtomicU64,
 }
 
@@ -60,6 +62,31 @@ impl SupervisionTree {
         *(self.supervisor.write().unwrap()) = None;
     }
 
+    /// Set a monitor of this supervision tree
+    pub fn set_monitor(&self, monitor: ActorCell) {
+        self.monitors.insert(monitor.get_id(), monitor);
+    }
+
+    /// Mark that this actor is monitoring some other actors
+    pub fn mark_monitored(&self, who: ActorCell) {
+        self.monitored.insert(who.get_id(), who);
+    }
+
+    /// Mark that this actor is no longer monitoring some other actors
+    pub fn unmark_monitored(&self, who: ActorId) {
+        self.monitored.remove(&who);
+    }
+
+    /// Remove a specific monitor from the supervision tree
+    pub fn remove_monitor(&self, monitor: ActorId) {
+        self.monitors.remove(&monitor);
+    }
+
+    /// Get the [ActorCell]s of the monitored actors this actor monitors
+    pub fn monitored_actors(&self) -> Vec<ActorCell> {
+        self.monitored.iter().map(|a| a.value().clone()).collect()
+    }
+
     /// Terminate all your supervised children and unlink them
     /// from the supervision tree since the supervisor is shutting down
     /// and can't deal with superivison events anyways
@@ -87,8 +114,14 @@ impl SupervisionTree {
         }
     }
 
-    /// Send a notification to all supervisors
-    pub fn notify_supervisor(&self, evt: SupervisionEvent) {
+    /// Send a notification to the supervisor and monitors.
+    ///
+    /// CAVEAT: Monitors get notified first, in order to save an unnecessary
+    /// clone if there are no monitors.
+    pub fn notify_supervisor_and_monitors(&self, evt: SupervisionEvent) {
+        for monitor in self.monitors.iter() {
+            let _ = monitor.value().send_supervisor_evt(evt.clone_no_data());
+        }
         if let Some(parent) = &*(self.supervisor.read().unwrap()) {
             let _ = parent.send_supervisor_evt(evt);
         }
