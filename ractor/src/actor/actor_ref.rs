@@ -76,11 +76,14 @@ impl<TMessage> ActorRef<TMessage> {
         self.inner.clone()
     }
 
-    /// Notify the supervisors that a supervision event occurred
+    /// Notify the supervisor and all monitors that a supervision event occurred.
+    /// Monitors receive a reduced copy of the supervision event which won't contain
+    /// the [crate::actor::BoxedState] and collapses the [crate::ActorProcessingErr]
+    /// exception to a [String]
     ///
     /// * `evt` - The event to send to this [crate::Actor]'s supervisors
-    pub fn notify_supervisor(&self, evt: SupervisionEvent) {
-        self.inner.notify_supervisor(evt)
+    pub fn notify_supervisor_and_monitors(&self, evt: SupervisionEvent) {
+        self.inner.notify_supervisor_and_monitors(evt)
     }
 }
 

@@ -34,7 +34,7 @@ pub const ALL_GROUPS_NOTIFICATION: &str = "__world__";
 #[cfg(test)]
 mod tests;
 
-/// Represents a change in group or scope membership
+/// Represents a change in a process group's membership
 #[derive(Clone)]
 pub enum GroupChangeMessage {
     /// Some actors joined a group
