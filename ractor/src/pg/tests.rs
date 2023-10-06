@@ -273,15 +273,15 @@ async fn test_pg_monitoring() {
     .await
     .expect("Failed to start monitor actor");
 
-    // this actor's startup should "monitor" for PG changes
+    // this actor's startup should notify the "monitor" for PG changes
     let (test_actor, test_handle) = Actor::spawn(None, AutoJoinActor { pg_group: group }, ())
         .await
         .expect("Failed to start test actor");
 
-    // the monitor is notified async, so we need to wait a tiny bit
+    // the monitor is notified async, so we need to wait a bit
     periodic_check(
         || counter.load(Ordering::Relaxed) == 1,
-        Duration::from_millis(500),
+        Duration::from_secs(5),
     )
     .await;
 
@@ -289,7 +289,11 @@ async fn test_pg_monitoring() {
     test_actor.stop(None);
     test_handle.await.expect("Actor cleanup failed");
     // it should have notified that it's unsubscribed
-    assert_eq!(0, counter.load(Ordering::Relaxed));
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 0,
+        Duration::from_secs(5),
+    )
+    .await;
 
     // cleanup
     monitor_actor.stop(None);

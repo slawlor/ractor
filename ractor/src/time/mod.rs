@@ -39,14 +39,11 @@ where
     F: Fn() -> TMessage + Send + 'static,
 {
     // As per #57, the traditional sleep operation is subject to drift over long periods.
-    // Tokio providers an interval timer which accounts for execution time to send a message
-    // and changes in polling to wake the task to assure that the period doesn't drift over
-    // long runtimes.
-    //
-    // TODO (slawlor): Add support for this in a generic operation in the `concurrency` module
-    // so it can eventually be abstracted with other async runtimes other than Tokio
+    // Tokio and our internal version for `async_std` provide an interval timer which
+    // accounts for execution time to send a message and changes in polling to wake
+    // the task to assure that the period doesn't drift over long runtimes.
     crate::concurrency::spawn(async move {
-        let mut timer = tokio::time::interval(period);
+        let mut timer = crate::concurrency::interval(period);
         // timer tick's immediately the first time
         timer.tick().await;
         while ACTIVE_STATES.contains(&actor.get_status()) {

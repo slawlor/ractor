@@ -107,13 +107,14 @@ where
         rx_ports.push(rx);
     }
 
-    let mut join_set = tokio::task::JoinSet::new();
+    let mut results = Vec::new();
+    let mut join_set = crate::concurrency::JoinSet::new();
     for (i, rx) in rx_ports.into_iter().enumerate() {
         if let Some(duration) = timeout_option {
             join_set.spawn(async move {
                 (
                     i,
-                    match tokio::time::timeout(duration, rx).await {
+                    match crate::concurrency::timeout(duration, rx).await {
                         Ok(Ok(result)) => CallResult::Success(result),
                         Ok(Err(_send_err)) => CallResult::SenderError,
                         Err(_) => CallResult::Timeout,
@@ -135,7 +136,6 @@ where
 
     // we threaded the index in order to maintain ordering from the originally called
     // actors.
-    let mut results = Vec::new();
     results.resize_with(join_set.len(), || CallResult::Timeout);
     while let Some(result) = join_set.join_next().await {
         match result {

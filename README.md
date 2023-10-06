@@ -69,9 +69,10 @@ The minimum supported Rust version (MSRV) of `ractor` is `1.64`
 
 ## Features
 
-`ractor` exposes a single feature currently, namely:
+`ractor` exposes the following features:
 
 1. `cluster`, which exposes various functionality required for `ractor_cluster` to set up and manage a cluster of actors over a network link. This is work-in-progress and is being tracked in [#16](https://github.com/slawlor/ractor/issues/16).
+2. `async-std`, which enables usage of `async-std`'s asynchronous runtime instead of the `tokio` runtime. **However** `tokio` remains a dependency because we utilize the messaging synchronization primatives from `tokio` regardless of runtime as they are not specific to the `tokio` runtime. This work is tracked in [#173](https://github.com/slawlor/ractor/pull/173).
 
 ## Working with Actors
 
@@ -183,11 +184,8 @@ will be supported by `ractor`. There are 4 concurrent message types, which are l
 
 1. Signals: Signals are the highest-priority of all and will interrupt the actor wherever processing currently is (this includes terminating async work). There
 is only 1 signal today, which is `Signal::Kill`, and it immediately terminates all work. This includes message processing or supervision event processing.
-2. Stop: There is also a pre-defined stop signal. You can give a "stop reason" if you want, but it's optional. Stop is a graceful exit, meaning currently executing async
-work will complete, and on the next message processing iteration Stop will take priority over future supervision events or regular messages. It will **not** terminate
-currently executing work, regardless of the provided reason.
-3. SupervisionEvent: Supervision events are messages from child actors to their supervisors in the event of their startup, death, and/or unhandled panic. Supervision events
-are how an actor's supervisor(s) are notified of events of their children and can handle lifetime events for them.
+2. Stop: There is also the pre-defined stop signal. You can give a "stop reason" if you want, but it's optional. Stop is a graceful exit, meaning currently executing async work will complete, and on the next message processing iteration Stop will take priority over future supervision events or regular messages. It will **not** terminate currently executing work, regardless of the provided reason.
+3. SupervisionEvent: Supervision events are messages from child actors to their supervisors in the event of their startup, death, and/or unhandled panic. Supervision events are how an actor's supervisor(parent) or peer monitors are notified of events of their children/peers and can handle lifetime events for them.
 4. Messages: Regular, user-defined, messages are the last channel of communication to actors. They are the lowest priority of the 4 message types and denote general actor work. The first
 3 messages types (signals, stop, supervision) are generally quiet unless it's a lifecycle event for the actor, but this channel is the "work" channel doing what your actor wants to do!
 
@@ -255,7 +253,7 @@ enum MyBasicMessageType {
 }
 ```
 
-which adds a significant amount of underlying boilerplate (take a look yourself with `cargo expand`!) for the implementation. But the short answer is, each enum variant needs to serialize to a byte array of arguments, a variant name, and if it's an RPC give a port that receives a byte array and de-serialize the reply back. Each of the types inside of either the arguments or reply type need to implement the ```ractor_cluster::BytesConvertable``` trait which just says this value can be written to a byte array and decoded from a byte array. If you're using `prost` for your message type definitions (protobuf), we have a macro to auto-implement this for your types.
+which adds a significant amount of underlying boilerplate (take a look yourself with `cargo expand`) for the implementation. But the short answer is, each enum variant needs to serialize to a byte array of arguments, a variant name, and if it's an RPC give a port that receives a byte array and de-serialize the reply back. Each of the types inside of either the arguments or reply type need to implement the ```ractor_cluster::BytesConvertable``` trait which just says this value can be written to a byte array and decoded from a byte array. If you're using `prost` for your message type definitions (protobuf), we have a macro to auto-implement this for your types.
 
 ```rust
 ractor_cluster::derive_serialization_for_prost_type! {MyProtobufType}

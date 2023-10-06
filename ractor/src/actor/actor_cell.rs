@@ -12,6 +12,9 @@
 use std::any::TypeId;
 use std::sync::Arc;
 
+#[cfg(feature = "async-std")]
+use futures::FutureExt;
+
 use super::messages::{Signal, StopMessage};
 use super::SupervisionEvent;
 use crate::actor::actor_properties::ActorProperties;
@@ -107,15 +110,32 @@ impl ActorPortSet {
     where
         TState: crate::State,
     {
-        crate::concurrency::select! {
-            // supervision or message processing work
-            // can be interrupted by the signal port receiving
-            // a kill signal
-            signal = self.signal_rx.recv() => {
-                Err(signal.unwrap_or(Signal::Kill))
+        #[cfg(feature = "async-std")]
+        {
+            crate::concurrency::select! {
+                // supervision or message processing work
+                // can be interrupted by the signal port receiving
+                // a kill signal
+                signal = self.signal_rx.recv().fuse() => {
+                    Err(signal.unwrap_or(Signal::Kill))
+                }
+                new_state = future.fuse() => {
+                    Ok(new_state)
+                }
             }
-            new_state = future => {
-                Ok(new_state)
+        }
+        #[cfg(not(feature = "async-std"))]
+        {
+            crate::concurrency::select! {
+                // supervision or message processing work
+                // can be interrupted by the signal port receiving
+                // a kill signal
+                signal = self.signal_rx.recv() => {
+                    Err(signal.unwrap_or(Signal::Kill))
+                }
+                new_state = future => {
+                    Ok(new_state)
+                }
             }
         }
     }
@@ -129,18 +149,38 @@ impl ActorPortSet {
     /// Returns [Ok(ActorPortMessage)] on a successful message reception, [MessagingErr]
     /// in the event any of the channels is closed.
     pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr<()>> {
-        crate::concurrency::select! {
-            signal = self.signal_rx.recv() => {
-                signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
+        #[cfg(feature = "async-std")]
+        {
+            crate::concurrency::select! {
+                signal = self.signal_rx.recv().fuse() => {
+                    signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
+                }
+                stop = self.stop_rx.recv().fuse() => {
+                    stop.map(ActorPortMessage::Stop).ok_or(MessagingErr::ChannelClosed)
+                }
+                supervision = self.supervisor_rx.recv().fuse() => {
+                    supervision.map(ActorPortMessage::Supervision).ok_or(MessagingErr::ChannelClosed)
+                }
+                message = self.message_rx.recv().fuse() => {
+                    message.map(ActorPortMessage::Message).ok_or(MessagingErr::ChannelClosed)
+                }
             }
-            stop = self.stop_rx.recv() => {
-                stop.map(ActorPortMessage::Stop).ok_or(MessagingErr::ChannelClosed)
-            }
-            supervision = self.supervisor_rx.recv() => {
-                supervision.map(ActorPortMessage::Supervision).ok_or(MessagingErr::ChannelClosed)
-            }
-            message = self.message_rx.recv() => {
-                message.map(ActorPortMessage::Message).ok_or(MessagingErr::ChannelClosed)
+        }
+        #[cfg(not(feature = "async-std"))]
+        {
+            crate::concurrency::select! {
+                signal = self.signal_rx.recv() => {
+                    signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
+                }
+                stop = self.stop_rx.recv() => {
+                    stop.map(ActorPortMessage::Stop).ok_or(MessagingErr::ChannelClosed)
+                }
+                supervision = self.supervisor_rx.recv() => {
+                    supervision.map(ActorPortMessage::Supervision).ok_or(MessagingErr::ChannelClosed)
+                }
+                message = self.message_rx.recv() => {
+                    message.map(ActorPortMessage::Message).ok_or(MessagingErr::ChannelClosed)
+                }
             }
         }
     }

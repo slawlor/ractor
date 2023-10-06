@@ -78,7 +78,7 @@ async fn timeout_rpc() {
     }
 
     let result = rx.await;
-    assert!(matches!(result, Err(_)));
+    assert!(result.is_err());
 }
 
 #[ractor::concurrency::test]

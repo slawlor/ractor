@@ -720,7 +720,7 @@ async fn test_worker_pings() {
                 .expect("Failed to get statistics");
             stats.ping_count > 0
         },
-        Duration::from_secs(5),
+        Duration::from_secs(10),
     )
     .await;
 
@@ -734,6 +734,12 @@ async fn test_worker_pings() {
         worker_counters[2].load(Ordering::Relaxed)
     );
 
-    let all_counter = worker_counters[0].load(Ordering::Relaxed);
-    assert_eq!(999, all_counter);
+    periodic_check(
+        || {
+            let all_counter = worker_counters[0].load(Ordering::Relaxed);
+            all_counter == 999
+        },
+        Duration::from_secs(10),
+    )
+    .await;
 }

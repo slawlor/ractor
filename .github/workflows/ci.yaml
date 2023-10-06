@@ -17,6 +17,9 @@ jobs:
           - name: Run the default tests
             package: ractor
             # flags: 
+          - name: Test ractor in async_std
+            package: ractor
+            flags: --features async-std
           - name: Test ractor with the `cluster` feature
             package: ractor
             flags: -F cluster
