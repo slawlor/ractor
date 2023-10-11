@@ -690,6 +690,7 @@ impl NodeSession {
 
         // Scan all PG groups + synchronize them
         let groups = ractor::pg::which_groups();
+        // TODO: Add this for all scopes!
         let scope = Scope::Default;
         for group in groups {
             let local_members = ractor::pg::get_local_members(&group)

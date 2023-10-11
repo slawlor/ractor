@@ -28,11 +28,15 @@ use once_cell::sync::OnceCell;
 
 use crate::{ActorCell, ActorId, GroupName, ScopeName, SupervisionEvent};
 
+// TODO: Check if this is still needed at the end
 /// Key to monitor all of the groups
 pub const ALL_GROUPS_NOTIFICATION: &str = "__world__";
 
 #[cfg(test)]
 mod tests;
+
+// TODO: Research if there is a need to explicitly start a `Scope` analogous
+// to [Erlang's `pg` module](https://www.erlang.org/doc/man/pg.html).
 
 /// Scopes are sets of process groups. Each group is in exactly one scope.
 /// A process may join any number of groups in any number of scopes.
@@ -84,6 +88,7 @@ impl GroupChangeMessage {
     }
 }
 
+// TODO: Add scopes to `PgState`
 struct PgState {
     map: Arc<DashMap<GroupName, HashMap<ActorId, ActorCell>>>,
     listeners: Arc<DashMap<GroupName, Vec<ActorCell>>>,
@@ -91,6 +96,7 @@ struct PgState {
 
 static PG_MONITOR: OnceCell<PgState> = OnceCell::new();
 
+// TODO: Add scopes to `get_monitor`
 fn get_monitor<'a>() -> &'a PgState {
     PG_MONITOR.get_or_init(|| PgState {
         map: Arc::new(DashMap::new()),
@@ -98,7 +104,7 @@ fn get_monitor<'a>() -> &'a PgState {
     })
 }
 
-/// Join actors to the group `group`
+/// Join actors to the group `group` in the default scope
 ///
 /// * `group` - The statically named group. Will be created if first actors to join
 /// * `actors` - The list of [crate::Actor]s to add to the group
@@ -138,7 +144,17 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
     }
 }
 
-/// Leaves the specified [crate::Actor]s from the PG group
+/// Join actors to the group `group` within the scope `scope`
+///
+/// * `scope` - the statically named scope. Will be created if first actors join
+/// * `group` - The statically named group. Will be created if first actors to join
+/// * `actors` - The list of [crate::Actor]s to add to the group
+#[allow(unused_variables)]
+pub fn join_named_scope(scope: &Scope, group: GroupName, actors: Vec<ActorCell>) {
+    todo!();
+}
+
+/// Leaves the specified [crate::Actor]s from the PG group in the default scope
 ///
 /// * `group` - The statically named group
 /// * `actors` - The list of actors to remove from the group
@@ -174,6 +190,17 @@ pub fn leave(group: GroupName, actors: Vec<ActorCell>) {
     }
 }
 
+/// Leaves the specified [crate::Actor]s from the PG group within the scope `scope`
+///
+/// * `scope` - The statically named scope
+/// * `group` - The statically named group
+/// * `actors` - The list of actors to remove from the group
+#[allow(unused_variables)]
+pub fn leave_named_scope(scope: &Scope, group: GroupName, actors: Vec<ActorCell>) {
+    todo!();
+}
+
+// TODO: Leave all groups in all scopes
 /// Leave all groups for a specific [ActorId].
 /// Used only during actor shutdown
 pub(crate) fn leave_all(actor: ActorId) {
@@ -218,7 +245,8 @@ pub(crate) fn leave_all(actor: ActorId) {
     }
 }
 
-/// Returns all the actors running on the local node in the group `group`.
+/// Returns all actors running on the local node in the group `group`
+/// in the default scope.
 ///
 /// * `group_name` - Either a statically named group
 ///
@@ -237,7 +265,20 @@ pub fn get_local_members(group_name: &GroupName) -> Vec<ActorCell> {
     }
 }
 
-/// Returns all the actors running on any node in the group `group`.
+/// Returns all actors running on the local node in the group `group`
+/// in scope `scope`
+///
+/// * `scope_name` - A statically named scope
+/// * `group_name` - Either a statically named group
+///
+/// Returns a [`Vec<ActorCell>`] representing the members of this paging group
+#[allow(unused_variables)]
+pub fn get_local_members_in_scope(scope: &Scope, group_name: &GroupName) -> Vec<ActorCell> {
+    todo!();
+}
+
+/// Returns all the actors running on any node in the group `group`
+/// in the default scope.
 ///
 /// * `group_name` - Either a statically named group or scope
 ///
@@ -249,6 +290,17 @@ pub fn get_members(group_name: &GroupName) -> Vec<ActorCell> {
     } else {
         vec![]
     }
+}
+
+/// Returns all the actors running on any node in the group `group`
+/// in the scope `scope`.
+///
+/// * `group_name` - Either a statically named group or scope
+///
+/// Returns a [`Vec<ActorCell>`] with the member actors
+#[allow(unused_variables)]
+pub fn get_members_in_scope(scope: &Scope, group_name: &GroupName) -> Vec<ActorCell> {
+    todo!();
 }
 
 /// Return a list of all known groups
@@ -263,7 +315,26 @@ pub fn which_groups() -> Vec<GroupName> {
         .collect::<Vec<_>>()
 }
 
-/// Subscribes the provided [crate::Actor] to the scope or group for updates
+/// Returns a list of all known groups in scope `scope`
+///
+/// * `scope` - The scope to retrieve the groups from
+///
+/// Returns a [`Vec<GroupName>`] representing all the registered group names
+/// in `scope`
+#[allow(unused_variables)]
+pub fn which_groups_in_scope(scope: &Scope) -> Vec<GroupName> {
+    todo!();
+}
+
+/// Returns a list of all known scopes
+///
+/// Returns a [`Vec<Scope>`] representing all the registered scopes
+#[allow(unused_variables)]
+pub fn which_scopes() -> Vec<Scope> {
+    todo!();
+}
+
+/// Subscribes the provided [crate::Actor] to the group for updates
 ///
 /// * `group_name` - The group to monitor
 /// * `actor` - The [ActorCell] representing who will receive updates
@@ -277,10 +348,19 @@ pub fn monitor(group_name: GroupName, actor: ActorCell) {
     }
 }
 
-/// Unsubscribes the provided [crate::Actor] from the scope or group for updates
+/// Subscribes the provided [crate::Actor] to the scope for updates
 ///
-/// * `group_name` - The scope or group to monitor
+/// * `scope` - the scope to monitor
 /// * `actor` - The [ActorCell] representing who will receive updates
+#[allow(unused_variables)]
+pub fn monitor_scope(scope: &Scope, actor: ActorCell) {
+    todo!();
+}
+
+/// Unsubscribes the provided [crate::Actor] from the group for updates
+///
+/// * `group_name` - The group to demonitor
+/// * `actor` - The [ActorCell] representing who will no longer receive updates
 pub fn demonitor(group_name: GroupName, actor: ActorId) {
     let monitor = get_monitor();
     if let Occupied(mut entry) = monitor.listeners.entry(group_name) {
@@ -290,6 +370,15 @@ pub fn demonitor(group_name: GroupName, actor: ActorId) {
             entry.remove();
         }
     }
+}
+
+/// Unsubscribes the provided [crate::Actor] from the scope for updates
+///
+/// * `scope` - The scope to demonitor
+/// * `actor` - The [ActorCell] representing who will no longer receive updates
+#[allow(unused_variables)]
+pub fn demonitor_scope(scope: &Scope, actor: ActorId) {
+    todo!();
 }
 
 /// Remove the specified [ActorId] from monitoring all groups it might be in.
