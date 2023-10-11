@@ -220,7 +220,7 @@ pub(crate) fn leave_all(actor: ActorId) {
 
 /// Returns all the actors running on the local node in the group `group`.
 ///
-/// * `group_name` - Either a statically named group or scope
+/// * `group_name` - Either a statically named group
 ///
 /// Returns a [`Vec<ActorCell>`] representing the members of this paging group
 pub fn get_local_members(group_name: &GroupName) -> Vec<ActorCell> {
@@ -265,7 +265,7 @@ pub fn which_groups() -> Vec<GroupName> {
 
 /// Subscribes the provided [crate::Actor] to the scope or group for updates
 ///
-/// * `group_name` - The scope or group to monitor
+/// * `group_name` - The group to monitor
 /// * `actor` - The [ActorCell] representing who will receive updates
 pub fn monitor(group_name: GroupName, actor: ActorCell) {
     let monitor = get_monitor();
@@ -292,7 +292,7 @@ pub fn demonitor(group_name: GroupName, actor: ActorId) {
     }
 }
 
-/// Remove the specified [ActorId] from monitoring all groups it might be.
+/// Remove the specified [ActorId] from monitoring all groups it might be in.
 /// Used only during actor shutdown
 pub(crate) fn demonitor_all(actor: ActorId) {
     let monitor = get_monitor();
