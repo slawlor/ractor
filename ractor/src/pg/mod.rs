@@ -26,7 +26,7 @@ use dashmap::DashMap;
 
 use once_cell::sync::OnceCell;
 
-use crate::{ActorCell, ActorId, GroupName, SupervisionEvent};
+use crate::{ActorCell, ActorId, GroupName, ScopeName, SupervisionEvent};
 
 /// Key to monitor all of the groups
 pub const ALL_GROUPS_NOTIFICATION: &str = "__world__";
@@ -34,21 +34,52 @@ pub const ALL_GROUPS_NOTIFICATION: &str = "__world__";
 #[cfg(test)]
 mod tests;
 
+/// Scopes are sets of process groups. Each group is in exactly one scope.
+/// A process may join any number of groups in any number of scopes.
+///
+/// Scopes are designed to decouple single mesh into a set of overlay networks,
+/// reducing amount of traffic required to propagate group membership information.
+#[derive(Clone)]
+pub enum Scope {
+    /// The default scope
+    Default,
+    /// A named scope
+    Named(ScopeName),
+}
+
+impl Scope {
+    /// Returns the scope's name as String. `Scope::Default` returns "Default".
+    pub fn as_str(&self) -> String {
+        match self {
+            Scope::Default => "Default".to_string(),
+            Scope::Named(scope_name) => scope_name.to_string(),
+        }
+    }
+}
+
 /// Represents a change in a process group's membership
 #[derive(Clone)]
 pub enum GroupChangeMessage {
     /// Some actors joined a group
-    Join(GroupName, Vec<ActorCell>),
+    Join(Scope, GroupName, Vec<ActorCell>),
     /// Some actors left a group
-    Leave(GroupName, Vec<ActorCell>),
+    Leave(Scope, GroupName, Vec<ActorCell>),
 }
 
 impl GroupChangeMessage {
     /// Retrieve the group that changed
     pub fn get_group(&self) -> GroupName {
         match self {
-            Self::Join(name, _) => name.clone(),
-            Self::Leave(name, _) => name.clone(),
+            Self::Join(_, name, _) => name.clone(),
+            Self::Leave(_, name, _) => name.clone(),
+        }
+    }
+
+    /// Retrieve the name of the scope in which the group change took place
+    pub fn get_scope(&self) -> ScopeName {
+        match self {
+            Self::Join(scope, _, _) => scope.as_str(),
+            Self::Leave(scope, _, _) => scope.as_str(),
         }
     }
 }
@@ -93,7 +124,7 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
     if let Some(listeners) = monitor.listeners.get(&group) {
         for listener in listeners.value() {
             let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                GroupChangeMessage::Join(group.clone(), actors.clone()),
+                GroupChangeMessage::Join(Scope::Default, group.clone(), actors.clone()),
             ));
         }
     }
@@ -101,7 +132,7 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
     if let Some(listeners) = monitor.listeners.get(ALL_GROUPS_NOTIFICATION) {
         for listener in listeners.value() {
             let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                GroupChangeMessage::Join(group.clone(), actors.clone()),
+                GroupChangeMessage::Join(Scope::Default, group.clone(), actors.clone()),
             ));
         }
     }
@@ -127,7 +158,7 @@ pub fn leave(group: GroupName, actors: Vec<ActorCell>) {
             if let Some(listeners) = monitor.listeners.get(&group) {
                 for listener in listeners.value() {
                     let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                        GroupChangeMessage::Leave(group.clone(), actors.clone()),
+                        GroupChangeMessage::Leave(Scope::Default, group.clone(), actors.clone()),
                     ));
                 }
             }
@@ -135,7 +166,7 @@ pub fn leave(group: GroupName, actors: Vec<ActorCell>) {
             if let Some(listeners) = monitor.listeners.get(ALL_GROUPS_NOTIFICATION) {
                 for listener in listeners.value() {
                     let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                        GroupChangeMessage::Leave(group.clone(), actors.clone()),
+                        GroupChangeMessage::Leave(Scope::Default, group.clone(), actors.clone()),
                     ));
                 }
             }
@@ -167,7 +198,7 @@ pub(crate) fn leave_all(actor: ActorId) {
         if let Some(this_listeners) = all_listeners.get(&group) {
             this_listeners.iter().for_each(|listener| {
                 let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                    GroupChangeMessage::Leave(group.clone(), vec![cell.clone()]),
+                    GroupChangeMessage::Leave(Scope::Default, group.clone(), vec![cell.clone()]),
                 ));
             });
         }
@@ -175,7 +206,7 @@ pub(crate) fn leave_all(actor: ActorId) {
         if let Some(listeners) = all_listeners.get(ALL_GROUPS_NOTIFICATION) {
             for listener in listeners.value() {
                 let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                    GroupChangeMessage::Leave(group.clone(), vec![cell.clone()]),
+                    GroupChangeMessage::Leave(Scope::Default, group.clone(), vec![cell.clone()]),
                 ));
             }
         }

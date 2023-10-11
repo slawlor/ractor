@@ -12,7 +12,7 @@ use std::convert::TryInto;
 use std::net::SocketAddr;
 
 use ractor::message::SerializedMessage;
-use ractor::pg::GroupChangeMessage;
+use ractor::pg::{GroupChangeMessage, Scope};
 use ractor::registry::PidLifecycleEvent;
 use ractor::rpc::CallResult;
 use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, SpawnErr, SupervisionEvent};
@@ -690,6 +690,7 @@ impl NodeSession {
 
         // Scan all PG groups + synchronize them
         let groups = ractor::pg::which_groups();
+        let scope = Scope::Default;
         for group in groups {
             let local_members = ractor::pg::get_local_members(&group)
                 .into_iter()
@@ -703,6 +704,7 @@ impl NodeSession {
                 let control_message = control_protocol::ControlMessage {
                     msg: Some(control_protocol::control_message::Msg::PgJoin(
                         control_protocol::PgJoin {
+                            scope: scope.as_str(),
                             group,
                             actors: local_members,
                         },
@@ -998,7 +1000,7 @@ impl Actor for NodeSession {
             }
             // ======== Lifecycle event handlers (PG groups + PID registry) ======== //
             SupervisionEvent::ProcessGroupChanged(change) => match change {
-                GroupChangeMessage::Join(group, actors) => {
+                GroupChangeMessage::Join(scope, group, actors) => {
                     let filtered = actors
                         .into_iter()
                         .filter(|act| act.supports_remoting())
@@ -1011,6 +1013,7 @@ impl Actor for NodeSession {
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::PgJoin(
                                 control_protocol::PgJoin {
+                                    scope: scope.as_str(),
                                     group,
                                     actors: filtered,
                                 },
@@ -1019,7 +1022,7 @@ impl Actor for NodeSession {
                         state.tcp_send_control(msg);
                     }
                 }
-                GroupChangeMessage::Leave(group, actors) => {
+                GroupChangeMessage::Leave(scope, group, actors) => {
                     let filtered = actors
                         .into_iter()
                         .filter(|act| act.supports_remoting())
@@ -1032,6 +1035,7 @@ impl Actor for NodeSession {
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::PgLeave(
                                 control_protocol::PgLeave {
+                                    scope: scope.as_str(),
                                     group,
                                     actors: filtered,
                                 },

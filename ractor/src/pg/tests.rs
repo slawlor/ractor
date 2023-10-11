@@ -251,10 +251,10 @@ async fn test_pg_monitoring() {
         ) -> Result<(), ActorProcessingErr> {
             if let SupervisionEvent::ProcessGroupChanged(change) = message {
                 match change {
-                    pg::GroupChangeMessage::Join(_which, who) => {
+                    pg::GroupChangeMessage::Join(_scope, _which, who) => {
                         self.counter.fetch_add(who.len() as u8, Ordering::Relaxed);
                     }
-                    pg::GroupChangeMessage::Leave(_which, who) => {
+                    pg::GroupChangeMessage::Leave(_scope, _which, who) => {
                         self.counter.fetch_sub(who.len() as u8, Ordering::Relaxed);
                     }
                 }

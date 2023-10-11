@@ -52,18 +52,22 @@ message Terminate {
 
 // Process group join occurred
 message PgJoin {
+    // the scope
+    string scope = 1;
     // The group
-    string group = 1;
+    string group = 2;
     // The actors
-    repeated Actor actors = 2;
+    repeated Actor actors = 3;
 }
 
 // Process group leave occurred
 message PgLeave {
+    // the scope
+    string scope = 1;
     // The group
-    string group = 1;
+    string group = 2;
     // The actors
-    repeated Actor actors = 2;
+    repeated Actor actors = 3;
 }
 
 // A collection of NodeSession endpoints

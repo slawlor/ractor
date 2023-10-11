@@ -146,7 +146,12 @@ impl std::fmt::Display for SupervisionEvent {
                 write!(f, "Actor panicked {actor:?} - {panic_msg}")
             }
             SupervisionEvent::ProcessGroupChanged(change) => {
-                write!(f, "Process group {} changed", change.get_group())
+                write!(
+                    f,
+                    "Process group {} in scope {} changed",
+                    change.get_group(),
+                    change.get_scope()
+                )
             }
             #[cfg(feature = "cluster")]
             SupervisionEvent::PidLifecycleEvent(change) => {
