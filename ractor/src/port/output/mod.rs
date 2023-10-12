@@ -100,7 +100,7 @@ where
 {
     fn drop(&mut self) {
         let mut subs = self.subscriptions.write().unwrap();
-        for sub in subs.iter() {
+        for sub in subs.iter_mut() {
             sub.stop();
         }
         subs.clear();
@@ -123,7 +123,7 @@ impl OutputPortSubscription {
     }
 
     /// Stop the subscription, by aborting the underlying [JoinHandle]
-    pub fn stop(&self) {
+    pub fn stop(&mut self) {
         self.handle.abort();
     }
 

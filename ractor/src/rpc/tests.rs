@@ -312,7 +312,11 @@ async fn test_rpc_call_forwarding() {
         .expect("Failed to forward message");
 
     // make sure the counter was bumped to say the message was forwarded
-    assert_eq!(4, counter.load(Ordering::Relaxed));
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 4,
+        Duration::from_secs(5),
+    )
+    .await;
 
     // cleanup
     forwarder_ref.stop(None);

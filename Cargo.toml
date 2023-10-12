@@ -7,3 +7,4 @@ members = [
     "ractor_cluster_integration_tests",
     "xtask"
 ]
+resolver = "2"

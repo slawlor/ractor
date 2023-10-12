@@ -495,7 +495,7 @@ async fn main() {
     let time_slice = Duration::from_millis(10);
     let run_time = Duration::from_secs(5);
 
-    let philosopher_names = vec![
+    let philosopher_names = [
         "Confucius",
         "Descartes",
         "Benjamin Franklin",

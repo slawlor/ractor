@@ -67,7 +67,7 @@ async fn test_single_forward() {
     for _ in 0..4 {
         output.send(());
     }
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    crate::concurrency::sleep(Duration::from_millis(50)).await;
     assert!(!handle.is_finished());
 
     // last send should trigger the exit condition

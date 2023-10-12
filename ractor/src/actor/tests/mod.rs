@@ -867,8 +867,8 @@ async fn stop_and_wait() {
         .stop_and_wait(None, None)
         .await
         .expect("Failed to wait for actor death");
-    // the handle should be done and completed
-    assert!(handle.is_finished());
+    // the handle should be done and completed (after some brief scheduling delay)
+    periodic_check(|| handle.is_finished(), Duration::from_millis(500)).await;
 }
 
 #[crate::concurrency::test]
@@ -896,8 +896,8 @@ async fn kill_and_wait() {
         .kill_and_wait(None)
         .await
         .expect("Failed to wait for actor death");
-    // the handle should be done and completed
-    assert!(handle.is_finished());
+    // the handle should be done and completed (after some brief scheduling delay)
+    periodic_check(|| handle.is_finished(), Duration::from_millis(500)).await;
 }
 
 #[test]
