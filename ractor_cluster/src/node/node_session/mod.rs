@@ -12,7 +12,7 @@ use std::convert::TryInto;
 use std::net::SocketAddr;
 
 use ractor::message::SerializedMessage;
-use ractor::pg::{GroupChangeMessage, Scope};
+use ractor::pg::{GroupChangeMessage, DEFAULT_SCOPE};
 use ractor::registry::PidLifecycleEvent;
 use ractor::rpc::CallResult;
 use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, SpawnErr, SupervisionEvent};
@@ -691,7 +691,7 @@ impl NodeSession {
         // Scan all PG groups + synchronize them
         let groups = ractor::pg::which_groups();
         // TODO: Add this for all scopes!
-        let scope = Scope::Default;
+        let scope = DEFAULT_SCOPE;
         for group in groups {
             let local_members = ractor::pg::get_local_members(&group)
                 .into_iter()
@@ -705,7 +705,7 @@ impl NodeSession {
                 let control_message = control_protocol::ControlMessage {
                     msg: Some(control_protocol::control_message::Msg::PgJoin(
                         control_protocol::PgJoin {
-                            scope: scope.as_str(),
+                            scope: scope.to_owned(),
                             group,
                             actors: local_members,
                         },
@@ -1014,7 +1014,7 @@ impl Actor for NodeSession {
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::PgJoin(
                                 control_protocol::PgJoin {
-                                    scope: scope.as_str(),
+                                    scope,
                                     group,
                                     actors: filtered,
                                 },
@@ -1036,7 +1036,7 @@ impl Actor for NodeSession {
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::PgLeave(
                                 control_protocol::PgLeave {
-                                    scope: scope.as_str(),
+                                    scope,
                                     group,
                                     actors: filtered,
                                 },
