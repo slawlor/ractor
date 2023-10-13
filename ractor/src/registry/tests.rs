@@ -10,8 +10,9 @@ use crate::concurrency::Duration;
 use crate::{Actor, ActorProcessingErr, SpawnErr};
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_basic_registation() {
+    crate::common_test::setup();
     struct EmptyActor;
 
     #[async_trait::async_trait]
@@ -43,8 +44,9 @@ async fn test_basic_registation() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_duplicate_registration() {
+    crate::common_test::setup();
     struct EmptyActor;
 
     #[async_trait::async_trait]
@@ -91,8 +93,9 @@ async fn test_duplicate_registration() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_actor_registry_unenrollment() {
+    crate::common_test::setup();
     struct EmptyActor;
 
     #[async_trait::async_trait]
@@ -160,8 +163,9 @@ mod pid_registry_tests {
     }
 
     #[crate::concurrency::test]
-    #[tracing_test::traced_test]
+    #[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
     async fn try_enroll_remote_actor() {
+        crate::common_test::setup();
         struct EmptyActor;
         #[async_trait::async_trait]
         impl Actor for EmptyActor {
@@ -206,8 +210,9 @@ mod pid_registry_tests {
     }
 
     #[crate::concurrency::test]
-    #[tracing_test::traced_test]
+    #[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
     async fn test_basic_registation() {
+        crate::common_test::setup();
         struct EmptyActor;
 
         #[async_trait::async_trait]
@@ -240,8 +245,9 @@ mod pid_registry_tests {
     }
 
     #[crate::concurrency::test]
-    #[tracing_test::traced_test]
+    #[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
     async fn test_actor_registry_unenrollment() {
+        crate::common_test::setup();
         struct EmptyActor;
 
         #[async_trait::async_trait]
@@ -282,8 +288,9 @@ mod pid_registry_tests {
     }
 
     #[crate::concurrency::test]
-    #[tracing_test::traced_test]
+    #[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
     async fn test_pid_lifecycle_monitoring() {
+        crate::common_test::setup();
         let counter = Arc::new(DashMap::new());
 
         struct AutoJoinActor;

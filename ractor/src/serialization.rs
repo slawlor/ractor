@@ -199,6 +199,8 @@ mod tests {
             paste::item! {
                 #[test]
                 fn [< test_bytes_conversion_ $ty >] () {
+                    crate::common_test::setup();
+
                     let test_data: $ty = rand::thread_rng().gen();
                     let bytes = test_data.clone().into_bytes();
                     let back = <$ty as BytesConvertable>::from_bytes(bytes);
@@ -217,6 +219,8 @@ mod tests {
             paste::item! {
                 #[test]
                 fn [< test_bytes_conversion_vec_ $ty >] () {
+                    crate::common_test::setup();
+
                     let mut rng = rand::thread_rng();
                     let num_pts: usize = rng.gen_range(10..50);
                     let test_data = (0..num_pts).into_iter().map(|_| rng.gen()).collect::<Vec<$ty>>();
@@ -252,6 +256,7 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn test_bytes_conversion_String() {
+        crate::common_test::setup();
         let test_data: String = random_string();
         let bytes = test_data.clone().into_bytes();
         let back = <String as BytesConvertable>::from_bytes(bytes);
@@ -275,6 +280,7 @@ mod tests {
 
     #[test]
     fn test_boxed_downcast_error() {
+        crate::common_test::setup();
         let err = BoxedDowncastErr;
         println!("{err}");
         println!("{err:?}");

@@ -3,9 +3,11 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
+#[cfg(not(target_arch = "wasm32"))]
 #[macro_use]
 extern crate criterion;
 
+#[cfg(not(target_arch = "wasm32"))]
 use criterion::{BatchSize, Criterion};
 #[cfg(feature = "cluster")]
 use ractor::Message;
@@ -45,6 +47,7 @@ impl Actor for BenchActor {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn create_actors(c: &mut Criterion) {
     let small = 100;
     let large = 10000;
@@ -130,6 +133,7 @@ fn create_actors(c: &mut Criterion) {
     });
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn schedule_work(c: &mut Criterion) {
     let small = 100;
     let large = 1000;
@@ -239,6 +243,7 @@ fn schedule_work(c: &mut Criterion) {
     });
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::async_yields_async)]
 fn process_messages(c: &mut Criterion) {
     const NUM_MSGS: u64 = 100000;
@@ -328,5 +333,10 @@ fn process_messages(c: &mut Criterion) {
     });
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 criterion_group!(actors, create_actors, schedule_work, process_messages);
+#[cfg(not(target_arch = "wasm32"))]
 criterion_main!(actors);
+
+#[cfg(target_arch = "wasm32")]
+fn main() {}

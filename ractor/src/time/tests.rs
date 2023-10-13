@@ -15,8 +15,9 @@ use crate::{common_test::periodic_check, concurrency::Duration, ActorProcessingE
 use crate::{Actor, ActorRef};
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_intervals() {
+    crate::common_test::setup();
     let counter = Arc::new(AtomicU8::new(0u8));
 
     struct TestActor {
@@ -79,8 +80,9 @@ async fn test_intervals() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_send_after() {
+    crate::common_test::setup();
     let counter = Arc::new(AtomicU8::new(0u8));
 
     struct TestActor {
@@ -143,8 +145,9 @@ async fn test_send_after() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_exit_after() {
+    crate::common_test::setup();
     struct TestActor;
 
     #[async_trait::async_trait]
@@ -175,8 +178,9 @@ async fn test_exit_after() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_kill_after() {
+    crate::common_test::setup();
     struct TestActor;
 
     #[async_trait::async_trait]
