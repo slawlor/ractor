@@ -52,6 +52,13 @@ async fn test_basic_group() {
     handle.await.expect("Actor cleanup failed");
 }
 
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+#[allow(unused_variables)]
+async fn test_default_scope() {
+    todo!();
+}
+
 #[named]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
@@ -87,6 +94,13 @@ async fn test_multiple_members_in_group() {
     for handle in handles.into_iter() {
         handle.await.expect("Actor cleanup failed");
     }
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+#[allow(unused_variables)]
+async fn test_multiple_members_in_scope() {
+    todo!();
 }
 
 #[named]
@@ -134,6 +148,13 @@ async fn test_multiple_groups() {
     }
 }
 
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+#[allow(unused_variables)]
+async fn test_multiple_scopes() {
+    todo!();
+}
+
 #[named]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
@@ -157,6 +178,13 @@ async fn test_actor_leaves_pg_group_on_shutdown() {
 
     let members = pg::get_members(&group);
     assert_eq!(0, members.len());
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+#[allow(unused_variables)]
+async fn test_actor_leaves_scope_on_shupdown() {
+    todo!();
 }
 
 #[named]
@@ -193,6 +221,13 @@ async fn test_actor_leaves_pg_group_manually() {
     // Cleanup
     actor.stop(None);
     handle.await.expect("Actor cleanup failed");
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+#[allow(unused_variables)]
+async fn test_actor_leaves_scope_manually() {
+    todo!();
 }
 
 #[named]
@@ -300,6 +335,7 @@ async fn test_pg_monitoring() {
     monitor_handle.await.expect("Actor cleanup failed");
 }
 
+//TODO: Add scopes
 #[named]
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
