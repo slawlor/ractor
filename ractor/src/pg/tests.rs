@@ -34,7 +34,7 @@ impl Actor for TestActor {
 #[named]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
-async fn test_basic_group() {
+async fn test_basic_group_in_default_scope() {
     let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
         .expect("Failed to spawn test actor");
@@ -335,7 +335,13 @@ async fn test_pg_monitoring() {
     monitor_handle.await.expect("Actor cleanup failed");
 }
 
-//TODO: Add scopes
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+#[allow(unused_variables)]
+async fn test_scope_monitoring() {
+    todo!()
+}
+
 #[named]
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
@@ -404,4 +410,12 @@ async fn local_vs_remote_pg_members() {
     for handle in handles.into_iter() {
         handle.await.expect("Actor cleanup failed");
     }
+}
+
+#[cfg(feature = "cluster")]
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+#[allow(unused_variables)]
+async fn local_vs_remote_pg_members_in_named_scopes() {
+    todo!();
 }
