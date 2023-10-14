@@ -10,9 +10,9 @@ use crate::common_test::periodic_check;
 use crate::concurrency::Duration;
 use ::function_name::named;
 
-use crate::{Actor, ActorProcessingErr, GroupName, SupervisionEvent};
+use crate::{Actor, ActorProcessingErr, GroupName, ScopeName, SupervisionEvent};
 
-use crate::pg;
+use crate::pg::{self};
 
 struct TestActor;
 
@@ -140,6 +140,45 @@ async fn test_multiple_members_in_group_in_named_scope() {
 
     let members = pg::get_members_with_scope(&scope, &group);
     assert_eq!(10, members.len());
+
+    // Cleanup
+    for actor in actors {
+        actor.stop(None);
+    }
+    for handle in handles.into_iter() {
+        handle.await.expect("Actor cleanup failed");
+    }
+}
+
+#[named]
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_which_groups_in_named_scope() {
+    let scope = function_name!().to_string();
+    let group = function_name!().to_string();
+
+    let mut actors = vec![];
+    let mut handles = vec![];
+    for _ in 0..10 {
+        let (actor, handle) = Actor::spawn(None, TestActor, ())
+            .await
+            .expect("Failed to spawn test actor");
+        actors.push(actor);
+        handles.push(handle);
+    }
+
+    // join the group
+    pg::join_with_named_scope(
+        scope.clone(),
+        group.clone(),
+        actors
+            .iter()
+            .map(|aref| aref.clone().get_cell())
+            .collect::<Vec<_>>(),
+    );
+
+    let groups_in_scope = pg::which_groups_in_named_scope(&scope);
+    assert_eq!(vec![scope.clone()], groups_in_scope);
 
     // Cleanup
     for actor in actors {
@@ -498,11 +537,144 @@ async fn test_pg_monitoring() {
     monitor_handle.await.expect("Actor cleanup failed");
 }
 
+#[named]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
-#[allow(unused_variables)]
 async fn test_scope_monitoring() {
-    todo!()
+    let scope = function_name!().to_string();
+    let group = function_name!().to_string();
+
+    let counter = Arc::new(AtomicU8::new(0u8));
+
+    struct AutoJoinActor {
+        scope: ScopeName,
+        pg_group: GroupName,
+    }
+
+    #[async_trait::async_trait]
+    impl Actor for AutoJoinActor {
+        type Msg = ();
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            myself: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            pg::join_with_named_scope(
+                self.scope.clone(),
+                self.pg_group.clone(),
+                vec![myself.into()],
+            );
+            Ok(())
+        }
+    }
+
+    struct NotificationMonitor {
+        scope: ScopeName,
+        counter: Arc<AtomicU8>,
+    }
+
+    #[async_trait::async_trait]
+    impl Actor for NotificationMonitor {
+        type Msg = ();
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            myself: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            pg::monitor_scope(self.scope.clone(), myself.into());
+            Ok(())
+        }
+
+        async fn handle_supervisor_evt(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            message: SupervisionEvent,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            if let SupervisionEvent::ProcessGroupChanged(change) = message {
+                match change {
+                    pg::GroupChangeMessage::Join(scope_name, _which, who) => {
+                        // ensure this test can run concurrently to others
+                        if scope_name == function_name!() {
+                            self.counter.fetch_add(who.len() as u8, Ordering::Relaxed);
+                        }
+                    }
+                    pg::GroupChangeMessage::Leave(scope_name, _which, who) => {
+                        // ensure this test can run concurrently to others
+                        if scope_name == function_name!() {
+                            self.counter.fetch_sub(who.len() as u8, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let (monitor_actor, monitor_handle) = Actor::spawn(
+        None,
+        NotificationMonitor {
+            scope: scope.clone(),
+            counter: counter.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Failed to start monitor actor");
+
+    // this actor's startup should notify the "monitor" for scope changes
+    let (test_actor, test_handle) = Actor::spawn(
+        None,
+        AutoJoinActor {
+            scope: scope.clone(),
+            pg_group: group.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Failed to start test actor");
+
+    // start a second actor in the same scope to test if we multiply messages exponentially
+    let (test_actor1, test_handle1) = Actor::spawn(
+        None,
+        AutoJoinActor {
+            scope: scope.clone(),
+            pg_group: group.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Failed to start test actor");
+
+    // the monitor is notified async, so we need to wait a bit
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 2,
+        Duration::from_secs(5),
+    )
+    .await;
+
+    // kill the scope members
+    test_actor.stop(None);
+    test_handle.await.expect("Actor cleanup failed");
+    test_actor1.stop(None);
+    test_handle1.await.expect("Actor cleanup failed");
+
+    // it should have notified that it's unsubscribed
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 0,
+        Duration::from_secs(5),
+    )
+    .await;
+
+    // cleanup
+    monitor_actor.stop(None);
+    monitor_handle.await.expect("Actor cleanup failed");
 }
 
 #[named]
@@ -575,10 +747,73 @@ async fn local_vs_remote_pg_members() {
     }
 }
 
+#[named]
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
-#[allow(unused_variables)]
 async fn local_vs_remote_pg_members_in_named_scopes() {
-    todo!();
+    use crate::ActorRuntime;
+
+    let scope = function_name!().to_string();
+    let group = function_name!().to_string();
+
+    struct TestRemoteActor;
+    struct TestRemoteActorMessage;
+    impl crate::Message for TestRemoteActorMessage {}
+    #[async_trait::async_trait]
+    impl Actor for TestRemoteActor {
+        type Msg = TestRemoteActorMessage;
+        type State = ();
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let remote_pid = crate::ActorId::Remote { node_id: 1, pid: 1 };
+
+    let mut actors: Vec<crate::ActorCell> = vec![];
+    let mut handles = vec![];
+    for _ in 0..10 {
+        let (actor, handle) = Actor::spawn(None, TestActor, ())
+            .await
+            .expect("Failed to spawn test actor");
+        actors.push(actor.into());
+        handles.push(handle);
+    }
+    let (actor, handle) = ActorRuntime::spawn_linked_remote(
+        None,
+        TestRemoteActor,
+        remote_pid,
+        (),
+        actors.first().unwrap().clone(),
+    )
+    .await
+    .expect("Failed to spawn remote actor");
+    println!("Spawned {}", actor.get_id());
+
+    actors.push(actor.into());
+    handles.push(handle);
+
+    // join the group in scope
+    pg::join_with_named_scope(scope.clone(), group.clone(), actors.to_vec());
+
+    // assert
+    let members = pg::get_local_members_with_scope(&scope, &group);
+    assert_eq!(10, members.len());
+
+    let members = pg::get_members_with_scope(&scope, &group);
+    assert_eq!(11, members.len());
+
+    // Cleanup
+    for actor in actors {
+        actor.stop(None);
+    }
+    for handle in handles.into_iter() {
+        handle.await.expect("Actor cleanup failed");
+    }
 }
