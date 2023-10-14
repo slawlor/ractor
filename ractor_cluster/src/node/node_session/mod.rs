@@ -12,7 +12,7 @@ use std::convert::TryInto;
 use std::net::SocketAddr;
 
 use ractor::message::SerializedMessage;
-use ractor::pg::{GroupChangeMessage, DEFAULT_SCOPE};
+use ractor::pg::{which_scopes_and_groups, GroupChangeMessage};
 use ractor::registry::PidLifecycleEvent;
 use ractor::rpc::CallResult;
 use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, SpawnErr, SupervisionEvent};
@@ -688,12 +688,10 @@ impl NodeSession {
             myself.get_cell(),
         );
 
-        // Scan all PG groups + synchronize them
-        let groups = ractor::pg::which_groups();
-        // TODO: Add this for all scopes!
-        let scope = DEFAULT_SCOPE;
-        for group in groups {
-            let local_members = ractor::pg::get_local_members(&group)
+        // Scan all scopes with their PG groups + synchronize them
+        let scopes_and_groups = which_scopes_and_groups();
+        for (scope, group) in scopes_and_groups {
+            let local_members = ractor::pg::get_local_members_with_scope(&scope, &group)
                 .into_iter()
                 .filter(|v| v.supports_remoting())
                 .map(|act| control_protocol::Actor {
