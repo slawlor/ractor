@@ -696,7 +696,7 @@ impl NodeSession {
         // Scan all scopes with their PG groups + synchronize them
         let scopes_and_groups = which_scopes_and_groups();
         for (scope, group) in scopes_and_groups {
-            let local_members = ractor::pg::get_local_members_with_scope(&scope, &group)
+            let local_members = ractor::pg::get_local_members_with_named_scope(&scope, &group)
                 .into_iter()
                 .filter(|v| v.supports_remoting())
                 .map(|act| control_protocol::Actor {

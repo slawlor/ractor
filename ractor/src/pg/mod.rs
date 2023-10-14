@@ -358,7 +358,10 @@ pub fn get_local_members(group_name: &GroupName) -> Vec<ActorCell> {
 /// * `group_name` - Either a statically named group
 ///
 /// Returns a [`Vec<ActorCell>`] representing the members of this paging group
-pub fn get_local_members_with_scope(scope: &ScopeName, group_name: &GroupName) -> Vec<ActorCell> {
+pub fn get_local_members_with_named_scope(
+    scope: &ScopeName,
+    group_name: &GroupName,
+) -> Vec<ActorCell> {
     let monitor = get_monitor();
     if let Some(actors) = monitor.map.get(&(scope.to_owned(), group_name.to_owned())) {
         actors
@@ -396,7 +399,7 @@ pub fn get_members(group_name: &GroupName) -> Vec<ActorCell> {
 /// * `group_name` - Either a statically named group or scope
 ///
 /// Returns a [`Vec<ActorCell>`] with the member actors
-pub fn get_members_with_scope(scope: &ScopeName, group_name: &GroupName) -> Vec<ActorCell> {
+pub fn get_members_with_named_scope(scope: &ScopeName, group_name: &GroupName) -> Vec<ActorCell> {
     let monitor = get_monitor();
     if let Some(actors) = monitor.map.get(&(scope.to_owned(), group_name.to_owned())) {
         actors.value().values().cloned().collect::<Vec<_>>()
