@@ -28,12 +28,14 @@ use once_cell::sync::OnceCell;
 
 use crate::{ActorCell, ActorId, GroupName, ScopeName, SupervisionEvent};
 
-/// Key to set and monitor the default scope
-pub const DEFAULT_SCOPE: &str = "__default__";
+/// Key to set the default scope
+pub const DEFAULT_SCOPE: &str = "__default_scope__";
 
-// TODO: Check how to handle a call to all groups vs to all in a scope.
-/// Key to monitor all of the groups
-pub const ALL_GROUPS_NOTIFICATION: &str = "__world__";
+/// Key to monitor all of the scopes
+pub const ALL_SCOPES_NOTIFICATION: &str = "__world_scope__";
+
+/// Key to monitor all of the groups in a scope
+pub const ALL_GROUPS_NOTIFICATION: &str = "__world_group_";
 
 #[cfg(test)]
 mod tests;
@@ -115,15 +117,20 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
             ));
         }
     }
+
     // notify the world monitors
-    if let Some(listeners) = monitor
-        .listeners
-        .get(&(DEFAULT_SCOPE.to_owned(), ALL_GROUPS_NOTIFICATION.to_owned()))
-    {
-        for listener in listeners.value() {
-            let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                GroupChangeMessage::Join(DEFAULT_SCOPE.to_owned(), group.clone(), actors.clone()),
-            ));
+    let world_monitor_keys = get_world_monitor_keys();
+    for key in world_monitor_keys {
+        if let Some(listeners) = monitor.listeners.get(&key) {
+            for listener in listeners.value() {
+                let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
+                    GroupChangeMessage::Join(
+                        DEFAULT_SCOPE.to_owned(),
+                        group.clone(),
+                        actors.clone(),
+                    ),
+                ));
+            }
         }
     }
 }
@@ -160,14 +167,14 @@ pub fn join_with_named_scope(scope: ScopeName, group: GroupName, actors: Vec<Act
         }
     }
     // notify the world monitors
-    if let Some(listeners) = monitor
-        .listeners
-        .get(&(scope.to_owned(), ALL_GROUPS_NOTIFICATION.to_owned()))
-    {
-        for listener in listeners.value() {
-            let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                GroupChangeMessage::Join(scope.to_owned(), group.clone(), actors.clone()),
-            ));
+    let world_monitor_keys = get_world_monitor_keys();
+    for key in world_monitor_keys {
+        if let Some(listeners) = monitor.listeners.get(&key) {
+            for listener in listeners.value() {
+                let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
+                    GroupChangeMessage::Join(scope.to_owned(), group.clone(), actors.clone()),
+                ));
+            }
         }
     }
 }
@@ -249,14 +256,18 @@ pub fn leave_with_named_scope(scope: ScopeName, group: GroupName, actors: Vec<Ac
                 }
             }
             // notify the world monitors
-            if let Some(listeners) = monitor
-                .listeners
-                .get(&(scope.to_owned(), ALL_GROUPS_NOTIFICATION.to_owned()))
-            {
-                for listener in listeners.value() {
-                    let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                        GroupChangeMessage::Leave(scope.to_owned(), group.clone(), actors.clone()),
-                    ));
+            let world_monitor_keys = get_world_monitor_keys();
+            for key in world_monitor_keys {
+                if let Some(listeners) = monitor.listeners.get(&key) {
+                    for listener in listeners.value() {
+                        let _ = listener.send_supervisor_evt(
+                            SupervisionEvent::ProcessGroupChanged(GroupChangeMessage::Leave(
+                                scope.to_owned(),
+                                group.clone(),
+                                actors.clone(),
+                            )),
+                        );
+                    }
                 }
             }
         }
@@ -474,6 +485,18 @@ pub fn monitor(group_name: GroupName, actor: ActorCell) {
 /// * `actor` - The [ActorCell] representing who will receive updates
 pub fn monitor_scope(scope: ScopeName, actor: ActorCell) {
     let monitor = get_monitor();
+
+    // Register at world monitor first
+    match monitor
+        .listeners
+        .entry((scope.clone(), ALL_GROUPS_NOTIFICATION.to_owned()))
+    {
+        Occupied(mut occupied) => occupied.get_mut().push(actor.clone()),
+        Vacant(vacancy) => {
+            vacancy.insert(vec![actor.clone()]);
+        }
+    }
+
     let groups_in_scope = which_groups_in_named_scope(&scope);
     for group in groups_in_scope {
         match monitor.listeners.entry((scope.to_owned(), group)) {
@@ -540,4 +563,23 @@ pub(crate) fn demonitor_all(actor: ActorId) {
     for empty_group in empty_groups {
         monitor.listeners.remove(&empty_group);
     }
+}
+
+/// Gets the keys for the world monitors.
+///
+/// Returns a `Vec<ScopeName, GroupName>` represending all registered tuples
+/// for which ane of the values is equivalent to one of the world_monitor_keys
+fn get_world_monitor_keys() -> Vec<(ScopeName, GroupName)> {
+    let monitor = get_monitor();
+    let mut world_monitor_keys = monitor
+        .listeners
+        .iter()
+        .map(|kvp| kvp.key().clone())
+        .filter(|(scope_name, group_name)| {
+            scope_name == ALL_SCOPES_NOTIFICATION || group_name == ALL_GROUPS_NOTIFICATION
+        })
+        .collect::<Vec<(String, String)>>();
+    world_monitor_keys.sort_unstable();
+    world_monitor_keys.dedup();
+    world_monitor_keys
 }

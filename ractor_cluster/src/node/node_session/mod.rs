@@ -682,6 +682,11 @@ impl NodeSession {
             state.tcp_send_control(msg);
         }
 
+        // setup scope monitoring
+        ractor::pg::monitor_scope(
+            ractor::pg::ALL_SCOPES_NOTIFICATION.to_string(),
+            myself.get_cell(),
+        );
         // setup PG monitoring
         ractor::pg::monitor(
             ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
@@ -874,6 +879,10 @@ impl Actor for NodeSession {
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         // unhook monitoring sessions
+        ractor::pg::demonitor_scope(
+            ractor::pg::ALL_SCOPES_NOTIFICATION.to_string(),
+            myself.get_id(),
+        );
         ractor::pg::demonitor(
             ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
             myself.get_id(),
