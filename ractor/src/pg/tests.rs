@@ -64,15 +64,53 @@ async fn test_basic_group_in_named_scope() {
     let group = function_name!().to_string();
 
     // join the group
-    pg::join_with_named_scope(scope.clone(), group.clone(), vec![actor.clone().into()]);
+    pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
 
-    let members = pg::get_members_with_named_scope(&scope, &group);
+    let members = pg::get_scoped_members(&scope, &group);
     assert_eq!(1, members.len());
 
     // Cleanup
     actor.stop(None);
     handle.await.expect("Actor cleanup failed");
 }
+
+// #[named]
+// #[crate::concurrency::test]
+// #[tracing_test::traced_test]
+// async fn test_which_scopes_and_groups() {
+//     let (actor, handle) = Actor::spawn(None, TestActor, ())
+//         .await
+//         .expect("Failed to spawn test actor");
+
+//     let scope_a = concat!(function_name!(), "_a").to_string();
+//     let scope_b = concat!(function_name!(), "_b").to_string();
+//     let group_a = concat!(function_name!(), "_a").to_string();
+//     let group_b = concat!(function_name!(), "_b").to_string();
+
+//     // join all scopes twice with each group
+//     let scope_group = [
+//         (scope_a.clone(), group_a.clone()),
+//         (scope_a.clone(), group_b.clone()),
+//         (scope_b.clone(), group_a.clone()),
+//         (scope_b.clone(), group_b.clone()),
+//     ];
+
+//     for (scope, group) in scope_group.iter() {
+//         pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
+//         pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
+//     }
+
+//     let scopes_and_groups = which_scopes_and_groups();
+//     println!("Scopes and groups are: {:#?}", scopes_and_groups);
+//     assert_eq!(4, scopes_and_groups.len());
+
+//     // Cleanup
+//     actor.stop(None);
+//     handle.await.expect("Actor cleanup failed");
+
+//     let scopes_and_groups = which_scopes_and_groups();
+//     assert!(scopes_and_groups.is_empty());
+// }
 
 #[named]
 #[crate::concurrency::test]
@@ -114,7 +152,7 @@ async fn test_multiple_members_in_group() {
 #[named]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
-async fn test_multiple_members_in_group_in_named_scope() {
+async fn test_multiple_members_in_scoped_group() {
     let scope = function_name!().to_string();
     let group = function_name!().to_string();
 
@@ -129,7 +167,7 @@ async fn test_multiple_members_in_group_in_named_scope() {
     }
 
     // join the group
-    pg::join_with_named_scope(
+    pg::join_scoped(
         scope.clone(),
         group.clone(),
         actors
@@ -138,7 +176,7 @@ async fn test_multiple_members_in_group_in_named_scope() {
             .collect::<Vec<_>>(),
     );
 
-    let members = pg::get_members_with_named_scope(&scope, &group);
+    let members = pg::get_scoped_members(&scope, &group);
     assert_eq!(10, members.len());
 
     // Cleanup
@@ -153,7 +191,7 @@ async fn test_multiple_members_in_group_in_named_scope() {
 #[named]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
-async fn test_which_groups_in_named_scope() {
+async fn test_which_scoped_groups() {
     let scope = function_name!().to_string();
     let group = function_name!().to_string();
 
@@ -168,7 +206,7 @@ async fn test_which_groups_in_named_scope() {
     }
 
     // join the group
-    pg::join_with_named_scope(
+    pg::join_scoped(
         scope.clone(),
         group.clone(),
         actors
@@ -177,7 +215,7 @@ async fn test_which_groups_in_named_scope() {
             .collect::<Vec<_>>(),
     );
 
-    let groups_in_scope = pg::which_groups_in_named_scope(&scope);
+    let groups_in_scope = pg::which_scoped_groups(&scope);
     assert_eq!(vec![scope.clone()], groups_in_scope);
 
     // Cleanup
@@ -259,36 +297,36 @@ async fn test_multiple_groups_in_multiple_scopes() {
         .iter()
         .map(|a| a.clone().get_cell())
         .collect::<Vec<_>>();
-    pg::join_with_named_scope(scope_a.clone(), group_a.clone(), these_actors);
+    pg::join_scoped(scope_a.clone(), group_a.clone(), these_actors);
 
     let these_actors = actors[5..10]
         .iter()
         .map(|a| a.clone().get_cell())
         .collect::<Vec<_>>();
-    pg::join_with_named_scope(scope_a.clone(), group_b.clone(), these_actors);
+    pg::join_scoped(scope_a.clone(), group_b.clone(), these_actors);
 
     let these_actors = actors[0..5]
         .iter()
         .map(|a| a.clone().get_cell())
         .collect::<Vec<_>>();
-    pg::join_with_named_scope(scope_b.clone(), group_a.clone(), these_actors);
+    pg::join_scoped(scope_b.clone(), group_a.clone(), these_actors);
 
     let these_actors = actors[5..10]
         .iter()
         .map(|a| a.clone().get_cell())
         .collect::<Vec<_>>();
-    pg::join_with_named_scope(scope_b.clone(), group_b.clone(), these_actors);
+    pg::join_scoped(scope_b.clone(), group_b.clone(), these_actors);
 
-    let members = pg::get_members_with_named_scope(&scope_a, &group_a);
+    let members = pg::get_scoped_members(&scope_a, &group_a);
     assert_eq!(5, members.len());
 
-    let members = pg::get_members_with_named_scope(&scope_a, &group_b);
+    let members = pg::get_scoped_members(&scope_a, &group_b);
     assert_eq!(5, members.len());
 
-    let members = pg::get_members_with_named_scope(&scope_b, &group_a);
+    let members = pg::get_scoped_members(&scope_b, &group_a);
     assert_eq!(5, members.len());
 
-    let members = pg::get_members_with_named_scope(&scope_b, &group_b);
+    let members = pg::get_scoped_members(&scope_b, &group_b);
     assert_eq!(5, members.len());
 
     // Cleanup
@@ -337,9 +375,9 @@ async fn test_actor_leaves_scope_on_shupdown() {
     let group = function_name!().to_string();
 
     // join the scope and group
-    pg::join_with_named_scope(scope.clone(), group.clone(), vec![actor.clone().into()]);
+    pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
 
-    let members = pg::get_members_with_named_scope(&scope, &group);
+    let members = pg::get_scoped_members(&scope, &group);
     assert_eq!(1, members.len());
 
     // Cleanup
@@ -347,7 +385,7 @@ async fn test_actor_leaves_scope_on_shupdown() {
     handle.await.expect("Actor cleanup failed");
     drop(actor);
 
-    let members = pg::get_members_with_named_scope(&scope, &group);
+    let members = pg::get_scoped_members(&scope, &group);
     assert_eq!(0, members.len());
 }
 
@@ -399,7 +437,7 @@ async fn test_actor_leaves_scope_manually() {
         .expect("Failed to spawn test actor");
 
     // join the group in scope (create on first use)
-    pg::join_with_named_scope(scope.clone(), group.clone(), vec![actor.clone().into()]);
+    pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
 
     // the scope was created and is present
     let scopes = pg::which_scopes();
@@ -409,11 +447,11 @@ async fn test_actor_leaves_scope_manually() {
     let groups = pg::which_groups();
     assert!(groups.contains(&group));
 
-    let members = pg::get_members_with_named_scope(&scope, &group);
+    let members = pg::get_scoped_members(&scope, &group);
     assert_eq!(1, members.len());
 
     // leave the group
-    pg::leave_with_named_scope(scope.clone(), group.clone(), vec![actor.clone().into()]);
+    pg::leave_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
 
     // pif-paf-poof the scope is gone!
     let scopes = pg::which_scopes();
@@ -424,7 +462,7 @@ async fn test_actor_leaves_scope_manually() {
     assert!(!groups.contains(&group));
 
     // members comes back empty
-    let members = pg::get_members_with_named_scope(&scope, &group);
+    let members = pg::get_scoped_members(&scope, &group);
     assert_eq!(0, members.len());
 
     // Cleanup
@@ -562,7 +600,7 @@ async fn test_scope_monitoring() {
             myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
-            pg::join_with_named_scope(
+            pg::join_scoped(
                 self.scope.clone(),
                 self.pg_group.clone(),
                 vec![myself.into()],
@@ -800,13 +838,13 @@ async fn local_vs_remote_pg_members_in_named_scopes() {
     handles.push(handle);
 
     // join the group in scope
-    pg::join_with_named_scope(scope.clone(), group.clone(), actors.to_vec());
+    pg::join_scoped(scope.clone(), group.clone(), actors.to_vec());
 
     // assert
-    let members = pg::get_local_members_with_named_scope(&scope, &group);
+    let members = pg::get_scoped_local_members(&scope, &group);
     assert_eq!(10, members.len());
 
-    let members = pg::get_members_with_named_scope(&scope, &group);
+    let members = pg::get_scoped_members(&scope, &group);
     assert_eq!(11, members.len());
 
     // Cleanup
