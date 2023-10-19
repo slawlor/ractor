@@ -15,8 +15,9 @@ use crate::{Actor, ActorRef};
 use super::*;
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_single_forward() {
+    crate::common_test::setup();
     struct TestActor;
     enum TestActorMessage {
         Stop,
@@ -79,8 +80,9 @@ async fn test_single_forward() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_50_receivers() {
+    crate::common_test::setup();
     struct TestActor;
     enum TestActorMessage {
         Stop,

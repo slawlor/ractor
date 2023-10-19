@@ -228,7 +228,8 @@ fn init_logging() {
     tracing::subscriber::set_global_default(subscriber).expect("to set global subscriber");
 }
 
-#[tokio::main]
+#[cfg_attr(not(target_arch = "wasm32"), tokio::main)]
+#[cfg_attr(target_arch = "wasm32", tokio::main(flavor = "current_thread"))]
 async fn main() {
     init_logging();
 

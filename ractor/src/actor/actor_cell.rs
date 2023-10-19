@@ -12,7 +12,7 @@
 use std::any::TypeId;
 use std::sync::Arc;
 
-#[cfg(feature = "async-std")]
+#[cfg(any(feature = "async-std", target_arch = "wasm32"))]
 use futures::FutureExt;
 
 use super::messages::{Signal, StopMessage};
@@ -110,7 +110,7 @@ impl ActorPortSet {
     where
         TState: crate::State,
     {
-        #[cfg(feature = "async-std")]
+        #[cfg(any(feature = "async-std", target_arch = "wasm32"))]
         {
             crate::concurrency::select! {
                 // supervision or message processing work
@@ -124,7 +124,7 @@ impl ActorPortSet {
                 }
             }
         }
-        #[cfg(not(feature = "async-std"))]
+        #[cfg(not(any(feature = "async-std", target_arch = "wasm32")))]
         {
             crate::concurrency::select! {
                 // supervision or message processing work
@@ -149,7 +149,7 @@ impl ActorPortSet {
     /// Returns [Ok(ActorPortMessage)] on a successful message reception, [MessagingErr]
     /// in the event any of the channels is closed.
     pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr<()>> {
-        #[cfg(feature = "async-std")]
+        #[cfg(any(feature = "async-std", target_arch = "wasm32"))]
         {
             crate::concurrency::select! {
                 signal = self.signal_rx.recv().fuse() => {
@@ -166,7 +166,7 @@ impl ActorPortSet {
                 }
             }
         }
-        #[cfg(not(feature = "async-std"))]
+        #[cfg(not(any(feature = "async-std", target_arch = "wasm32")))]
         {
             crate::concurrency::select! {
                 signal = self.signal_rx.recv() => {

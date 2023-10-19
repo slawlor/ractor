@@ -4,6 +4,9 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 //! Concurrency primitaves based on the `async-std` crate
+//! 
+//! We still rely on tokio for some core executor-independent parts
+//! such as channels (see: https://github.com/tokio-rs/tokio/issues/4232#issuecomment-968329443).
 
 use std::{
     future::Future,
@@ -147,19 +150,7 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    let signal = Arc::new(AtomicBool::new(false));
-    let inner_signal = signal.clone();
-
-    let jh = async_std::task::spawn(async move {
-        let r = future.await;
-        inner_signal.fetch_or(true, Ordering::Relaxed);
-        r
-    });
-
-    JoinHandle {
-        handle: Some(jh),
-        is_done: signal,
-    }
+    spawn_named(None, future)
 }
 
 /// Spawn a (possibly) named task on the executor runtime
@@ -186,7 +177,19 @@ where
             is_done: signal,
         }
     } else {
-        spawn(future)
+        let signal = Arc::new(AtomicBool::new(false));
+        let inner_signal = signal.clone();
+
+        let jh = async_std::task::spawn(async move {
+            let r = future.await;
+            inner_signal.fetch_or(true, Ordering::Relaxed);
+            r
+        });
+
+        JoinHandle {
+            handle: Some(jh),
+            is_done: signal,
+        }
     }
 }
 

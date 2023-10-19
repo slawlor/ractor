@@ -5,9 +5,15 @@
 
 //! Shared concurrency primitives utilized within the library for different frameworks (tokio, async-std, etc)
 
-/// A timoeout error
+/// A timeout error
 #[derive(Debug)]
 pub struct Timeout;
+impl std::error::Error for Timeout {}
+impl std::fmt::Display for Timeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Timeout")
+    }
+}
 
 /// A one-use sender
 pub type OneshotSender<T> = tokio::sync::oneshot::Sender<T>;
@@ -49,12 +55,17 @@ pub fn broadcast<T: Clone>(buffer: usize) -> (BroadcastSender<T>, BroadcastRecei
     tokio::sync::broadcast::channel(buffer)
 }
 
-#[cfg(not(feature = "async-std"))]
+#[cfg(not(any(feature = "async-std", target_arch = "wasm32")))]
 pub mod tokio_primatives;
-#[cfg(not(feature = "async-std"))]
+#[cfg(not(any(feature = "async-std", target_arch = "wasm32")))]
 pub use self::tokio_primatives::*;
 
-#[cfg(feature = "async-std")]
+#[cfg(all(feature = "async-std", not(target_arch = "wasm32")))]
 pub mod async_std_primatives;
-#[cfg(feature = "async-std")]
+#[cfg(all(feature = "async-std", not(target_arch = "wasm32")))]
 pub use self::async_std_primatives::*;
+
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_primatives;
+#[cfg(target_arch = "wasm32")]
+pub use self::wasm_primatives::*;

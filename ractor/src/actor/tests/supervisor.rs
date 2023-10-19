@@ -18,8 +18,9 @@ use crate::{
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervision_panic_in_post_startup() {
+    crate::common_test::setup();
     struct Child;
     struct Supervisor {
         flag: Arc<AtomicU64>,
@@ -106,8 +107,9 @@ async fn test_supervision_panic_in_post_startup() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervision_error_in_post_startup() {
+    crate::common_test::setup();
     struct Child;
     struct Supervisor {
         flag: Arc<AtomicU64>,
@@ -194,8 +196,9 @@ async fn test_supervision_error_in_post_startup() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervision_panic_in_handle() {
+    crate::common_test::setup();
     struct Child;
     struct Supervisor {
         flag: Arc<AtomicU64>,
@@ -291,8 +294,9 @@ async fn test_supervision_panic_in_handle() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervision_error_in_handle() {
+    crate::common_test::setup();
     struct Child;
     struct Supervisor {
         flag: Arc<AtomicU64>,
@@ -388,8 +392,9 @@ async fn test_supervision_error_in_handle() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervision_panic_in_post_stop() {
+    crate::common_test::setup();
     struct Child;
     struct Supervisor {
         flag: Arc<AtomicU64>,
@@ -469,8 +474,9 @@ async fn test_supervision_panic_in_post_stop() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervision_error_in_post_stop() {
+    crate::common_test::setup();
     struct Child;
     struct Supervisor {
         flag: Arc<AtomicU64>,
@@ -552,8 +558,9 @@ async fn test_supervision_error_in_post_stop() {
 /// Test that a panic in the supervisor's handling propagates to
 /// the supervisor's supervisor
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervision_panic_in_supervisor_handle() {
+    crate::common_test::setup();
     struct Child;
     struct Midpoint;
     struct Supervisor {
@@ -694,8 +701,9 @@ async fn test_supervision_panic_in_supervisor_handle() {
 /// Test that a panic in the supervisor's handling propagates to
 /// the supervisor's supervisor
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervision_error_in_supervisor_handle() {
+    crate::common_test::setup();
     struct Child;
     struct Midpoint;
     struct Supervisor {
@@ -834,8 +842,9 @@ async fn test_supervision_error_in_supervisor_handle() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_killing_a_supervisor_terminates_children() {
+    crate::common_test::setup();
     struct Child;
     struct Supervisor;
 
@@ -907,8 +916,9 @@ async fn test_killing_a_supervisor_terminates_children() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn instant_supervised_spawns() {
+    crate::common_test::setup();
     let counter = Arc::new(AtomicU8::new(0));
 
     struct EmptySupervisor;
@@ -1001,8 +1011,9 @@ async fn instant_supervised_spawns() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervisor_captures_dead_childs_state() {
+    crate::common_test::setup();
     struct Child;
     struct Supervisor {
         flag: Arc<AtomicU64>,
@@ -1106,8 +1117,9 @@ async fn test_supervisor_captures_dead_childs_state() {
 // 1. terminate_children_after()
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_supervisor_double_link() {
+    crate::common_test::setup();
     struct Who;
 
     #[crate::async_trait]
@@ -1148,8 +1160,9 @@ async fn test_supervisor_double_link() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_simple_monitor() {
+    crate::common_test::setup();
     struct Peer;
     struct Monitor {
         counter: Arc<AtomicU8>,

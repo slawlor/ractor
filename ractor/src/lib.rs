@@ -150,6 +150,9 @@ pub mod actor;
 pub(crate) mod common_test;
 pub mod concurrency;
 pub mod errors;
+// TODO #124 (slawlor): Redesign this without usage of core time primatives (i.e.
+// use concurrency instants)
+#[cfg(not(target_arch = "wasm32"))]
 pub mod factory;
 pub mod macros;
 pub mod message;
@@ -166,8 +169,6 @@ pub mod time;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-use criterion as _;
-#[cfg(test)]
 use paste as _;
 #[cfg(test)]
 use rand as _;
@@ -175,6 +176,14 @@ use rand as _;
 use tracing_glog as _;
 #[cfg(test)]
 use tracing_subscriber as _;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use criterion as _;
+
+#[cfg(target_arch = "wasm32")]
+use getrandom as _;
+#[cfg(target_arch = "wasm32")]
+use parking_lot as _;
 
 // ======================== Re-exports ======================== //
 

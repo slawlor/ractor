@@ -5,6 +5,7 @@
 
 //! Basic tests of errors, error conversions, etc
 
+use crate::concurrency::Duration;
 use crate::Actor;
 use crate::ActorCell;
 use crate::ActorProcessingErr;
@@ -12,8 +13,10 @@ use crate::ActorRef;
 use crate::RactorErr;
 
 #[test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 fn test_error_conversions() {
+    crate::common_test::setup();
+
     let spawn = crate::SpawnErr::StartupCancelled;
     let ractor_err = RactorErr::<()>::from(crate::SpawnErr::StartupCancelled);
     assert_eq!(spawn.to_string(), ractor_err.to_string());
@@ -39,8 +42,10 @@ fn test_error_conversions() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_error_message_extraction() {
+    crate::common_test::setup();
+
     struct TestActor;
 
     #[async_trait::async_trait]
@@ -75,4 +80,11 @@ async fn test_error_message_extraction() {
     let err = crate::cast!(bad_message_actor, 0u32).expect_err("Not an error!");
     assert!(!err.has_message());
     assert!(err.try_get_message().is_none());
+}
+
+#[crate::concurrency::test]
+async fn test_platform_sleep_works() {
+    crate::common_test::setup();
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
+    assert!(true);
 }

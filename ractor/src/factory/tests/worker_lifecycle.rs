@@ -94,7 +94,7 @@ impl WorkerBuilder<MyWorker> for MyWorkerBuilder {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(not(target_arch = "wasm32"), tracing_test::traced_test)]
 async fn test_worker_death_restarts_and_gets_next_message() {
     let counter = Arc::new(AtomicU16::new(0));
     let worker_builder = MyWorkerBuilder {
