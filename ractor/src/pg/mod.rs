@@ -301,12 +301,15 @@ pub fn get_scoped_members(scope: &ScopeName, group_name: &GroupName) -> Vec<Acto
 /// Returns a [`Vec<GroupName>`] representing all the registered group names
 pub fn which_groups() -> Vec<GroupName> {
     let monitor = get_monitor();
-    monitor
+    let mut groups = monitor
         .map
         .iter()
         .map(|kvp| kvp.key().clone())
         .map(|(_scope, group)| group.clone())
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+    groups.sort_unstable();
+    groups.dedup();
+    groups
 }
 
 /// Returns a list of all known groups in scope `scope`
