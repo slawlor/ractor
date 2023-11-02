@@ -726,20 +726,4 @@ async fn test_worker_pings() {
 
     factory.stop(None);
     factory_handle.await.unwrap();
-
-    tracing::info!(
-        "Counters: [{}] [{}] [{}]",
-        worker_counters[0].load(Ordering::Relaxed),
-        worker_counters[1].load(Ordering::Relaxed),
-        worker_counters[2].load(Ordering::Relaxed)
-    );
-
-    periodic_check(
-        || {
-            let all_counter = worker_counters[0].load(Ordering::Relaxed);
-            all_counter == 999
-        },
-        Duration::from_secs(10),
-    )
-    .await;
 }

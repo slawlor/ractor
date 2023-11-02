@@ -3,6 +3,9 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
+// TODO #124 (slawlor): Redesign this without usage of core time primatives (i.e.
+// use concurrency instants)
+#[cfg(not(target_arch = "wasm32"))]
 use std::future::Future;
 
 use crate::concurrency::sleep;
@@ -20,7 +23,9 @@ where
         }
         sleep(Duration::from_millis(50)).await;
     }
-    assert!(check());
+
+    let backtrace = backtrace::Backtrace::new();
+    assert!(check(), "Periodic check failed.\n{:?}", backtrace);
 }
 
 pub async fn periodic_async_check<F, Fut>(check: F, timeout: Duration)
@@ -35,5 +40,11 @@ where
         }
         sleep(Duration::from_millis(50)).await;
     }
-    assert!(check().await);
+
+    let backtrace = backtrace::Backtrace::new();
+    assert!(
+        check().await,
+        "Async periodic check failed.\n{:?}",
+        backtrace
+    );
 }

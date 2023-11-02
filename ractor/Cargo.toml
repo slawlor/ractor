@@ -34,6 +34,7 @@ async-std = { version = "1", features = ["attributes"], optional = true}
 tracing = { version = "0.1", features = ["attributes"] }
 
 [dev-dependencies]
+backtrace = "0.3"
 criterion = "0.5"
 function_name = "0.3"
 paste = "1"

@@ -5,9 +5,15 @@
 
 //! Shared concurrency primitives utilized within the library for different frameworks (tokio, async-std, etc)
 
-/// A timoeout error
+/// A timeout error
 #[derive(Debug)]
 pub struct Timeout;
+impl std::error::Error for Timeout {}
+impl std::fmt::Display for Timeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Timeout")
+    }
+}
 
 /// A one-use sender
 pub type OneshotSender<T> = tokio::sync::oneshot::Sender<T>;

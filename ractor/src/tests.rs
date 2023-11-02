@@ -5,6 +5,7 @@
 
 //! Basic tests of errors, error conversions, etc
 
+use crate::concurrency::Duration;
 use crate::Actor;
 use crate::ActorCell;
 use crate::ActorProcessingErr;
@@ -75,4 +76,9 @@ async fn test_error_message_extraction() {
     let err = crate::cast!(bad_message_actor, 0u32).expect_err("Not an error!");
     assert!(!err.has_message());
     assert!(err.try_get_message().is_none());
+}
+
+#[crate::concurrency::test]
+async fn test_platform_sleep_works() {
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
 }
