@@ -104,7 +104,7 @@ fn get_monitor<'a>() -> &'a PgState {
 
 /// Join actors to the group `group` in the default scope
 ///
-/// * `group` - The statically named group. Will be created if first actors to join
+/// * `group` - The named group. Will be created if first actors to join
 /// * `actors` - The list of [crate::Actor]s to add to the group
 pub fn join(group: GroupName, actors: Vec<ActorCell>) {
     join_scoped(DEFAULT_SCOPE.to_owned(), group, actors);
@@ -112,8 +112,8 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
 
 /// Join actors to the group `group` within the scope `scope`
 ///
-/// * `scope` - the statically named scope. Will be created if first actors join
-/// * `group` - The statically named group. Will be created if first actors to join
+/// * `scope` - the named scope. Will be created if first actors to join
+/// * `group` - The named group. Will be created if first actors to join
 /// * `actors` - The list of [crate::Actor]s to add to the group
 pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
     let key = ScopeGroupKey {
@@ -161,7 +161,7 @@ pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
 
 /// Leaves the specified [crate::Actor]s from the PG group in the default scope
 ///
-/// * `group` - The statically named group
+/// * `group` - A named group
 /// * `actors` - The list of actors to remove from the group
 pub fn leave(group: GroupName, actors: Vec<ActorCell>) {
     leave_scoped(DEFAULT_SCOPE.to_owned(), group, actors);
@@ -169,8 +169,8 @@ pub fn leave(group: GroupName, actors: Vec<ActorCell>) {
 
 /// Leaves the specified [crate::Actor]s from the PG group within the scope `scope`
 ///
-/// * `scope` - The statically named scope
-/// * `group` - The statically named group
+/// * `scope` - A named scope
+/// * `group` - A named group
 /// * `actors` - The list of actors to remove from the group
 pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
     let key = ScopeGroupKey {
@@ -275,7 +275,7 @@ pub(crate) fn leave_all(actor: ActorId) {
 /// Returns all actors running on the local node in the group `group`
 /// in the default scope.
 ///
-/// * `group_name` - Either a statically named group
+/// * `group` - A named group
 ///
 /// Returns a [`Vec<ActorCell>`] representing the members of this paging group
 pub fn get_local_members(group: &GroupName) -> Vec<ActorCell> {
@@ -285,8 +285,8 @@ pub fn get_local_members(group: &GroupName) -> Vec<ActorCell> {
 /// Returns all actors running on the local node in the group `group`
 /// in scope `scope`
 ///
-/// * `scope_name` - A statically named scope
-/// * `group_name` - Either a statically named group
+/// * `scope_name` - A named scope
+/// * `group_name` - A named group
 ///
 /// Returns a [`Vec<ActorCell>`] representing the members of this paging group
 pub fn get_scoped_local_members(scope: &ScopeName, group: &GroupName) -> Vec<ActorCell> {
@@ -310,7 +310,7 @@ pub fn get_scoped_local_members(scope: &ScopeName, group: &GroupName) -> Vec<Act
 /// Returns all the actors running on any node in the group `group`
 /// in the default scope.
 ///
-/// * `group_name` - Either a statically named group or scope
+/// * `group_name` - A named group
 ///
 /// Returns a [`Vec<ActorCell>`] with the member actors
 pub fn get_members(group_name: &GroupName) -> Vec<ActorCell> {
@@ -320,7 +320,8 @@ pub fn get_members(group_name: &GroupName) -> Vec<ActorCell> {
 /// Returns all the actors running on any node in the group `group`
 /// in the scope `scope`.
 ///
-/// * `group_name` - Either a statically named group or scope
+/// * `scope` - A named scope
+/// * `group` - A named group
 ///
 /// Returns a [`Vec<ActorCell>`] with the member actors
 pub fn get_scoped_members(scope: &ScopeName, group: &GroupName) -> Vec<ActorCell> {
@@ -375,7 +376,7 @@ pub fn which_scoped_groups(scope: &ScopeName) -> Vec<GroupName> {
 
 /// Returns a list of all known scope-group combinations.
 ///
-/// Returns a [`Vec<(ScopeName,GroupName)>`] representing all the registered
+/// Returns a [`Vec<(ScopGroupKey)>`] representing all the registered
 /// combinations that form an identifying tuple
 pub fn which_scopes_and_groups() -> Vec<ScopeGroupKey> {
     let monitor = get_monitor();
@@ -518,7 +519,7 @@ pub(crate) fn demonitor_all(actor: ActorId) {
 
 /// Gets the keys for the world monitors.
 ///
-/// Returns a `Vec<ScopeName, GroupName>` represending all registered tuples
+/// Returns a `Vec<ScopeGroupKey>` represending all registered tuples
 /// for which ane of the values is equivalent to one of the world_monitor_keys
 fn get_world_monitor_keys() -> Vec<ScopeGroupKey> {
     let monitor = get_monitor();
