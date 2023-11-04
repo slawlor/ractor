@@ -344,8 +344,7 @@ pub fn which_groups() -> Vec<GroupName> {
     let mut groups = monitor
         .map
         .iter()
-        .map(|kvp| kvp.key().clone())
-        .map(|kvp| kvp.group.clone())
+        .map(|kvp| kvp.key().group.to_owned())
         .collect::<Vec<_>>();
     groups.sort_unstable();
     groups.dedup();
@@ -363,9 +362,14 @@ pub fn which_scoped_groups(scope: &ScopeName) -> Vec<GroupName> {
     monitor
         .map
         .iter()
-        .map(|kvp| kvp.key().clone())
-        .filter(|kvp| kvp.scope == *scope)
-        .map(|kvp| kvp.group.clone())
+        .filter_map(|kvp| {
+            let key = kvp.key();
+            if key.scope == *scope {
+                Some(key.group.to_owned())
+            } else {
+                None
+            }
+        })
         .collect::<Vec<_>>()
 }
 
@@ -390,8 +394,10 @@ pub fn which_scopes() -> Vec<ScopeName> {
     monitor
         .map
         .iter()
-        .map(|kvp| kvp.key().clone())
-        .map(|kvp| kvp.scope.clone())
+        .map(|kvp| {
+            let key = kvp.key();
+            key.scope.to_owned()
+        })
         .collect::<Vec<_>>()
 }
 
@@ -519,8 +525,14 @@ fn get_world_monitor_keys() -> Vec<ScopeGroupKey> {
     let mut world_monitor_keys = monitor
         .listeners
         .iter()
-        .map(|kvp| kvp.key().clone())
-        .filter(|kvp| kvp.scope == ALL_SCOPES_NOTIFICATION || kvp.group == ALL_GROUPS_NOTIFICATION)
+        .filter_map(|kvp| {
+            let key = kvp.key().clone();
+            if key.scope == ALL_SCOPES_NOTIFICATION || key.group == ALL_GROUPS_NOTIFICATION {
+                Some(key)
+            } else {
+                None
+            }
+        })
         .collect::<Vec<ScopeGroupKey>>();
     world_monitor_keys.sort_unstable();
     world_monitor_keys.dedup();
