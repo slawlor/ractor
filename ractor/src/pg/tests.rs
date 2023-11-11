@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::common_test::periodic_check;
 use crate::concurrency::Duration;
 use ::function_name::named;
+use serial_test::serial;
 
 use crate::{Actor, ActorProcessingErr, GroupName, ScopeName, SupervisionEvent};
 
@@ -74,43 +75,44 @@ async fn test_basic_group_in_named_scope() {
     handle.await.expect("Actor cleanup failed");
 }
 
-// #[named]
-// #[crate::concurrency::test]
-// #[tracing_test::traced_test]
-// async fn test_which_scopes_and_groups() {
-//     let (actor, handle) = Actor::spawn(None, TestActor, ())
-//         .await
-//         .expect("Failed to spawn test actor");
+#[named]
+#[serial]
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_which_scopes_and_groups() {
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to spawn test actor");
 
-//     let scope_a = concat!(function_name!(), "_a").to_string();
-//     let scope_b = concat!(function_name!(), "_b").to_string();
-//     let group_a = concat!(function_name!(), "_a").to_string();
-//     let group_b = concat!(function_name!(), "_b").to_string();
+    let scope_a = concat!(function_name!(), "_a").to_string();
+    let scope_b = concat!(function_name!(), "_b").to_string();
+    let group_a = concat!(function_name!(), "_a").to_string();
+    let group_b = concat!(function_name!(), "_b").to_string();
 
-//     // join all scopes twice with each group
-//     let scope_group = [
-//         (scope_a.clone(), group_a.clone()),
-//         (scope_a.clone(), group_b.clone()),
-//         (scope_b.clone(), group_a.clone()),
-//         (scope_b.clone(), group_b.clone()),
-//     ];
+    // join all scopes twice with each group
+    let scope_group = [
+        (scope_a.clone(), group_a.clone()),
+        (scope_a.clone(), group_b.clone()),
+        (scope_b.clone(), group_a.clone()),
+        (scope_b.clone(), group_b.clone()),
+    ];
 
-//     for (scope, group) in scope_group.iter() {
-//         pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
-//         pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
-//     }
+    for (scope, group) in scope_group.iter() {
+        pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
+        pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
+    }
 
-//     let scopes_and_groups = which_scopes_and_groups();
-//     println!("Scopes and groups are: {:#?}", scopes_and_groups);
-//     assert_eq!(4, scopes_and_groups.len());
+    let scopes_and_groups = pg::which_scopes_and_groups();
+    // println!("Scopes and groups are: {:#?}", scopes_and_groups);
+    assert_eq!(4, scopes_and_groups.len());
 
-//     // Cleanup
-//     actor.stop(None);
-//     handle.await.expect("Actor cleanup failed");
+    // Cleanup
+    actor.stop(None);
+    handle.await.expect("Actor cleanup failed");
 
-//     let scopes_and_groups = which_scopes_and_groups();
-//     assert!(scopes_and_groups.is_empty());
-// }
+    let scopes_and_groups = pg::which_scopes_and_groups();
+    assert!(scopes_and_groups.is_empty());
+}
 
 #[named]
 #[crate::concurrency::test]
@@ -471,6 +473,7 @@ async fn test_actor_leaves_scope_manually() {
 }
 
 #[named]
+#[serial]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
 async fn test_pg_monitoring() {
@@ -576,6 +579,7 @@ async fn test_pg_monitoring() {
 }
 
 #[named]
+#[serial]
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
 async fn test_scope_monitoring() {
