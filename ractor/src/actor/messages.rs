@@ -121,6 +121,30 @@ impl SupervisionEvent {
             Self::PidLifecycleEvent(evt) => Self::PidLifecycleEvent(evt.clone()),
         }
     }
+
+    /// If this supervision event refers to an [Actor], return the [ActorCell]
+    /// for that [actor][Actor].
+    ///
+    ///
+    /// [ActorCell]: crate::ActorCell
+    /// [Actor]: crate::Actor
+    pub fn actor_cell(&self) -> Option<&super::actor_cell::ActorCell> {
+        match self {
+            Self::ActorStarted(who)
+            | Self::ActorPanicked(who, _)
+            | Self::ActorTerminated(who, _, _) => Some(who),
+            _ => None,
+        }
+    }
+
+    /// If this supervision event refers to an [Actor], return the [ActorId]
+    /// for that [actor][Actor].
+    ///
+    /// [ActorCell]: crate::ActorId
+    /// [Actor]: crate::Actor
+    pub fn actor_id(&self) -> Option<super::actor_id::ActorId> {
+        self.actor_cell().map(|cell| cell.get_id())
+    }
 }
 
 impl Debug for SupervisionEvent {
