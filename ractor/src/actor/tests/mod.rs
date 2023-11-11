@@ -907,3 +907,52 @@ fn test_err_map() {
 
     let _: RactorErr<()> = err.map(|_| ());
 }
+
+#[test]
+fn returns_actor_references() {
+    fn dummy_actor_cell() -> ActorCell {
+        ActorCell::new::<TestActor>(None).unwrap().0
+    }
+
+    struct TestActor;
+
+    #[async_trait::async_trait]
+    impl Actor for TestActor {
+        type Msg = EmptyMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let tests = [
+        (true, SupervisionEvent::ActorStarted(dummy_actor_cell())),
+        (
+            true,
+            SupervisionEvent::ActorPanicked(dummy_actor_cell(), "Bang!".into()),
+        ),
+        (
+            true,
+            SupervisionEvent::ActorTerminated(dummy_actor_cell(), None, Some("Foo!".to_owned())),
+        ),
+        (
+            false,
+            SupervisionEvent::ProcessGroupChanged(crate::pg::GroupChangeMessage::Leave(
+                "Foo".into(),
+                "Bar".into(),
+                vec![dummy_actor_cell()],
+            )),
+        ),
+    ];
+
+    for (want, event) in tests {
+        assert_eq!(event.actor_cell().is_some(), want);
+        assert_eq!(event.actor_id().is_some(), want);
+    }
+}
