@@ -760,6 +760,7 @@ async fn node_session_handle_control() {
         .expect("Failed to process control message");
     assert_eq!(0, state.remote_actors.len());
 
+    let scope_name = "node_session_test_scope";
     let group_name = "node_session_handle_control";
 
     // check pg join spawns + joins to a pg group
@@ -769,6 +770,7 @@ async fn node_session_handle_control() {
             control_protocol::ControlMessage {
                 msg: Some(control_protocol::control_message::Msg::PgJoin(
                     control_protocol::PgJoin {
+                        scope: scope_name.to_string(),
                         group: group_name.to_string(),
                         actors: vec![control_protocol::Actor {
                             name: None,
@@ -798,6 +800,7 @@ async fn node_session_handle_control() {
             control_protocol::ControlMessage {
                 msg: Some(control_protocol::control_message::Msg::PgLeave(
                     control_protocol::PgLeave {
+                        scope: scope_name.to_string(),
                         group: group_name.to_string(),
                         actors: vec![control_protocol::Actor {
                             name: None,

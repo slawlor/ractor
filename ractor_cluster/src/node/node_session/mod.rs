@@ -12,7 +12,7 @@ use std::convert::TryInto;
 use std::net::SocketAddr;
 
 use ractor::message::SerializedMessage;
-use ractor::pg::GroupChangeMessage;
+use ractor::pg::{get_scoped_local_members, which_scopes_and_groups, GroupChangeMessage};
 use ractor::registry::PidLifecycleEvent;
 use ractor::rpc::CallResult;
 use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, SpawnErr, SupervisionEvent};
@@ -682,16 +682,21 @@ impl NodeSession {
             state.tcp_send_control(msg);
         }
 
+        // setup scope monitoring
+        ractor::pg::monitor_scope(
+            ractor::pg::ALL_SCOPES_NOTIFICATION.to_string(),
+            myself.get_cell(),
+        );
         // setup PG monitoring
         ractor::pg::monitor(
             ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
             myself.get_cell(),
         );
 
-        // Scan all PG groups + synchronize them
-        let groups = ractor::pg::which_groups();
-        for group in groups {
-            let local_members = ractor::pg::get_local_members(&group)
+        // Scan all scopes with their PG groups + synchronize them
+        let scopes_and_groups = which_scopes_and_groups();
+        for key in scopes_and_groups {
+            let local_members = get_scoped_local_members(&key.get_scope(), &key.get_group())
                 .into_iter()
                 .filter(|v| v.supports_remoting())
                 .map(|act| control_protocol::Actor {
@@ -703,7 +708,8 @@ impl NodeSession {
                 let control_message = control_protocol::ControlMessage {
                     msg: Some(control_protocol::control_message::Msg::PgJoin(
                         control_protocol::PgJoin {
-                            group,
+                            scope: key.get_scope(),
+                            group: key.get_group(),
                             actors: local_members,
                         },
                     )),
@@ -873,6 +879,10 @@ impl Actor for NodeSession {
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         // unhook monitoring sessions
+        ractor::pg::demonitor_scope(
+            ractor::pg::ALL_SCOPES_NOTIFICATION.to_string(),
+            myself.get_id(),
+        );
         ractor::pg::demonitor(
             ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
             myself.get_id(),
@@ -998,7 +1008,7 @@ impl Actor for NodeSession {
             }
             // ======== Lifecycle event handlers (PG groups + PID registry) ======== //
             SupervisionEvent::ProcessGroupChanged(change) => match change {
-                GroupChangeMessage::Join(group, actors) => {
+                GroupChangeMessage::Join(scope, group, actors) => {
                     let filtered = actors
                         .into_iter()
                         .filter(|act| act.supports_remoting())
@@ -1011,6 +1021,7 @@ impl Actor for NodeSession {
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::PgJoin(
                                 control_protocol::PgJoin {
+                                    scope,
                                     group,
                                     actors: filtered,
                                 },
@@ -1019,7 +1030,7 @@ impl Actor for NodeSession {
                         state.tcp_send_control(msg);
                     }
                 }
-                GroupChangeMessage::Leave(group, actors) => {
+                GroupChangeMessage::Leave(scope, group, actors) => {
                     let filtered = actors
                         .into_iter()
                         .filter(|act| act.supports_remoting())
@@ -1032,6 +1043,7 @@ impl Actor for NodeSession {
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::PgLeave(
                                 control_protocol::PgLeave {
+                                    scope,
                                     group,
                                     actors: filtered,
                                 },

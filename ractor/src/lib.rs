@@ -198,6 +198,9 @@ pub type ActorName = String;
 /// A process group's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
 pub type GroupName = String;
 
+/// A scope's name, equivalent to an [Erlang `atom()`](https://www.erlang.org/doc/reference_manual/data_types.html#atom)
+pub type ScopeName = String;
+
 /// Represents the state of an actor. Must be safe
 /// to send between threads (same bounds as a [Message])
 pub trait State: std::any::Any + Send + 'static {}

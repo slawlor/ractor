@@ -56,6 +56,8 @@ message PgJoin {
     string group = 1;
     // The actors
     repeated Actor actors = 2;
+    // the scope
+    string scope = 3;
 }
 
 // Process group leave occurred
@@ -64,6 +66,8 @@ message PgLeave {
     string group = 1;
     // The actors
     repeated Actor actors = 2;
+    // The scope
+    string scope = 3;
 }
 
 // A collection of NodeSession endpoints
