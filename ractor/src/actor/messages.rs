@@ -122,8 +122,8 @@ impl SupervisionEvent {
         }
     }
 
-    /// If this supervision event refers to an [Actor], return the [ActorCell]
-    /// for that [actor][Actor].
+    /// If this supervision event refers to an [Actor] lifecycle event, return
+    /// the [ActorCell] for that [actor][Actor].
     ///
     ///
     /// [ActorCell]: crate::ActorCell
@@ -137,10 +137,10 @@ impl SupervisionEvent {
         }
     }
 
-    /// If this supervision event refers to an [Actor], return the [ActorId]
-    /// for that [actor][Actor].
+    /// If this supervision event refers to an [Actor] lifecycle event, return
+    /// the [ActorId] for that [actor][Actor].
     ///
-    /// [ActorCell]: crate::ActorId
+    /// [ActorId]: crate::ActorId
     /// [Actor]: crate::Actor
     pub fn actor_id(&self) -> Option<super::actor_id::ActorId> {
         self.actor_cell().map(|cell| cell.get_id())
