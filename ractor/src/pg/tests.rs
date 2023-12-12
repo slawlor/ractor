@@ -418,6 +418,10 @@ async fn test_actor_leaves_pg_group_manually() {
     let groups = pg::which_groups();
     assert!(!groups.contains(&group));
 
+    // pif-paf-poof the group is gone from the monitor's index!
+    let scoped_groups = pg::which_scoped_groups(&group);
+    assert!(!scoped_groups.contains(&group));
+
     // members comes back empty
     let members = pg::get_members(&group);
     assert_eq!(0, members.len());
@@ -462,6 +466,10 @@ async fn test_actor_leaves_scope_manually() {
     // pif-paf-poof the group is gone!
     let groups = pg::which_groups();
     assert!(!groups.contains(&group));
+
+    // pif-paf-poof the group is gone from the monitor's index!
+    let scoped_groups = pg::which_scoped_groups(&group);
+    assert!(!scoped_groups.contains(&group));
 
     // members comes back empty
     let members = pg::get_scoped_members(&scope, &group);
