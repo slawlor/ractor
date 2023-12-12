@@ -90,6 +90,7 @@ impl ScopeGroupKey {
 
 struct PgState {
     map: Arc<DashMap<ScopeGroupKey, HashMap<ActorId, ActorCell>>>,
+    index: Arc<DashMap<ScopeName, Vec<GroupName>>>,
     listeners: Arc<DashMap<ScopeGroupKey, Vec<ActorCell>>>,
 }
 
@@ -98,6 +99,7 @@ static PG_MONITOR: OnceCell<PgState> = OnceCell::new();
 fn get_monitor<'a>() -> &'a PgState {
     PG_MONITOR.get_or_init(|| PgState {
         map: Arc::new(DashMap::new()),
+        index: Arc::new(DashMap::new()),
         listeners: Arc::new(DashMap::new()),
     })
 }
@@ -138,6 +140,18 @@ pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
             vacancy.insert(map);
         }
     }
+    match monitor.index.entry(scope.to_owned()) {
+        Occupied(mut occupied) => {
+            let oref = occupied.get_mut();
+            if !oref.contains(&group) {
+                oref.push(group.to_owned());
+            }
+        }
+        Vacant(vacancy) => {
+            vacancy.insert(vec![group.to_owned()]);
+        }
+    }
+
     // notify supervisors
     if let Some(listeners) = monitor.listeners.get(&key) {
         for listener in listeners.value() {
@@ -189,7 +203,17 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
             // if the scope and group tuple is empty, remove it
             if mut_ref.is_empty() {
                 occupied.remove();
+
+                // remove the group and possibly the scope from the monitor's index
+                if let Some(mut groups_in_scope) = monitor.index.get_mut(&scope) {
+                    groups_in_scope.retain(|group_name| group_name != &group);
+                    if groups_in_scope.is_empty() {
+                        drop(groups_in_scope);
+                        monitor.index.remove(&scope);
+                    }
+                }
             }
+
             if let Some(listeners) = monitor.listeners.get(&key) {
                 for listener in listeners.value() {
                     let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
@@ -221,8 +245,9 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
 pub(crate) fn leave_all(actor: ActorId) {
     let pg_monitor = get_monitor();
     let map = pg_monitor.map.clone();
+    // let index = pg_monitor.index.clone();
 
-    let mut empty_groups = vec![];
+    let mut empty_scope_group_keys = vec![];
     let mut removal_events = HashMap::new();
 
     for mut kv in map.iter_mut() {
@@ -230,7 +255,7 @@ pub(crate) fn leave_all(actor: ActorId) {
             removal_events.insert(kv.key().clone(), actor_cell);
         }
         if kv.value().is_empty() {
-            empty_groups.push(kv.key().clone());
+            empty_scope_group_keys.push(kv.key().clone());
         }
     }
 
@@ -267,8 +292,11 @@ pub(crate) fn leave_all(actor: ActorId) {
     }
 
     // Cleanup empty groups
-    for group in empty_groups {
-        map.remove(&group);
+    for scope_group_key in empty_scope_group_keys {
+        map.remove(&scope_group_key);
+        if let Some(mut groups_in_scope) = pg_monitor.index.get_mut(&scope_group_key.scope) {
+            groups_in_scope.retain(|group| group != &scope_group_key.group);
+        }
     }
 }
 
@@ -360,18 +388,10 @@ pub fn which_groups() -> Vec<GroupName> {
 /// in `scope`
 pub fn which_scoped_groups(scope: &ScopeName) -> Vec<GroupName> {
     let monitor = get_monitor();
-    monitor
-        .map
-        .iter()
-        .filter_map(|kvp| {
-            let key = kvp.key();
-            if key.scope == *scope {
-                Some(key.group.to_owned())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>()
+    match monitor.index.get(scope) {
+        Some(groups) => groups.to_owned(),
+        None => vec![],
+    }
 }
 
 /// Returns a list of all known scope-group combinations.
