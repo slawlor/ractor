@@ -208,6 +208,7 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
                 if let Some(mut groups_in_scope) = monitor.index.get_mut(&scope) {
                     groups_in_scope.retain(|group_name| group_name != &group);
                     if groups_in_scope.is_empty() {
+                        // drop the `RefMut` to prevent a `DashMap` deadlock
                         drop(groups_in_scope);
                         monitor.index.remove(&scope);
                     }
