@@ -218,7 +218,7 @@ async fn test_which_scoped_groups() {
     );
 
     let groups_in_scope = pg::which_scoped_groups(&scope);
-    assert_eq!(vec![scope.clone()], groups_in_scope);
+    assert_eq!(vec![group.clone()], groups_in_scope);
 
     // Cleanup
     for actor in actors {
