@@ -186,7 +186,7 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
                 mut_ref.remove(&actor.get_id());
             }
 
-            // the scope and group tuple is empty, remove it
+            // if the scope and group tuple is empty, remove it
             if mut_ref.is_empty() {
                 occupied.remove();
             }
@@ -376,7 +376,7 @@ pub fn which_scoped_groups(scope: &ScopeName) -> Vec<GroupName> {
 
 /// Returns a list of all known scope-group combinations.
 ///
-/// Returns a [`Vec<(ScopGroupKey)>`] representing all the registered
+/// Returns a [`Vec<ScopeGroupKey>`] representing all the registered
 /// combinations that form an identifying tuple
 pub fn which_scopes_and_groups() -> Vec<ScopeGroupKey> {
     let monitor = get_monitor();
