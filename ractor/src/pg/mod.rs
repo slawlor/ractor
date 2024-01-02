@@ -246,7 +246,6 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
 pub(crate) fn leave_all(actor: ActorId) {
     let pg_monitor = get_monitor();
     let map = pg_monitor.map.clone();
-    // let index = pg_monitor.index.clone();
 
     let mut empty_scope_group_keys = vec![];
     let mut removal_events = HashMap::new();
