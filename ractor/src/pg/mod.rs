@@ -114,7 +114,7 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
 
 /// Join actors to the group `group` within the scope `scope`
 ///
-/// * `scope` - the named scope. Will be created if first actors to join
+/// * `scope` - The named scope. Will be created if first actors to join
 /// * `group` - The named group. Will be created if first actors to join
 /// * `actors` - The list of [crate::Actor]s to add to the group
 pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
@@ -124,12 +124,27 @@ pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
     };
     let monitor = get_monitor();
 
+    // lock the `PgState`'s `map` and `index` DashMaps.
+    let map = monitor.map.entry(key.to_owned());
+    let index = monitor.index.entry(scope.to_owned());
+
     // insert into the monitor group
-    match monitor.map.entry(key.to_owned()) {
+    match map {
         Occupied(mut occupied) => {
             let oref = occupied.get_mut();
             for actor in actors.iter() {
                 oref.insert(actor.get_id(), actor.clone());
+            }
+            match index {
+                Occupied(mut occupied) => {
+                    let oref = occupied.get_mut();
+                    if !oref.contains(&group) {
+                        oref.push(group.to_owned());
+                    }
+                }
+                Vacant(vacancy) => {
+                    vacancy.insert(vec![group.to_owned()]);
+                }
             }
         }
         Vacant(vacancy) => {
@@ -138,17 +153,17 @@ pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
                 .map(|a| (a.get_id(), a.clone()))
                 .collect::<HashMap<_, _>>();
             vacancy.insert(map);
-        }
-    }
-    match monitor.index.entry(scope.to_owned()) {
-        Occupied(mut occupied) => {
-            let oref = occupied.get_mut();
-            if !oref.contains(&group) {
-                oref.push(group.to_owned());
+            match index {
+                Occupied(mut occupied) => {
+                    let oref = occupied.get_mut();
+                    if !oref.contains(&group) {
+                        oref.push(group.to_owned());
+                    }
+                }
+                Vacant(vacancy) => {
+                    vacancy.insert(vec![group.to_owned()]);
+                }
             }
-        }
-        Vacant(vacancy) => {
-            vacancy.insert(vec![group.to_owned()]);
         }
     }
 
@@ -192,7 +207,12 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
         group: group.to_owned(),
     };
     let monitor = get_monitor();
-    match monitor.map.entry(key.to_owned()) {
+
+    // lock the `PgState`'s `map` and `index` DashMaps.
+    let map = monitor.map.entry(key.to_owned());
+    let index = monitor.index.get_mut(&scope);
+
+    match map {
         Vacant(_) => {}
         Occupied(mut occupied) => {
             let mut_ref = occupied.get_mut();
@@ -205,7 +225,7 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
                 occupied.remove();
 
                 // remove the group and possibly the scope from the monitor's index
-                if let Some(mut groups_in_scope) = monitor.index.get_mut(&scope) {
+                if let Some(mut groups_in_scope) = index {
                     groups_in_scope.retain(|group_name| group_name != &group);
                     if groups_in_scope.is_empty() {
                         // drop the `RefMut` to prevent a `DashMap` deadlock
