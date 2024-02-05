@@ -21,6 +21,7 @@
 //!
 //! An example supervision tree may look like:
 //!
+//! ```text
 //! Root/
 //! ├─ Actor A/
 //! │  ├─ Actor A_1/
@@ -30,6 +31,7 @@
 //! │  ├─ Actor C_1/
 //! │  │  ├─ Actor C_1_1/
 //! │  │  │  ├─ Actor C_1_1_1/
+//! ```
 //!
 //! To link actors together in the supervision tree, there are 2 choices.
 //!
