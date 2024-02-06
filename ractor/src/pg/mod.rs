@@ -125,19 +125,19 @@ pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
     let monitor = get_monitor();
 
     // lock the `PgState`'s `map` and `index` DashMaps.
-    let map = monitor.map.entry(key.to_owned());
-    let index = monitor.index.entry(scope.to_owned());
+    let monitor_map = monitor.map.entry(key.to_owned());
+    let monitor_idx = monitor.index.entry(scope.to_owned());
 
     // insert into the monitor group
-    match map {
-        Occupied(mut occupied) => {
-            let oref = occupied.get_mut();
+    match monitor_map {
+        Occupied(mut occupied_map) => {
+            let oref = occupied_map.get_mut();
             for actor in actors.iter() {
                 oref.insert(actor.get_id(), actor.clone());
             }
-            match index {
-                Occupied(mut occupied) => {
-                    let oref = occupied.get_mut();
+            match monitor_idx {
+                Occupied(mut occupied_idx) => {
+                    let oref = occupied_idx.get_mut();
                     if !oref.contains(&group) {
                         oref.push(group.to_owned());
                     }
@@ -153,9 +153,9 @@ pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
                 .map(|a| (a.get_id(), a.clone()))
                 .collect::<HashMap<_, _>>();
             vacancy.insert(map);
-            match index {
-                Occupied(mut occupied) => {
-                    let oref = occupied.get_mut();
+            match monitor_idx {
+                Occupied(mut occupied_idx) => {
+                    let oref = occupied_idx.get_mut();
                     if !oref.contains(&group) {
                         oref.push(group.to_owned());
                     }
@@ -209,23 +209,23 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
     let monitor = get_monitor();
 
     // lock the `PgState`'s `map` and `index` DashMaps.
-    let map = monitor.map.entry(key.to_owned());
-    let index = monitor.index.get_mut(&scope);
+    let monitor_map = monitor.map.entry(key.to_owned());
+    let monitor_idx = monitor.index.get_mut(&scope);
 
-    match map {
+    match monitor_map {
         Vacant(_) => {}
-        Occupied(mut occupied) => {
-            let mut_ref = occupied.get_mut();
+        Occupied(mut occupied_map) => {
+            let mut_ref = occupied_map.get_mut();
             for actor in actors.iter() {
                 mut_ref.remove(&actor.get_id());
             }
 
             // if the scope and group tuple is empty, remove it
             if mut_ref.is_empty() {
-                occupied.remove();
+                occupied_map.remove();
 
                 // remove the group and possibly the scope from the monitor's index
-                if let Some(mut groups_in_scope) = index {
+                if let Some(mut groups_in_scope) = monitor_idx {
                     groups_in_scope.retain(|group_name| group_name != &group);
                     if groups_in_scope.is_empty() {
                         // drop the `RefMut` to prevent a `DashMap` deadlock
