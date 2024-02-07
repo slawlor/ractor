@@ -22,8 +22,7 @@ A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.e
 ## About
 
 `ractor` tries to solve the problem of building and maintaining an Erlang-like actor framework in Rust. It gives
-a set of generic primitives and helps automate the supervision tree and management of our actors along with the traditional actor message processing logic. It's built *heavily* on `tokio` which is a
-hard requirement for `ractor` (today).
+a set of generic primitives and helps automate the supervision tree and management of our actors along with the traditional actor message processing logic. It was originally designed to use the `tokio` runtime, however does now support the `async-std` runtime.
 
 `ractor` is a modern actor framework written in 100% Rust.
 
@@ -72,7 +71,7 @@ The minimum supported Rust version (MSRV) of `ractor` is `1.64`
 `ractor` exposes the following features:
 
 1. `cluster`, which exposes various functionality required for `ractor_cluster` to set up and manage a cluster of actors over a network link. This is work-in-progress and is being tracked in [#16](https://github.com/slawlor/ractor/issues/16).
-2. `async-std`, which enables usage of `async-std`'s asynchronous runtime instead of the `tokio` runtime. **However** `tokio` remains a dependency because we utilize the messaging synchronization primatives from `tokio` regardless of runtime as they are not specific to the `tokio` runtime. This work is tracked in [#173](https://github.com/slawlor/ractor/pull/173).
+2. `async-std`, which enables usage of `async-std`'s asynchronous runtime instead of the `tokio` runtime. **However** `tokio` with the `sync` feature remains a dependency because we utilize the messaging synchronization primatives from `tokio` regardless of runtime as they are not specific to the `tokio` runtime. This work is tracked in [#173](https://github.com/slawlor/ractor/pull/173). You can remove default features to "minimize" the tokio dependencies to just the synchronization primatives.
 
 ## Working with Actors
 

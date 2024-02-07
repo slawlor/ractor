@@ -16,9 +16,10 @@ rust-version = "1.64"
 [features]
 ### Other features
 cluster = []
+tokio_runtime = ["tokio/time", "tokio/rt", "tokio/macros", "tokio/tracing"]
 
 # default = ["async-std"]
-default = []
+default = ["tokio_runtime"]
 
 [dependencies]
 ## Required dependencies
@@ -29,8 +30,8 @@ once_cell = "1"
 rand = "0.8"
 
 # Tracing feature requires --cfg=tokio_unstable
-tokio = { version = "1", features = ["sync", "time", "rt", "macros", "tracing"] }
-async-std = { version = "1", features = ["attributes"], optional = true}
+tokio = { version = "1", features = ["sync"] }
+async-std = { version = "1", features = ["attributes"], optional = true }
 tracing = { version = "0.1", features = ["attributes"] }
 
 [dev-dependencies]
