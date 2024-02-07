@@ -223,15 +223,15 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
             // if the scope and group tuple is empty, remove it
             if mut_ref.is_empty() {
                 occupied_map.remove();
+            }
 
-                // remove the group and possibly the scope from the monitor's index
-                if let Some(mut groups_in_scope) = monitor_idx {
-                    groups_in_scope.retain(|group_name| group_name != &group);
-                    if groups_in_scope.is_empty() {
-                        // drop the `RefMut` to prevent a `DashMap` deadlock
-                        drop(groups_in_scope);
-                        monitor.index.remove(&scope);
-                    }
+            // remove the group and possibly the scope from the monitor's index
+            if let Some(mut groups_in_scope) = monitor_idx {
+                groups_in_scope.retain(|group_name| group_name != &group);
+                if groups_in_scope.is_empty() {
+                    // drop the `RefMut` to prevent a `DashMap` deadlock
+                    drop(groups_in_scope);
+                    monitor.index.remove(&scope);
                 }
             }
 
