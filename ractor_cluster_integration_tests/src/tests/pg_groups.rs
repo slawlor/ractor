@@ -37,7 +37,7 @@ struct PingPongActorState {
     done: bool,
 }
 
-#[async_trait::async_trait]
+#[ractor::async_trait]
 impl Actor for PingPongActor {
     type Msg = PingPongActorMessage;
     type State = PingPongActorState;

@@ -27,7 +27,7 @@ impl crate::Message for EmptyMessage {}
 async fn test_panic_on_start_captured() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = EmptyMessage;
         type Arguments = ();
@@ -51,7 +51,7 @@ async fn test_panic_on_start_captured() {
 async fn test_error_on_start_captured() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = EmptyMessage;
         type Arguments = ();
@@ -79,7 +79,7 @@ async fn test_stop_higher_priority_over_messages() {
         counter: Arc<AtomicU8>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = EmptyMessage;
         type Arguments = ();
@@ -154,7 +154,7 @@ async fn test_stop_higher_priority_over_messages() {
 async fn test_kill_terminates_work() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = EmptyMessage;
         type Arguments = ();
@@ -200,7 +200,7 @@ async fn test_kill_terminates_work() {
 async fn test_stop_does_not_terminate_async_work() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = EmptyMessage;
         type Arguments = ();
@@ -255,7 +255,7 @@ async fn test_stop_does_not_terminate_async_work() {
 async fn test_kill_terminates_supervision_work() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = EmptyMessage;
         type Arguments = ();
@@ -305,7 +305,7 @@ async fn test_sending_message_to_invalid_actor_type() {
     struct TestMessage1;
     #[cfg(feature = "cluster")]
     impl crate::Message for TestMessage1 {}
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor1 {
         type Msg = TestMessage1;
         type State = ();
@@ -322,7 +322,7 @@ async fn test_sending_message_to_invalid_actor_type() {
     struct TestMessage2;
     #[cfg(feature = "cluster")]
     impl crate::Message for TestMessage2 {}
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor2 {
         type Msg = TestMessage2;
         type State = ();
@@ -361,7 +361,7 @@ async fn test_sending_message_to_invalid_actor_type() {
 async fn test_sending_message_to_dead_actor() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = EmptyMessage;
         type Arguments = ();
@@ -419,7 +419,7 @@ async fn test_serialized_cast() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = TestMessage;
         type State = ();
@@ -549,7 +549,7 @@ async fn test_serialized_rpc() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = TestMessage;
         type State = ();
@@ -624,7 +624,7 @@ async fn test_remote_actor() {
     let counter = Arc::new(AtomicU8::new(0));
 
     struct DummySupervisor;
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for DummySupervisor {
         type Msg = ();
         type State = ();
@@ -659,7 +659,7 @@ async fn test_remote_actor() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestRemoteActor {
         type Msg = TestRemoteMessage;
         type State = ();
@@ -732,7 +732,7 @@ async fn spawning_local_actor_as_remote_fails() {
     struct RemoteActor;
     struct RemoteActorMessage;
     impl crate::Message for RemoteActorMessage {}
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for RemoteActor {
         type Msg = RemoteActorMessage;
         type State = ();
@@ -747,7 +747,7 @@ async fn spawning_local_actor_as_remote_fails() {
     }
 
     struct EmptyActor;
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = ();
         type State = ();
@@ -787,7 +787,7 @@ async fn instant_spawns() {
     let counter = Arc::new(AtomicU8::new(0));
 
     struct EmptyActor;
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = String;
         type State = Arc<AtomicU8>;
@@ -846,7 +846,7 @@ async fn instant_spawns() {
 #[tracing_test::traced_test]
 async fn stop_and_wait() {
     struct SlowActor;
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for SlowActor {
         type Msg = ();
         type State = ();
@@ -875,7 +875,7 @@ async fn stop_and_wait() {
 #[tracing_test::traced_test]
 async fn kill_and_wait() {
     struct SlowActor;
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for SlowActor {
         type Msg = ();
         type State = ();
@@ -916,7 +916,7 @@ fn returns_actor_references() {
 
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = EmptyMessage;
         type Arguments = ();

@@ -11,7 +11,7 @@
 //! cargo run --example supervisor
 //! ```
 
-use ractor::{async_trait, Actor, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
+use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
 
 use tokio::time::Duration;
 
@@ -97,7 +97,7 @@ enum LeafActorMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for LeafActorMessage {}
 
-#[async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for LeafActor {
     type Msg = LeafActorMessage;
     type State = LeafActorState;
@@ -160,7 +160,7 @@ enum MidLevelActorMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for MidLevelActorMessage {}
 
-#[async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for MidLevelActor {
     type Msg = MidLevelActorMessage;
     type State = MidLevelActorState;
@@ -240,7 +240,7 @@ enum RootActorMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for RootActorMessage {}
 
-#[async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for RootActor {
     type Msg = RootActorMessage;
     type State = RootActorState;

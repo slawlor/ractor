@@ -17,7 +17,7 @@ impl FakeNodeSession {
     }
 }
 
-#[async_trait::async_trait]
+#[ractor::async_trait]
 impl Actor for FakeNodeSession {
     type Msg = crate::node::NodeSessionMessage;
     type State = ();

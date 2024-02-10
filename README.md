@@ -1,7 +1,7 @@
 # ractor
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/slawlor/ractor/main/docs/ractor_logo.svg" width="50%" /> 
+    <img src="https://raw.githubusercontent.com/slawlor/ractor/main/docs/ractor_logo.svg" width="50%" />
 </p>
 
 *Pronounced ract-er*
@@ -64,7 +64,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies.
 ractor = "0.9"
 ```
 
-The minimum supported Rust version (MSRV) of `ractor` is `1.64`
+The minimum supported Rust version (MSRV) of `ractor` is `1.64`. However to utilize the native `async fn` support in traits and not rely on the `async-trait` crate's desugaring functionliaty, you need to be on Rust version `>= 1.75`. The stabilization of `async fn` in traits [was recently added](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html).
 
 ## Features
 
@@ -81,7 +81,7 @@ never be executed in parallel. Following the actor model leads to microservices 
 An example `ping-pong` actor might be the following
 
 ```rust
-use ractor::{async_trait, cast, Actor, ActorProcessingErr, ActorRef};
+use ractor::{cast, Actor, ActorProcessingErr, ActorRef};
 
 /// [PingPong] is a basic actor that will print
 /// ping..pong.. repeatedly until some exit
@@ -114,7 +114,6 @@ impl Message {
 }
 
 // the implementation of our actor's "logic"
-#[async_trait]
 impl Actor for PingPong {
     // An actor has a message type
     type Msg = Message;

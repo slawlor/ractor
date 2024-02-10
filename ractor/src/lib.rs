@@ -15,7 +15,8 @@
 //! ractor = "0.9"
 //! ```
 //!
-//! The minimum supported Rust version (MSRV) of `ractor` is `1.64`
+//! The minimum supported Rust version (MSRV) is 1.64. However if you disable the `async-trait` feature, then you need Rust >= 1.75 due to the native
+//! use of `async fn` in traits. See the [Rust blob](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html).
 //!
 //! ## Getting started
 //!
@@ -57,7 +58,7 @@
 //! }
 //!
 //! // the implementation of our actor's "logic"
-//! #[async_trait::async_trait]
+//! #[cfg_attr(feature = "async-trait", ractor::async_trait)]
 //! impl Actor for PingPong {
 //!     // An actor has a message type
 //!     type Msg = Message;
@@ -183,6 +184,7 @@ pub use actor::actor_id::ActorId;
 pub use actor::actor_ref::ActorRef;
 pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorRuntime};
+#[cfg(feature = "async-trait")]
 pub use async_trait::async_trait;
 pub use errors::{ActorErr, ActorProcessingErr, MessagingErr, RactorErr, SpawnErr};
 pub use message::Message;

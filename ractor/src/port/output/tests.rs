@@ -23,7 +23,7 @@ async fn test_single_forward() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for TestActorMessage {}
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = TestActorMessage;
         type Arguments = ();
@@ -87,7 +87,7 @@ async fn test_50_receivers() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for TestActorMessage {}
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = TestActorMessage;
         type Arguments = ();

@@ -825,7 +825,7 @@ impl NodeSessionState {
     }
 }
 
-#[async_trait::async_trait]
+#[ractor::async_trait]
 impl Actor for NodeSession {
     type Msg = super::NodeSessionMessage;
     type Arguments = crate::net::NetworkStream;

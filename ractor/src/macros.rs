@@ -33,7 +33,7 @@ macro_rules! cast {
 /// #[cfg(feature = "cluster")]
 /// impl ractor::Message for MessageFormat {}
 ///
-/// #[async_trait::async_trait]
+/// #[cfg_attr(feature = "async-trait", ractor::async_trait)]
 /// impl Actor for TestActor {
 ///     type Msg = MessageFormat;
 ///     type Arguments = ();
@@ -114,7 +114,7 @@ macro_rules! call {
 /// #[cfg(feature = "cluster")]
 /// impl ractor::Message for MessageFormat {}
 ///
-/// #[async_trait::async_trait]
+/// #[cfg_attr(feature = "async-trait", ractor::async_trait)]
 /// impl Actor for TestActor {
 ///     type Msg = MessageFormat;
 ///     type Arguments = ();
