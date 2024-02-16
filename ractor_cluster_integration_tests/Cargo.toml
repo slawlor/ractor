@@ -18,7 +18,7 @@ ractor = { path = "../ractor" }
 ractor_cluster = { path = "../ractor_cluster" }
 rand = "0.8"
 tokio-rustls = { version = "0.24" }
-rustls-pemfile = "1.0"
+rustls-pemfile = "2.1"
 rustyrepl = { version = "0.2", features = ["async"] }
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing"] }
 tracing = "0.1"
