@@ -10,14 +10,14 @@
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{self, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Args;
 use ractor::concurrency::{sleep, Duration, Instant};
 use ractor::Actor;
 use rustls_pemfile::{certs, rsa_private_keys};
-use tokio_rustls::rustls::{Certificate, OwnedTrustAnchor, PrivateKey};
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, TrustAnchor};
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
 const AUTH_TIME_ALLOWANCE_MS: u128 = 1500;
@@ -33,16 +33,35 @@ pub struct EncryptionConfig {
     client_host: Option<String>,
 }
 
-fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
-    certs(&mut BufReader::new(File::open(path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid cert"))
-        .map(|mut certs| certs.drain(..).map(Certificate).collect())
+fn load_certs(path_str: &'static str) -> io::Result<Vec<CertificateDer>> {
+    let path = PathBuf::from(path_str);
+    let certs: Vec<_> = certs(&mut BufReader::new(File::open(path)?))
+        .filter_map(|cert| if let Ok(c) = cert { Some(c) } else { None })
+        .collect();
+
+    if certs.is_empty() {
+        Err(io::Error::new(io::ErrorKind::InvalidData, "invalid cert"))
+    } else {
+        Ok(certs)
+    }
 }
 
-fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
-    rsa_private_keys(&mut BufReader::new(File::open(path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))
-        .map(|mut keys| keys.drain(..).map(PrivateKey).collect())
+fn load_keys(path_str: &'static str) -> io::Result<Vec<PrivateKeyDer>> {
+    let path = PathBuf::from(path_str);
+    let keys: Vec<PrivateKeyDer> = rsa_private_keys(&mut BufReader::new(File::open(path)?))
+        .filter_map(|key| {
+            if let Ok(k) = key {
+                Some(k.into())
+            } else {
+                None
+            }
+        })
+        .collect();
+    if keys.is_empty() {
+        Err(io::Error::new(io::ErrorKind::InvalidData, "invalid key"))
+    } else {
+        Ok(keys)
+    }
 }
 
 pub async fn test(config: EncryptionConfig) -> i32 {
@@ -53,13 +72,12 @@ pub async fn test(config: EncryptionConfig) -> i32 {
     // Example `rustls` command: cargo run --bin tlsserver-mio -- --certs test-ca/rsa/end.fullchain --key test-ca/rsa/end.rsa -p 8443 echo
     //
     // combined with source code: https://github.com/tokio-rs/tls/blob/357bc562483dcf04c1f8d08bd1a831b144bf7d4c/tokio-rustls/examples/server/src/main.rs
-    let cert_path = PathBuf::from("test-ca/rsa/end.fullchain");
-    let key_path = PathBuf::from("test-ca/rsa/end.rsa");
-    let certs = load_certs(&cert_path).expect("Failed to load encryption certificates");
-    let mut keys = load_keys(&key_path).expect("Failed to load encryption keys");
+    let cert_path = "test-ca/rsa/end.fullchain";
+    let key_path = "test-ca/rsa/end.rsa";
+    let certs = load_certs(cert_path).expect("Failed to load encryption certificates");
+    let mut keys = load_keys(key_path).expect("Failed to load encryption keys");
 
     let server_config = tokio_rustls::rustls::ServerConfig::builder()
-        .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(certs, keys.remove(0))
         .expect("Failed to build server configuration");
@@ -69,33 +87,39 @@ pub async fn test(config: EncryptionConfig) -> i32 {
 
     let ca_path = PathBuf::from("test-ca/rsa/ca.cert");
     let mut ca_pem = BufReader::new(File::open(ca_path).expect("Failed to load CA certificate"));
-    let ca_certs = rustls_pemfile::certs(&mut ca_pem).expect("Failed to parse CA certificate");
+    let ca_certs = rustls_pemfile::certs(&mut ca_pem).filter_map(|cert| {
+        if let Ok(c) = cert {
+            Some(c)
+        } else {
+            None
+        }
+    });
 
     let mut root_cert_store = tokio_rustls::rustls::RootCertStore::empty();
-    let trust_anchors = ca_certs.iter().map(|cert| {
+    let trust_anchors = ca_certs.map(|cert| {
         let ta =
             webpki::TrustAnchor::try_from_cert_der(&cert[..]).expect("Failed to build TrustAnchor");
         tracing::warn!(
             "CA Cert SUB={}",
             String::from_utf8(ta.subject.to_vec()).unwrap_or("n/a".to_string())
         );
-        OwnedTrustAnchor::from_subject_spki_name_constraints(
-            ta.subject,
-            ta.spki,
-            ta.name_constraints,
-        )
+        TrustAnchor {
+            subject: ta.subject.into(),
+            name_constraints: ta.name_constraints.map(|a| a.into()),
+            subject_public_key_info: ta.spki.into(),
+        }
+        .to_owned()
     });
-    root_cert_store.add_trust_anchors(trust_anchors);
+    root_cert_store.extend(trust_anchors);
+    // root_cert_store.add_trust_anchors(trust_anchors);
     let client_config = tokio_rustls::rustls::ClientConfig::builder()
-        .with_safe_defaults()
         .with_root_certificates(root_cert_store)
         .with_no_client_auth();
     let connector = TlsConnector::from(Arc::new(client_config));
 
     // NOTE: It's `testserver.com` because that's what's generated by the rustls team. Eventually we should re-generate
     // our own certs but this is just a temporary hack for the test
-    let domain = tokio_rustls::rustls::ServerName::try_from("testserver.com")
-        .expect("Invalid DNS name `node-a`");
+    let domain = ServerName::try_from("testserver.com").expect("Invalid DNS name `node-a`");
 
     // ================== Server Creation ================== //
 
