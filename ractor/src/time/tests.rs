@@ -23,7 +23,7 @@ async fn test_intervals() {
         counter: Arc<AtomicU8>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
@@ -87,7 +87,7 @@ async fn test_send_after() {
         counter: Arc<AtomicU8>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
@@ -147,7 +147,7 @@ async fn test_send_after() {
 async fn test_exit_after() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = ();
         type State = ();
@@ -179,7 +179,7 @@ async fn test_exit_after() {
 async fn test_kill_after() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = ();
         type State = ();

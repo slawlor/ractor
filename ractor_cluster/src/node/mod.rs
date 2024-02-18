@@ -317,7 +317,7 @@ impl NodeServerState {
     }
 }
 
-#[async_trait::async_trait]
+#[ractor::async_trait]
 impl Actor for NodeServer {
     type Msg = NodeServerMessage;
     type State = NodeServerState;

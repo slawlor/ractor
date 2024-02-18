@@ -25,7 +25,7 @@ async fn test_supervision_panic_in_post_startup() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -46,7 +46,7 @@ async fn test_supervision_panic_in_post_startup() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -113,7 +113,7 @@ async fn test_supervision_error_in_post_startup() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -134,7 +134,7 @@ async fn test_supervision_error_in_post_startup() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -201,7 +201,7 @@ async fn test_supervision_panic_in_handle() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -223,7 +223,7 @@ async fn test_supervision_panic_in_handle() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -298,7 +298,7 @@ async fn test_supervision_error_in_handle() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -320,7 +320,7 @@ async fn test_supervision_error_in_handle() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -395,7 +395,7 @@ async fn test_supervision_panic_in_post_stop() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -418,7 +418,7 @@ async fn test_supervision_panic_in_post_stop() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -476,7 +476,7 @@ async fn test_supervision_error_in_post_stop() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -499,7 +499,7 @@ async fn test_supervision_error_in_post_stop() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -560,7 +560,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -582,7 +582,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Midpoint {
         type Msg = ();
         type State = ();
@@ -607,7 +607,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -702,7 +702,7 @@ async fn test_supervision_error_in_supervisor_handle() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type Arguments = ();
@@ -724,7 +724,7 @@ async fn test_supervision_error_in_supervisor_handle() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Midpoint {
         type Msg = ();
         type State = ();
@@ -749,7 +749,7 @@ async fn test_supervision_error_in_supervisor_handle() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -839,7 +839,7 @@ async fn test_killing_a_supervisor_terminates_children() {
     struct Child;
     struct Supervisor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -853,7 +853,7 @@ async fn test_killing_a_supervisor_terminates_children() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -912,7 +912,7 @@ async fn instant_supervised_spawns() {
     let counter = Arc::new(AtomicU8::new(0));
 
     struct EmptySupervisor;
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptySupervisor {
         type Msg = ();
         type State = ();
@@ -934,7 +934,7 @@ async fn instant_supervised_spawns() {
     }
 
     struct EmptyActor;
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = String;
         type State = Arc<AtomicU8>;
@@ -1008,7 +1008,7 @@ async fn test_supervisor_captures_dead_childs_state() {
         flag: Arc<AtomicU64>,
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = u64;
@@ -1030,7 +1030,7 @@ async fn test_supervisor_captures_dead_childs_state() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -1110,7 +1110,7 @@ async fn test_supervisor_captures_dead_childs_state() {
 async fn test_supervisor_double_link() {
     struct Who;
 
-    #[crate::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Who {
         type Msg = ();
         type State = ();
@@ -1155,7 +1155,7 @@ async fn test_simple_monitor() {
         counter: Arc<AtomicU8>,
     }
 
-    #[crate::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Peer {
         type Msg = ();
         type State = ();
@@ -1180,7 +1180,7 @@ async fn test_simple_monitor() {
         }
     }
 
-    #[crate::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Monitor {
         type Msg = ();
         type State = ();

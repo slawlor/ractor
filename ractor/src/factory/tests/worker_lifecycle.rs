@@ -30,7 +30,7 @@ enum MyWorkerMessage {
 #[cfg(feature = "cluster")]
 impl Message for MyWorkerMessage {}
 
-#[async_trait::async_trait]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Actor for MyWorker {
     type State = Self::Arguments;
     type Msg = WorkerMessage<(), MyWorkerMessage>;

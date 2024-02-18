@@ -50,6 +50,8 @@
 //! log to `stderr` for tracing. You can additionally setup a [panic hook](https://doc.rust-lang.org/std/panic/fn.set_hook.html)
 //! to do things like capturing backtraces on the unwinding panic.
 
+#[cfg(not(feature = "async-trait"))]
+use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::TryFutureExt;
@@ -105,7 +107,7 @@ pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> ActorProcess
 /// patterns. Panics are also captured from the inner functions and wrapped into an Error
 /// type, however should an [Err(_)] result from any of these functions the **actor will
 /// terminate** and cleanup.
-#[async_trait::async_trait]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 pub trait Actor: Sized + Sync + Send + 'static {
     /// The message type for this actor
     type Msg: Message;
@@ -130,6 +132,27 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// be necessary to construct the initial state
     ///
     /// Returns an initial [Actor::State] to bootstrap the actor
+    #[cfg(not(feature = "async-trait"))]
+    fn pre_start(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        args: Self::Arguments,
+    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send;
+    /// Invoked when an actor is being started by the system.
+    ///
+    /// Any initialization inherent to the actor's role should be
+    /// performed here hence why it returns the initial state.
+    ///
+    /// Panics in `pre_start` do not invoke the
+    /// supervision strategy and the actor won't be started. [Actor]::`spawn`
+    /// will return an error to the caller
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `args` - Arguments that are passed in the spawning of the actor which might
+    /// be necessary to construct the initial state
+    ///
+    /// Returns an initial [Actor::State] to bootstrap the actor
+    #[cfg(feature = "async-trait")]
     async fn pre_start(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -146,6 +169,25 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    fn post_start(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async { Ok(()) }
+    }
+    /// Invoked after an actor has started.
+    ///
+    /// Any post initialization can be performed here, such as writing
+    /// to a log file, emitting metrics.
+    ///
+    /// Panics in `post_start` follow the supervision strategy.
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(feature = "async-trait")]
     async fn post_start(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -163,6 +205,24 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `state` - A mutable reference to the internal actor's last known state
     #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    fn post_stop(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async { Ok(()) }
+    }
+    /// Invoked after an actor has been stopped to perform final cleanup. In the
+    /// event the actor is terminated with [Signal::Kill] or has self-panicked,
+    /// `post_stop` won't be called.
+    ///
+    /// Panics in `post_stop` follow the supervision strategy.
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `state` - A mutable reference to the internal actor's last known state
+    #[allow(unused_variables)]
+    #[cfg(feature = "async-trait")]
     async fn post_stop(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -178,6 +238,23 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `message` - The message to process
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    fn handle(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async { Ok(()) }
+    }
+    /// Handle the incoming message from the event processing loop. Unhandled panickes will be
+    /// captured and sent to the supervisor(s)
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The message to process
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(feature = "async-trait")]
     async fn handle(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -194,7 +271,23 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `message` - The serialized message to handle
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
-    #[cfg(feature = "cluster")]
+    #[cfg(all(feature = "cluster", not(feature = "async-trait")))]
+    fn handle_serialized(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        message: crate::message::SerializedMessage,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async { Ok(()) }
+    }
+    /// Handle the remote incoming message from the event processing loop. Unhandled panickes will be
+    /// captured and sent to the supervisor(s)
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The serialized message to handle
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(all(feature = "cluster", feature = "async-trait"))]
     async fn handle_serialized(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -212,6 +305,33 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `message` - The message to process
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    fn handle_supervisor_evt(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        message: SupervisionEvent,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async move {
+            match message {
+                SupervisionEvent::ActorTerminated(who, _, _)
+                | SupervisionEvent::ActorPanicked(who, _) => {
+                    myself.stop(None);
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+    }
+    /// Handle the incoming supervision event. Unhandled panicks will captured and
+    /// sent the the supervisor(s). The default supervision behavior is to exit the
+    /// supervisor on any child exit. To override this behavior, implement this function.
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The message to process
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(feature = "async-trait")]
     async fn handle_supervisor_evt(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -238,6 +358,25 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
     /// the actor failed to start
+    #[cfg(not(feature = "async-trait"))]
+    fn spawn(
+        name: Option<ActorName>,
+        handler: Self,
+        startup_args: Self::Arguments,
+    ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> + Send {
+        ActorRuntime::<Self>::spawn(name, handler, startup_args)
+    }
+    /// Spawn an actor of this type, which is unsupervised, automatically starting
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The implementation of Self
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    #[cfg(feature = "async-trait")]
     async fn spawn(
         name: Option<ActorName>,
         handler: Self,
@@ -257,6 +396,27 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
     /// the actor failed to start
+    #[cfg(not(feature = "async-trait"))]
+    fn spawn_linked(
+        name: Option<ActorName>,
+        handler: Self,
+        startup_args: Self::Arguments,
+        supervisor: ActorCell,
+    ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> + Send {
+        ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor)
+    }
+    /// Spawn an actor of this type with a supervisor, automatically starting the actor
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The implementation of Self
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// initial state creation
+    /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    #[cfg(feature = "async-trait")]
     async fn spawn_linked(
         name: Option<ActorName>,
         handler: Self,

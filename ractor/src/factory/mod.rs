@@ -326,7 +326,7 @@ where
     }
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl<TKey, TMsg, TWorker> Actor for Factory<TKey, TMsg, TWorker>
 where
     TKey: JobKey,

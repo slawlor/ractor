@@ -20,7 +20,6 @@ prost-build = { version = "0.12" }
 
 [dependencies]
 ## Required dependencies
-async-trait = "0.1"
 bytes = { version = "1" }
 prost = { version = "0.12" }
 prost-types = { version = "0.12" }

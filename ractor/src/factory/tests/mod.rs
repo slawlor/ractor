@@ -57,7 +57,7 @@ struct TestWorker {
     slow: Option<u64>,
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Actor for TestWorker {
     type Msg = super::WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;
@@ -563,7 +563,7 @@ struct StuckWorker {
     slow: Option<u64>,
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Actor for StuckWorker {
     type Msg = super::WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;

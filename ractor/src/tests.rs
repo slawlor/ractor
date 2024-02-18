@@ -44,7 +44,7 @@ fn test_error_conversions() {
 async fn test_error_message_extraction() {
     struct TestActor;
 
-    #[async_trait::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = ();
         type State = ();
