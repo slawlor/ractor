@@ -51,3 +51,8 @@ tracing-test = "0.2"
 name = "actor"
 harness = false
 required-features = []
+
+[[bench]]
+name = "async_traits"
+harness = false
+required-features = []
