@@ -9,6 +9,66 @@
 //! standard [Erlang `gen_server`](https://www.erlang.org/doc/man/gen_server.html#cast-2).
 //! The tl;dr is that `cast` is an send without waiting on a reply while `call` is expecting
 //! a reply from the actor being communicated with.
+//!
+//! ## Examples
+//!
+//! ```rust
+//! use ractor::{cast, call, call_t};
+//! use ractor::concurrency::Duration;
+//! use ractor::{Actor, ActorRef, ActorProcessingErr, RpcReplyPort};
+//!
+//! struct ExampleActor;
+//!
+//! enum ExampleMessage {
+//!     Cast,
+//!     Call(RpcReplyPort<String>),
+//! }
+//!
+//! #[cfg(feature = "cluster")]
+//! impl ractor::Message for ExampleMessage {}
+//!
+//! #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+//! impl Actor for ExampleActor {
+//!     type Msg = ExampleMessage;
+//!     type State = ();
+//!     type Arguments = ();
+//!
+//!     async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+//!         println!("Starting");
+//!         Ok(())
+//!     }
+//!
+//!     async fn handle(&self, _myself: ActorRef<Self::Msg>, message: Self::Msg, _state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+//!         match message {
+//!             ExampleMessage::Cast => println!("Cast message"),
+//!             ExampleMessage::Call(reply) => {
+//!                 println!("Call message");
+//!                 let _ = reply.send("a reply".to_string());
+//!             }
+//!         }
+//!         Ok(())
+//!     }
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ()).await.expect("Failed to startup dummy actor");
+//!     
+//!     // send a 1-way message (equivalent patterns)
+//!     actor.cast(ExampleMessage::Cast).expect("Failed to send message");
+//!     cast!(actor, ExampleMessage::Cast).expect("Failed to send message");
+//!
+//!     // Send a message to the actor, with an associated reply channel,
+//!     // and wait for the reply from the actor (optionally up to a timeout)
+//!     let _result = actor.call(ExampleMessage::Call, Some(Duration::from_millis(100))).await.expect("Failed to call actor");
+//!     let _result = call!(actor, ExampleMessage::Call).expect("Failed to call actor");
+//!     let _result = call_t!(actor, ExampleMessage::Call, 100).expect("Failed to call actor with timeout");
+//!
+//!     // wait for actor exit
+//!     actor.stop(None);
+//!     handle.await.unwrap();
+//! }
+//! ```
 
 use crate::concurrency::{self, Duration, JoinHandle};
 

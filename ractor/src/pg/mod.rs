@@ -17,6 +17,50 @@
 //! supervision port of the [crate::Actor]
 //!
 //! Inspired from [Erlang's `pg` module](https://www.erlang.org/doc/man/pg.html)
+//!
+//! ## Examples
+//!
+//! ```rust
+//! use ractor::{Actor, ActorRef, ActorProcessingErr};
+//! use ractor::pg;
+//!
+//! struct ExampleActor;
+//!
+//! #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+//! impl Actor for ExampleActor {
+//!     type Msg = ();
+//!     type State = ();
+//!     type Arguments = ();
+//!
+//!     async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+//!         println!("Starting");
+//!         Ok(())
+//!     }
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ()).await.expect("Failed to startup dummy actor");
+//!     let group = "the_group".to_string();    
+//!
+//!     // Join the actor to a group. This is also commonly done in `pre_start` or `post_start`
+//!     // of the actor itself without having to do it externally by some coordinator
+//!     pg::join(group.clone(), vec![actor.get_cell()]);
+//!     // Retrieve the pg group membership
+//!     let members = pg::get_members(&group);
+//!     // Send a message to the up-casted actor
+//!     let the_actor: ActorRef<()> = members.get(0).unwrap().clone().into();
+//!     ractor::cast!(the_actor, ()).expect("Failed to send message");
+//!
+//!     // wait for actor exit
+//!     actor.stop(None);
+//!     handle.await.unwrap();
+//!     
+//!     // The actor will automatically be removed from the group upon shutdown.
+//!     let members = pg::get_members(&group);
+//!     assert_eq!(members.len(), 0);
+//! }
+//! ```
 
 use std::collections::HashMap;
 use std::sync::Arc;
