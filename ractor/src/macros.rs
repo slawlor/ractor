@@ -6,7 +6,7 @@
 //! Macro helpers for remote procedure calls
 
 /// `cast!` takes an actor and a message and emits a [crate::RactorErr] error
-/// which can be pattern matched on in order to derive the output
+/// which can be pattern matched on in order to derive the output.
 #[macro_export]
 macro_rules! cast {
     ($actor:expr, $msg:expr) => {
@@ -24,7 +24,7 @@ macro_rules! cast {
 ///
 /// Returns [Ok(_)] with the result on successful RPC or [Err(crate::RactorErr)] on failure
 /// Example usage (without the `cluster` feature)
-/// ```no_run
+/// ```rust
 /// use ractor::{call, Actor, RpcReplyPort, ActorRef, ActorProcessingErr};
 /// struct TestActor;
 /// enum MessageFormat {
@@ -62,10 +62,13 @@ macro_rules! cast {
 ///     }
 /// }
 ///
-/// async fn test() {
-///     let (actor, _handle) = Actor::spawn(None, TestActor, ()).await.unwrap();
+/// #[tokio::main]
+/// async fn main() {
+///     let (actor, handle) = Actor::spawn(None, TestActor, ()).await.unwrap();
 ///     let result = call!(actor, MessageFormat::TestRpc, "Something".to_string()).unwrap();
-///     assert_eq!(result, "Something".to_string())
+///     assert_eq!(result, "Something".to_string());
+///     actor.stop(None);
+///     handle.await.unwrap();
 /// }
 /// ```
 #[macro_export]
@@ -143,10 +146,13 @@ macro_rules! call {
 ///     }
 /// }
 ///
-/// async fn test() {
-///     let (actor, _handle) = Actor::spawn(None, TestActor, ()).await.unwrap();
+/// #[tokio::main]
+/// async fn main() {
+///     let (actor, handle) = Actor::spawn(None, TestActor, ()).await.unwrap();
 ///     let result = call_t!(actor, MessageFormat::TestRpc, 50, "Something".to_string()).unwrap();
-///     assert_eq!(result, "Something".to_string())
+///     assert_eq!(result, "Something".to_string());
+///     actor.stop(None);
+///     handle.await.unwrap();
 /// }
 /// ```
 #[macro_export]

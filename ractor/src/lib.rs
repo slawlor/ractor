@@ -113,7 +113,8 @@
 //!
 //! Actors in `ractor` also support supervision. This is done by "linking" actors together in a supervisor-child relationship.
 //! A supervisor is responsible for the life cycle of the child actor, and as such is notified when the actor starts,
-//! stops, and fails (panics).
+//! stops, and fails (panics). If you set `panic = 'abort'` in your `Cargo.toml`, panics **will** start cause program termination
+//! and not be caught in the supervision flow.
 //!
 //! Supervision is presently left to the implementor to outline handling of supervision events, but you can see a suite of
 //! supervision tests in `crate::actor::tests::supervisor` for examples on the supported functionality.

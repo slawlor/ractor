@@ -20,8 +20,9 @@
 //! or agents will runtime panic on message reception, and supervision
 //! processes would need to restart the actors.
 //!
-//! ## Example
+//! ## Examples
 //!
+//! **Basic actor retrieval**
 //! ```rust
 //! async fn test() {
 //!     let maybe_actor = ractor::registry::where_is("my_actor".to_string());
@@ -29,6 +30,43 @@
 //!         // send a message, or interact with the actor
 //!         // but you'll need to know the actor's strong type
 //!     }
+//! }
+//! ```
+//!
+//! **Full example**
+//!
+//! ```rust
+//! use ractor::{Actor, ActorRef, ActorProcessingErr};
+//! use ractor::registry;
+//!
+//! struct ExampleActor;
+//!
+//! #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+//! impl Actor for ExampleActor {
+//!     type Msg = ();
+//!     type State = ();
+//!     type Arguments = ();
+//!
+//!     async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+//!         println!("Starting");
+//!         Ok(())
+//!     }
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let (actor, handle) = Actor::spawn(Some("my_actor".to_string()), ExampleActor, ()).await.expect("Failed to startup dummy actor");
+//!     
+//!     // Retrieve the actor by name from the registry
+//!     let who: ActorRef<()> = registry::where_is("my_actor".to_string()).expect("Failed to find actor").into();
+//!     who.cast(()).expect("Failed to send message");
+//!
+//!     // wait for actor exit
+//!     actor.stop(None);
+//!     handle.await.unwrap();
+//!     
+//!     // Automatically removed from the registry upon shutdown
+//!     assert!(registry::where_is("my_actor".to_string()).is_none());
 //! }
 //! ```
 

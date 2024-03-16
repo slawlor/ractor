@@ -13,6 +13,64 @@
 //! 2. Send after a delay
 //! 3. Stop after a delay
 //! 4. Kill after a delay
+//!
+//! ## Examples
+//!
+//! ```rust
+//! use ractor::concurrency::Duration;
+//! use ractor::{Actor, ActorRef, ActorProcessingErr};
+//!
+//! struct ExampleActor;
+//!
+//! enum ExampleMessage {
+//!     AfterDelay,
+//!     OnPeriod,
+//! }
+//!
+//! #[cfg(feature = "cluster")]
+//! impl ractor::Message for ExampleMessage {}
+//!
+//! #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+//! impl Actor for ExampleActor {
+//!     type Msg = ExampleMessage;
+//!     type State = ();
+//!     type Arguments = ();
+//!
+//!     async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+//!         println!("Starting");
+//!         Ok(())
+//!     }
+//!
+//!     async fn handle(&self, _myself: ActorRef<Self::Msg>, message: Self::Msg, _state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+//!         match message {
+//!             ExampleMessage::AfterDelay => println!("After delay"),
+//!             ExampleMessage::OnPeriod => println!("On period"),
+//!         }
+//!         Ok(())
+//!     }
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ()).await.expect("Failed to startup dummy actor");
+//!     
+//!     // send the message after a 100ms delay
+//!     actor.send_after(Duration::from_millis(100), || ExampleMessage::AfterDelay);
+//!     
+//!     // send this message every 10ms
+//!     actor.send_interval(Duration::from_millis(10), || ExampleMessage::OnPeriod);
+//!
+//!     // Exit the actor after 200ms (equivalent of calling `stop(maybe_reason)`)
+//!     actor.exit_after(Duration::from_millis(200));
+//!
+//!     // Kill the actor after 300ms (won't execute since we did stop before, but here
+//!     // as an example)
+//!     actor.kill_after(Duration::from_millis(300));
+//!
+//!     // wait for actor exit
+//!     handle.await.unwrap();
+//! }
+//! ```
 
 use crate::concurrency::{Duration, JoinHandle};
 
