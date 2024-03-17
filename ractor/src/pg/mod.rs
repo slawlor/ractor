@@ -21,8 +21,8 @@
 //! ## Examples
 //!
 //! ```rust
-//! use ractor::{Actor, ActorRef, ActorProcessingErr};
 //! use ractor::pg;
+//! use ractor::{Actor, ActorProcessingErr, ActorRef};
 //!
 //! struct ExampleActor;
 //!
@@ -32,7 +32,11 @@
 //!     type State = ();
 //!     type Arguments = ();
 //!
-//!     async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+//!     async fn pre_start(
+//!         &self,
+//!         _myself: ActorRef<Self::Msg>,
+//!         _args: Self::Arguments,
+//!     ) -> Result<Self::State, ActorProcessingErr> {
 //!         println!("Starting");
 //!         Ok(())
 //!     }
@@ -40,8 +44,10 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ()).await.expect("Failed to startup dummy actor");
-//!     let group = "the_group".to_string();    
+//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ())
+//!         .await
+//!         .expect("Failed to startup dummy actor");
+//!     let group = "the_group".to_string();
 //!
 //!     // Join the actor to a group. This is also commonly done in `pre_start` or `post_start`
 //!     // of the actor itself without having to do it externally by some coordinator
@@ -55,7 +61,7 @@
 //!     // wait for actor exit
 //!     actor.stop(None);
 //!     handle.await.unwrap();
-//!     
+//!
 //!     // The actor will automatically be removed from the group upon shutdown.
 //!     let members = pg::get_members(&group);
 //!     assert_eq!(members.len(), 0);

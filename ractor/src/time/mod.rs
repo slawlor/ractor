@@ -18,7 +18,7 @@
 //!
 //! ```rust
 //! use ractor::concurrency::Duration;
-//! use ractor::{Actor, ActorRef, ActorProcessingErr};
+//! use ractor::{Actor, ActorProcessingErr, ActorRef};
 //!
 //! struct ExampleActor;
 //!
@@ -36,12 +36,21 @@
 //!     type State = ();
 //!     type Arguments = ();
 //!
-//!     async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+//!     async fn pre_start(
+//!         &self,
+//!         _myself: ActorRef<Self::Msg>,
+//!         _args: Self::Arguments,
+//!     ) -> Result<Self::State, ActorProcessingErr> {
 //!         println!("Starting");
 //!         Ok(())
 //!     }
 //!
-//!     async fn handle(&self, _myself: ActorRef<Self::Msg>, message: Self::Msg, _state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+//!     async fn handle(
+//!         &self,
+//!         _myself: ActorRef<Self::Msg>,
+//!         message: Self::Msg,
+//!         _state: &mut Self::State,
+//!     ) -> Result<(), ActorProcessingErr> {
 //!         match message {
 //!             ExampleMessage::AfterDelay => println!("After delay"),
 //!             ExampleMessage::OnPeriod => println!("On period"),
@@ -52,11 +61,13 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ()).await.expect("Failed to startup dummy actor");
-//!     
+//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ())
+//!         .await
+//!         .expect("Failed to startup dummy actor");
+//!
 //!     // send the message after a 100ms delay
 //!     actor.send_after(Duration::from_millis(100), || ExampleMessage::AfterDelay);
-//!     
+//!
 //!     // send this message every 10ms
 //!     actor.send_interval(Duration::from_millis(10), || ExampleMessage::OnPeriod);
 //!

@@ -13,9 +13,9 @@
 //! ## Examples
 //!
 //! ```rust
-//! use ractor::{cast, call, call_t};
 //! use ractor::concurrency::Duration;
-//! use ractor::{Actor, ActorRef, ActorProcessingErr, RpcReplyPort};
+//! use ractor::{call, call_t, cast};
+//! use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 //!
 //! struct ExampleActor;
 //!
@@ -33,12 +33,21 @@
 //!     type State = ();
 //!     type Arguments = ();
 //!
-//!     async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+//!     async fn pre_start(
+//!         &self,
+//!         _myself: ActorRef<Self::Msg>,
+//!         _args: Self::Arguments,
+//!     ) -> Result<Self::State, ActorProcessingErr> {
 //!         println!("Starting");
 //!         Ok(())
 //!     }
 //!
-//!     async fn handle(&self, _myself: ActorRef<Self::Msg>, message: Self::Msg, _state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+//!     async fn handle(
+//!         &self,
+//!         _myself: ActorRef<Self::Msg>,
+//!         message: Self::Msg,
+//!         _state: &mut Self::State,
+//!     ) -> Result<(), ActorProcessingErr> {
 //!         match message {
 //!             ExampleMessage::Cast => println!("Cast message"),
 //!             ExampleMessage::Call(reply) => {
@@ -52,17 +61,25 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ()).await.expect("Failed to startup dummy actor");
-//!     
+//!     let (actor, handle) = Actor::spawn(None, ExampleActor, ())
+//!         .await
+//!         .expect("Failed to startup dummy actor");
+//!
 //!     // send a 1-way message (equivalent patterns)
-//!     actor.cast(ExampleMessage::Cast).expect("Failed to send message");
+//!     actor
+//!         .cast(ExampleMessage::Cast)
+//!         .expect("Failed to send message");
 //!     cast!(actor, ExampleMessage::Cast).expect("Failed to send message");
 //!
 //!     // Send a message to the actor, with an associated reply channel,
 //!     // and wait for the reply from the actor (optionally up to a timeout)
-//!     let _result = actor.call(ExampleMessage::Call, Some(Duration::from_millis(100))).await.expect("Failed to call actor");
+//!     let _result = actor
+//!         .call(ExampleMessage::Call, Some(Duration::from_millis(100)))
+//!         .await
+//!         .expect("Failed to call actor");
 //!     let _result = call!(actor, ExampleMessage::Call).expect("Failed to call actor");
-//!     let _result = call_t!(actor, ExampleMessage::Call, 100).expect("Failed to call actor with timeout");
+//!     let _result =
+//!         call_t!(actor, ExampleMessage::Call, 100).expect("Failed to call actor with timeout");
 //!
 //!     // wait for actor exit
 //!     actor.stop(None);

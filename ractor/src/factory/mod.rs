@@ -36,6 +36,122 @@
 //! replace the worker with a new instance and continue processing jobs for that worker. The
 //! factory also maintains the worker's message queue's so messages won't be lost which were in the
 //! "worker"'s queue.
+#![cfg_attr(
+    not(feature = "cluster"),
+    doc = "
+## Example Factory
+```rust
+use ractor::concurrency::Duration;
+use ractor::factory::{
+    Factory, FactoryMessage, Job, JobOptions, RoutingMode, WorkerBuilder, WorkerMessage,
+    WorkerStartContext,
+};
+use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+#[derive(Debug)]
+enum ExampleMessage {
+    PrintValue(u64),
+    EchoValue(u64, RpcReplyPort<u64>),
+}
+/// The worker's specification for the factory. This defines
+/// the business logic for each message that will be done in parallel.
+struct ExampleWorker;
+#[ractor::async_trait]
+impl Actor for ExampleWorker {
+    type Msg = WorkerMessage<(), ExampleMessage>;
+    type State = WorkerStartContext<(), ExampleMessage>;
+    type Arguments = WorkerStartContext<(), ExampleMessage>;
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        startup_context: Self::Arguments,
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(startup_context)
+    }
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        match message {
+            WorkerMessage::FactoryPing(time) => {
+                // This is a message which all factory workers **must**
+                // adhere to. It is a background processing message from the
+                // factory which is used for (a) metrics and (b) detecting
+                // stuck workers, i.e. workers which aren't making progress
+                // processing their messages
+                state
+                    .factory
+                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
+            }
+            WorkerMessage::Dispatch(job) => {
+                // Actual business logic that we want to parallelize
+                tracing::trace!(\"Worker {} received {:?}\", state.wid, job.msg);
+                match job.msg {
+                    ExampleMessage::PrintValue(value) => {
+                        tracing::info!(\"Worker {} printing value {value}\", state.wid);
+                    }
+                    ExampleMessage::EchoValue(value, reply) => {
+                        tracing::info!(\"Worker {} echoing value {value}\", state.wid);
+                        let _ = reply.send(value);
+                    }
+                }
+                // job finished, on success or err we report back to the factory
+                state
+                    .factory
+                    .cast(FactoryMessage::Finished(state.wid, job.key))?;
+            }
+        }
+        Ok(())
+    }
+}
+/// Used by the factory to build new [ExampleWorker]s.
+struct ExampleWorkerBuilder;
+impl WorkerBuilder<ExampleWorker> for ExampleWorkerBuilder {
+    fn build(&self, _wid: usize) -> ExampleWorker {
+        ExampleWorker
+    }
+}
+#[tokio::main]
+async fn main() {
+    let factory_def = Factory::<(), ExampleMessage, ExampleWorker> {
+        worker_count: 5,
+        routing_mode: RoutingMode::<()>::Queuer,
+        ..Default::default()
+    };
+    let (factory, handle) = Actor::spawn(None, factory_def, Box::new(ExampleWorkerBuilder))
+        .await
+        .expect(\"Failed to startup factory\");
+    for i in 0..99 {
+        factory
+            .cast(FactoryMessage::Dispatch(Job {
+                key: (),
+                msg: ExampleMessage::PrintValue(i),
+                options: JobOptions::default(),
+            }))
+            .expect(\"Failed to send to factory\");
+    }
+    let reply = factory
+        .call(
+            |prt| {
+                FactoryMessage::Dispatch(Job {
+                    key: (),
+                    msg: ExampleMessage::EchoValue(123, prt),
+                    options: JobOptions::default(),
+                })
+            },
+            None,
+        )
+        .await
+        .expect(\"Failed to send to factory\")
+        .expect(\"Failed to parse reply\");
+    assert_eq!(reply, 123);
+    factory.stop(None);
+    handle.await.unwrap();
+}
+```
+"
+)]
 
 use std::collections::{HashMap, VecDeque};
 use std::marker::PhantomData;

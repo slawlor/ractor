@@ -23,7 +23,7 @@
 //! An example "ping-pong" actor might be the following
 //!
 //! ```rust
-//! use ractor::{Actor, ActorRef, ActorProcessingErr};
+//! use ractor::{Actor, ActorProcessingErr, ActorRef};
 //!
 //! /// [PingPong] is a basic actor that will print
 //! /// ping..pong.. repeatedly until some exit
@@ -70,7 +70,11 @@
 //!     // Initially we need to create our state, and potentially
 //!     // start some internal processing (by posting a message for
 //!     // example)
-//!     async fn pre_start(&self, myself: ActorRef<Self::Msg>, _: ()) -> Result<Self::State, ActorProcessingErr> {
+//!     async fn pre_start(
+//!         &self,
+//!         myself: ActorRef<Self::Msg>,
+//!         _: (),
+//!     ) -> Result<Self::State, ActorProcessingErr> {
 //!         // startup the event processing
 //!         myself.send_message(Message::Ping).unwrap();
 //!         Ok(0u8)
@@ -96,7 +100,9 @@
 //! }
 //!
 //! async fn run() {
-//!     let (_, actor_handle) = Actor::spawn(None, PingPong, ()).await.expect("Failed to start actor");
+//!     let (_, actor_handle) = Actor::spawn(None, PingPong, ())
+//!         .await
+//!         .expect("Failed to start actor");
 //!     actor_handle.await.expect("Actor failed to exit cleanly");
 //! }
 //! ```
