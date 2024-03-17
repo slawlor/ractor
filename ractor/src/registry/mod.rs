@@ -36,8 +36,8 @@
 //! **Full example**
 //!
 //! ```rust
-//! use ractor::{Actor, ActorRef, ActorProcessingErr};
 //! use ractor::registry;
+//! use ractor::{Actor, ActorProcessingErr, ActorRef};
 //!
 //! struct ExampleActor;
 //!
@@ -47,7 +47,11 @@
 //!     type State = ();
 //!     type Arguments = ();
 //!
-//!     async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+//!     async fn pre_start(
+//!         &self,
+//!         _myself: ActorRef<Self::Msg>,
+//!         _args: Self::Arguments,
+//!     ) -> Result<Self::State, ActorProcessingErr> {
 //!         println!("Starting");
 //!         Ok(())
 //!     }
@@ -55,16 +59,20 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let (actor, handle) = Actor::spawn(Some("my_actor".to_string()), ExampleActor, ()).await.expect("Failed to startup dummy actor");
-//!     
+//!     let (actor, handle) = Actor::spawn(Some("my_actor".to_string()), ExampleActor, ())
+//!         .await
+//!         .expect("Failed to startup dummy actor");
+//!
 //!     // Retrieve the actor by name from the registry
-//!     let who: ActorRef<()> = registry::where_is("my_actor".to_string()).expect("Failed to find actor").into();
+//!     let who: ActorRef<()> = registry::where_is("my_actor".to_string())
+//!         .expect("Failed to find actor")
+//!         .into();
 //!     who.cast(()).expect("Failed to send message");
 //!
 //!     // wait for actor exit
 //!     actor.stop(None);
 //!     handle.await.unwrap();
-//!     
+//!
 //!     // Automatically removed from the registry upon shutdown
 //!     assert!(registry::where_is("my_actor".to_string()).is_none());
 //! }
