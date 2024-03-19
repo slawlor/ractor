@@ -144,7 +144,6 @@
 //! 4. Messages: Regular, user-defined, messages are the last channel of communication to actors. They are the lowest priority of the 4 message types and denote general actor work. The first
 //! 3 messages types (signals, stop, supervision) are generally quiet unless it's a lifecycle event for the actor, but this channel is the "work" channel doing what your actor wants to do!
 
-#![deny(warnings)]
 #![warn(unused_imports)]
 // #![warn(unsafe_code)]
 #![warn(missing_docs)]
