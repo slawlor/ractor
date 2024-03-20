@@ -16,7 +16,7 @@
 //! ```
 //!
 //! The minimum supported Rust version (MSRV) is 1.64. However if you disable the `async-trait` feature, then you need Rust >= 1.75 due to the native
-//! use of `async fn` in traits. See the [Rust blob](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html).
+//! use of `async fn` in traits. See the [Rust blog](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html).
 //!
 //! ## Getting started
 //!
