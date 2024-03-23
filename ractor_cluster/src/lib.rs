@@ -44,7 +44,6 @@
 //! remote-supporting messages, respectively.
 //!
 
-#![deny(warnings)]
 #![warn(unused_imports)]
 #![warn(unsafe_code)]
 #![warn(missing_docs)]
