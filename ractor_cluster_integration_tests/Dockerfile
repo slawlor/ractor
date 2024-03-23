@@ -5,6 +5,7 @@
 
 FROM rust:latest
 WORKDIR /usr/src/app
+RUN apt-get update && apt-get install -y cmake build-essential
 COPY . .
 RUN cargo install --path ractor_cluster_integration_tests/
 RUN mv /usr/local/cargo/bin/ractor_cluster_integration_tests /usr/local/bin/ractor_cluster_integration_tests
