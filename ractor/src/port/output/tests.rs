@@ -157,3 +157,182 @@ async fn test_50_receivers() {
         .expect("Test actor failed in exit")
         .unwrap();
 }
+
+#[cfg(not(feature = "cluster"))]
+#[allow(unused_imports)]
+use output_port_subscriber_tests::*;
+
+#[cfg(not(feature = "cluster"))]
+mod output_port_subscriber_tests {
+    use super::*;
+    use crate::{cast, Actor, ActorRef};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    enum NumberPublisherMessage {
+        Publish(u8),
+        Subscribe(OutputPortSubscriber<u8>),
+    }
+
+    struct NumberPublisher;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for NumberPublisher {
+        type State = OutputPort<u8>;
+        type Msg = NumberPublisherMessage;
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(OutputPort::default())
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            match message {
+                NumberPublisherMessage::Subscribe(subscriber) => {
+                    subscriber.subscribe_to_port(state);
+                }
+                NumberPublisherMessage::Publish(value) => {
+                    state.send(value);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[derive(Debug)]
+    enum PlusSubscriberMessage {
+        Plus(u8),
+    }
+    impl From<u8> for PlusSubscriberMessage {
+        fn from(value: u8) -> Self {
+            PlusSubscriberMessage::Plus(value)
+        }
+    }
+
+    struct PlusSubscriber;
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for PlusSubscriber {
+        type State = Arc<Mutex<u8>>;
+        type Msg = PlusSubscriberMessage;
+        type Arguments = Self::State;
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            state: Self::State,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(state)
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            match message {
+                PlusSubscriberMessage::Plus(value) => {
+                    let mut state = state.lock().await;
+                    *state += value;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[derive(Debug)]
+    enum MulSubscriberMessage {
+        Mul(u8),
+    }
+    impl From<u8> for MulSubscriberMessage {
+        fn from(value: u8) -> Self {
+            MulSubscriberMessage::Mul(value)
+        }
+    }
+
+    struct MulSubscriber;
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for MulSubscriber {
+        type State = Arc<Mutex<u8>>;
+        type Msg = MulSubscriberMessage;
+        type Arguments = Self::State;
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            state: Self::State,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(state)
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            match message {
+                MulSubscriberMessage::Mul(value) => {
+                    let mut state = state.lock().await;
+                    *state *= value;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[crate::concurrency::test]
+    #[tracing_test::traced_test]
+    async fn test_output_port_subscriber() {
+        let (number_publisher_ref, number_publisher_handler) =
+            Actor::spawn(None, NumberPublisher, ()).await.unwrap();
+
+        let plus_result = Arc::new(Mutex::new(0));
+        let (plus_subcriber_ref, plus_subscriber_handler) =
+            Actor::spawn(None, PlusSubscriber, plus_result.clone())
+                .await
+                .unwrap();
+
+        let mul_result = Arc::new(Mutex::new(1));
+        let (mul_subcriber_ref, mul_subscriber_handler) =
+            Actor::spawn(None, MulSubscriber, mul_result.clone())
+                .await
+                .unwrap();
+
+        cast!(
+            number_publisher_ref,
+            NumberPublisherMessage::Subscribe(Box::new(plus_subcriber_ref.clone()))
+        )
+        .unwrap();
+        cast!(
+            number_publisher_ref,
+            NumberPublisherMessage::Subscribe(Box::new(mul_subcriber_ref.clone()))
+        )
+        .unwrap();
+
+        cast!(number_publisher_ref, NumberPublisherMessage::Publish(2)).unwrap();
+        cast!(number_publisher_ref, NumberPublisherMessage::Publish(3)).unwrap();
+
+        crate::concurrency::sleep(Duration::from_millis(50)).await;
+
+        assert_eq!(2 + 3, *plus_result.lock().await);
+        assert_eq!(2 * 3, *mul_result.lock().await);
+
+        number_publisher_ref.stop(None);
+        plus_subcriber_ref.stop(None);
+        mul_subcriber_ref.stop(None);
+
+        number_publisher_handler.await.unwrap();
+        plus_subscriber_handler.await.unwrap();
+        mul_subscriber_handler.await.unwrap();
+    }
+}

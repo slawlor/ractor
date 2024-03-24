@@ -152,3 +152,150 @@ impl OutputPortSubscription {
         Self { handle }
     }
 }
+
+/// Represents a boxed `ActorRef` subscriber capable of handling messages from a
+/// publisher via an `OutputPort`, employing a publish-subscribe pattern to
+/// decouple message broadcasting from handling. For a subscriber `ActorRef` to
+/// function as an `OutputPortSubscriber<T>`, its message type must implement
+/// `From<T>` to convert the published message type to its own message format.
+///
+/// # Example
+/// ```
+/// // First, define the publisher's message types, including a variant for
+/// // subscribing `OutputPortSubscriber`s and another for publishing messages:
+/// use ractor::{
+///     cast,
+///     port::{OutputPort, OutputPortSubscriber},
+///     Actor, ActorProcessingErr, ActorRef, Message,
+/// };
+///
+/// enum PublisherMessage {
+///     Publish(u8),                         // Message type for publishing
+///     Subscribe(OutputPortSubscriber<u8>), // Message type for subscribing an actor to the output port
+/// }
+///
+/// // In the publisher actor's `handle` function, handle subscription requests and
+/// // publish messages accordingly:
+///
+/// struct Publisher;
+/// struct State {
+///     output_port: OutputPort<u8>,
+/// }
+///
+/// #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+/// impl Actor for Publisher {
+///     type State = State;
+///     type Msg = PublisherMessage;
+///     type Arguments = ();
+///
+///     async fn pre_start(
+///         &self,
+///         _myself: ActorRef<Self::Msg>,
+///         _: (),
+///     ) -> Result<Self::State, ActorProcessingErr> {
+///         Ok(State {
+///             output_port: OutputPort::default(),
+///         })
+///     }
+///
+///     async fn handle(
+///         &self,
+///         _myself: ActorRef<Self::Msg>,
+///         message: Self::Msg,
+///         state: &mut Self::State,
+///     ) -> Result<(), ActorProcessingErr> {
+///         match message {
+///             PublisherMessage::Subscribe(subscriber) => {
+///                 // Subscribes the `OutputPortSubscriber` wrapped actor to the `OutputPort`
+///                 subscriber.subscribe_to_port(&state.output_port);
+///             }
+///             PublisherMessage::Publish(value) => {
+///                 // Broadcasts the `u8` value to all subscribed actors, which will handle the type conversion
+///                 state.output_port.send(value);
+///             }
+///         }
+///         Ok(())
+///     }
+/// }
+///
+/// // The subscriber's message type demonstrates how to transform the publisher's
+/// // message type by implementing `From<T>`:
+///
+/// #[derive(Debug)]
+/// enum SubscriberMessage {
+///     Handle(String), // Subscriber's intent for message handling
+/// }
+///
+/// impl From<u8> for SubscriberMessage {
+///     fn from(value: u8) -> Self {
+///         SubscriberMessage::Handle(value.to_string()) // Converts u8 to String
+///     }
+/// }
+///
+/// // To subscribe a subscriber actor to the publisher and broadcast a message:
+/// struct Subscriber;
+/// #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+/// impl Actor for Subscriber {
+///     type State = ();
+///     type Msg = SubscriberMessage;
+///     type Arguments = ();
+///
+///     async fn pre_start(
+///         &self,
+///         _myself: ActorRef<Self::Msg>,
+///         _: (),
+///     ) -> Result<Self::State, ActorProcessingErr> {
+///         Ok(())
+///     }
+///
+///     async fn handle(
+///         &self,
+///         _myself: ActorRef<Self::Msg>,
+///         message: Self::Msg,
+///         _state: &mut Self::State,
+///     ) -> Result<(), ActorProcessingErr> {
+///         Ok(())
+///     }
+/// }
+/// async fn example() {
+///     let (publisher_actor_ref, publisher_actor_handle) =
+///         Actor::spawn(None, Publisher, ()).await.unwrap();
+///     let (subscriber_actor_ref, subscriber_actor_handle) =
+///         Actor::spawn(None, Subscriber, ()).await.unwrap();
+///
+///     publisher_actor_ref
+///         .send_message(PublisherMessage::Subscribe(Box::new(subscriber_actor_ref)))
+///         .unwrap();
+///
+///     // Broadcasting a message to all subscribers
+///     publisher_actor_ref
+///         .send_message(PublisherMessage::Publish(123))
+///         .unwrap();
+///
+///     publisher_actor_handle.await.unwrap();
+///     subscriber_actor_handle.await.unwrap();
+/// }
+/// ```
+
+#[cfg(not(feature = "cluster"))]
+pub type OutputPortSubscriber<InputMessage> = Box<dyn OutputPortSubscriberTrait<InputMessage>>;
+#[cfg(not(feature = "cluster"))]
+/// A trait for subscribing to an [OutputPort]
+pub trait OutputPortSubscriberTrait<I>: Send
+where
+    I: Send + Clone + 'static,
+{
+    /// Subscribe to the output port
+    fn subscribe_to_port(&self, port: &OutputPort<I>);
+}
+
+#[cfg(not(feature = "cluster"))]
+impl<I, O> OutputPortSubscriberTrait<I> for ActorRef<O>
+where
+    I: Send + Clone + 'static,
+    O: Message + From<I>,
+{
+    fn subscribe_to_port(&self, port: &OutputPort<I>) {
+        port.subscribe(self.clone(), |msg| Some(O::from(msg)));
+    }
+}
