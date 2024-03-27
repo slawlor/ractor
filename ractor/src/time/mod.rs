@@ -131,7 +131,7 @@ where
 ///
 /// * `period` - The [Duration] representing the time to delay before sending
 /// * `actor` - The [ActorCell] representing the [crate::Actor] to communicate with
-/// * `msg` - The [Fn] message builder which is called to generate a message for the send
+/// * `msg` - The [FnOnce] message builder which is called to generate a message for the send
 /// operation
 ///
 /// Returns: The [JoinHandle<Result<(), MessagingErr>>] which represents the backgrounded work.
@@ -144,7 +144,7 @@ pub fn send_after<TMessage, F>(
 ) -> JoinHandle<Result<(), MessagingErr<TMessage>>>
 where
     TMessage: Message,
-    F: Fn() -> TMessage + Send + 'static,
+    F: FnOnce() -> TMessage + Send + 'static,
 {
     crate::concurrency::spawn(async move {
         crate::concurrency::sleep(period).await;
@@ -201,7 +201,7 @@ where
         msg: F,
     ) -> JoinHandle<Result<(), MessagingErr<TMessage>>>
     where
-        F: Fn() -> TMessage + Send + 'static,
+        F: FnOnce() -> TMessage + Send + 'static,
     {
         send_after::<TMessage, F>(period, self.get_cell(), msg)
     }
