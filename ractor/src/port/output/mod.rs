@@ -174,6 +174,12 @@ impl OutputPortSubscription {
 ///     Subscribe(OutputPortSubscriber<u8>), // Message type for subscribing an actor to the output port
 /// }
 ///
+/// impl Message for PublisherMessage {
+///     fn serializable() -> bool {
+///         false
+///     }
+/// }
+///
 /// // In the publisher actor's `handle` function, handle subscription requests and
 /// // publish messages accordingly:
 ///
@@ -224,6 +230,12 @@ impl OutputPortSubscription {
 /// #[derive(Debug)]
 /// enum SubscriberMessage {
 ///     Handle(String), // Subscriber's intent for message handling
+/// }
+///
+/// impl Message for SubscriberMessage {
+///     fn serializable() -> bool {
+///         false
+///     }
 /// }
 ///
 /// impl From<u8> for SubscriberMessage {
@@ -277,22 +289,19 @@ impl OutputPortSubscription {
 /// }
 /// ```
 
-#[cfg(not(feature = "cluster"))]
 pub type OutputPortSubscriber<InputMessage> = Box<dyn OutputPortSubscriberTrait<InputMessage>>;
-#[cfg(not(feature = "cluster"))]
 /// A trait for subscribing to an [OutputPort]
 pub trait OutputPortSubscriberTrait<I>: Send
 where
-    I: Send + Clone + 'static,
+    I: Message + Clone,
 {
     /// Subscribe to the output port
     fn subscribe_to_port(&self, port: &OutputPort<I>);
 }
 
-#[cfg(not(feature = "cluster"))]
 impl<I, O> OutputPortSubscriberTrait<I> for ActorRef<O>
 where
-    I: Send + Clone + 'static,
+    I: Message + Clone,
     O: Message + From<I>,
 {
     fn subscribe_to_port(&self, port: &OutputPort<I>) {

@@ -158,11 +158,9 @@ async fn test_50_receivers() {
         .unwrap();
 }
 
-#[cfg(not(feature = "cluster"))]
 #[allow(unused_imports)]
 use output_port_subscriber_tests::*;
 
-#[cfg(not(feature = "cluster"))]
 mod output_port_subscriber_tests {
     use super::*;
     use crate::{cast, Actor, ActorRef};
@@ -172,6 +170,11 @@ mod output_port_subscriber_tests {
     enum NumberPublisherMessage {
         Publish(u8),
         Subscribe(OutputPortSubscriber<u8>),
+    }
+    impl Message for NumberPublisherMessage {
+        fn serializable() -> bool {
+            false
+        }
     }
 
     struct NumberPublisher;
@@ -212,9 +215,15 @@ mod output_port_subscriber_tests {
     enum PlusSubscriberMessage {
         Plus(u8),
     }
+
     impl From<u8> for PlusSubscriberMessage {
         fn from(value: u8) -> Self {
             PlusSubscriberMessage::Plus(value)
+        }
+    }
+    impl Message for PlusSubscriberMessage {
+        fn serializable() -> bool {
+            false
         }
     }
 
@@ -252,6 +261,11 @@ mod output_port_subscriber_tests {
     #[derive(Debug)]
     enum MulSubscriberMessage {
         Mul(u8),
+    }
+    impl Message for MulSubscriberMessage {
+        fn serializable() -> bool {
+            false
+        }
     }
     impl From<u8> for MulSubscriberMessage {
         fn from(value: u8) -> Self {
