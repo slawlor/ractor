@@ -163,9 +163,7 @@ use output_port_subscriber_tests::*;
 
 mod output_port_subscriber_tests {
     use super::*;
-    use crate::{cast, Actor, ActorRef};
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
+    use crate::{call_t, cast, Actor, ActorRef, RpcReplyPort};
 
     enum NumberPublisherMessage {
         Publish(u8),
@@ -214,6 +212,7 @@ mod output_port_subscriber_tests {
     #[derive(Debug)]
     enum PlusSubscriberMessage {
         Plus(u8),
+        Result(RpcReplyPort<u8>),
     }
 
     impl From<u8> for PlusSubscriberMessage {
@@ -230,16 +229,16 @@ mod output_port_subscriber_tests {
     struct PlusSubscriber;
     #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for PlusSubscriber {
-        type State = Arc<Mutex<u8>>;
+        type State = u8;
         type Msg = PlusSubscriberMessage;
-        type Arguments = Self::State;
+        type Arguments = ();
 
         async fn pre_start(
             &self,
             _myself: ActorRef<Self::Msg>,
-            state: Self::State,
+            _arguments: (),
         ) -> Result<Self::State, ActorProcessingErr> {
-            Ok(state)
+            Ok(0)
         }
 
         async fn handle(
@@ -250,8 +249,12 @@ mod output_port_subscriber_tests {
         ) -> Result<(), ActorProcessingErr> {
             match message {
                 PlusSubscriberMessage::Plus(value) => {
-                    let mut state = state.lock().await;
                     *state += value;
+                }
+                PlusSubscriberMessage::Result(reply) => {
+                    if !reply.is_closed() {
+                        reply.send(*state).unwrap();
+                    }
                 }
             }
             Ok(())
@@ -261,6 +264,7 @@ mod output_port_subscriber_tests {
     #[derive(Debug)]
     enum MulSubscriberMessage {
         Mul(u8),
+        Result(RpcReplyPort<u8>),
     }
     impl Message for MulSubscriberMessage {
         fn serializable() -> bool {
@@ -276,16 +280,16 @@ mod output_port_subscriber_tests {
     struct MulSubscriber;
     #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for MulSubscriber {
-        type State = Arc<Mutex<u8>>;
+        type State = u8;
         type Msg = MulSubscriberMessage;
-        type Arguments = Self::State;
+        type Arguments = ();
 
         async fn pre_start(
             &self,
             _myself: ActorRef<Self::Msg>,
-            state: Self::State,
+            _arguments: (),
         ) -> Result<Self::State, ActorProcessingErr> {
-            Ok(state)
+            Ok(1)
         }
 
         async fn handle(
@@ -296,8 +300,12 @@ mod output_port_subscriber_tests {
         ) -> Result<(), ActorProcessingErr> {
             match message {
                 MulSubscriberMessage::Mul(value) => {
-                    let mut state = state.lock().await;
                     *state *= value;
+                }
+                MulSubscriberMessage::Result(reply) => {
+                    if !reply.is_closed() {
+                        reply.send(*state).unwrap();
+                    }
                 }
             }
             Ok(())
@@ -310,17 +318,11 @@ mod output_port_subscriber_tests {
         let (number_publisher_ref, number_publisher_handler) =
             Actor::spawn(None, NumberPublisher, ()).await.unwrap();
 
-        let plus_result = Arc::new(Mutex::new(0));
         let (plus_subcriber_ref, plus_subscriber_handler) =
-            Actor::spawn(None, PlusSubscriber, plus_result.clone())
-                .await
-                .unwrap();
+            Actor::spawn(None, PlusSubscriber, ()).await.unwrap();
 
-        let mul_result = Arc::new(Mutex::new(1));
         let (mul_subcriber_ref, mul_subscriber_handler) =
-            Actor::spawn(None, MulSubscriber, mul_result.clone())
-                .await
-                .unwrap();
+            Actor::spawn(None, MulSubscriber, ()).await.unwrap();
 
         cast!(
             number_publisher_ref,
@@ -338,8 +340,10 @@ mod output_port_subscriber_tests {
 
         crate::concurrency::sleep(Duration::from_millis(50)).await;
 
-        assert_eq!(2 + 3, *plus_result.lock().await);
-        assert_eq!(2 * 3, *mul_result.lock().await);
+        let plus_result = call_t!(plus_subcriber_ref, PlusSubscriberMessage::Result, 10).unwrap();
+        let mul_result = call_t!(mul_subcriber_ref, MulSubscriberMessage::Result, 10).unwrap();
+        assert_eq!(2 + 3, plus_result);
+        assert_eq!(2 * 3, mul_result);
 
         number_publisher_ref.stop(None);
         plus_subcriber_ref.stop(None);
