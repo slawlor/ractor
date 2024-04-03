@@ -174,6 +174,7 @@ impl OutputPortSubscription {
 ///     Subscribe(OutputPortSubscriber<u8>), // Message type for subscribing an actor to the output port
 /// }
 ///
+/// #[cfg(feature = "cluster")]
 /// impl Message for PublisherMessage {
 ///     fn serializable() -> bool {
 ///         false
@@ -232,6 +233,7 @@ impl OutputPortSubscription {
 ///     Handle(String), // Subscriber's intent for message handling
 /// }
 ///
+/// #[cfg(feature = "cluster")]
 /// impl Message for SubscriberMessage {
 ///     fn serializable() -> bool {
 ///         false

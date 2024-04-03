@@ -169,6 +169,8 @@ mod output_port_subscriber_tests {
         Publish(u8),
         Subscribe(OutputPortSubscriber<u8>),
     }
+
+    #[cfg(feature = "cluster")]
     impl Message for NumberPublisherMessage {
         fn serializable() -> bool {
             false
@@ -266,6 +268,8 @@ mod output_port_subscriber_tests {
         Mul(u8),
         Result(RpcReplyPort<u8>),
     }
+
+    #[cfg(feature = "cluster")]
     impl Message for MulSubscriberMessage {
         fn serializable() -> bool {
             false
