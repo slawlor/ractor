@@ -222,6 +222,7 @@ mod output_port_subscriber_tests {
             PlusSubscriberMessage::Plus(value)
         }
     }
+    #[cfg(feature = "cluster")]
     impl Message for PlusSubscriberMessage {
         fn serializable() -> bool {
             false
