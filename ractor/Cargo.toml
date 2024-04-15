@@ -43,7 +43,7 @@ paste = "1"
 serial_test = "3.0.0"
 rand = "0.8"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "tracing"] }
-tracing-glog = "0.3"
+tracing-glog = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"]}
 tracing-test = "0.2"
 
