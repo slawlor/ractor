@@ -11,6 +11,8 @@
 //! cargo run --example output_port
 //! ```
 
+#![allow(clippy::incompatible_msrv)]
+
 extern crate ractor;
 
 use std::sync::Arc;

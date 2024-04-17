@@ -166,6 +166,13 @@ impl MessageProcessingStats {
         self.total_num_expired_jobs += 1;
     }
 
+    pub(crate) fn jobs_ttls_expired(&mut self, num_jobs: usize) {
+        if !self.enabled {
+            return;
+        }
+        self.total_num_expired_jobs += num_jobs as u128;
+    }
+
     pub(crate) fn job_discarded(&mut self) {
         if !self.enabled {
             return;

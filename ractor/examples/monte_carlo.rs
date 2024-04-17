@@ -15,6 +15,8 @@
 //! cargo run --example monte_carlo
 //! ```
 
+#![allow(clippy::incompatible_msrv)]
+
 use std::collections::HashMap;
 
 use ractor::{cast, Actor, ActorId, ActorProcessingErr, ActorRef};

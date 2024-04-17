@@ -18,6 +18,8 @@
 //! cargo run --example philosophers
 //! ```
 
+#![allow(clippy::incompatible_msrv)]
+
 use std::collections::{HashMap, VecDeque};
 
 use ractor::{cast, Actor, ActorId, ActorName, ActorProcessingErr, ActorRef, RpcReplyPort};

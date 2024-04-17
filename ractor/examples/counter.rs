@@ -12,6 +12,8 @@
 //! cargo run --example counter
 //! ```
 
+#![allow(clippy::incompatible_msrv)]
+
 extern crate ractor;
 
 use ractor::{call_t, Actor, ActorProcessingErr, ActorRef, RpcReplyPort};

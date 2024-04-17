@@ -11,6 +11,8 @@
 //! cargo run --example supervisor
 //! ```
 
+#![allow(clippy::incompatible_msrv)]
+
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
 
 use tokio::time::Duration;

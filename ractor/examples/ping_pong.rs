@@ -12,6 +12,8 @@
 //! cargo run --example ping_pong
 //! ```
 
+#![allow(clippy::incompatible_msrv)]
+
 extern crate ractor;
 
 use ractor::{cast, Actor, ActorProcessingErr, ActorRef};
