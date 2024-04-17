@@ -34,7 +34,7 @@ impl Message for MyWorkerMessage {}
 impl Actor for MyWorker {
     type State = Self::Arguments;
     type Msg = WorkerMessage<(), MyWorkerMessage>;
-    type Arguments = WorkerStartContext<(), MyWorkerMessage>;
+    type Arguments = WorkerStartContext<(), MyWorkerMessage, ()>;
 
     async fn pre_start(
         &self,
@@ -85,11 +85,14 @@ struct MyWorkerBuilder {
     counter: Arc<AtomicU16>,
 }
 
-impl WorkerBuilder<MyWorker> for MyWorkerBuilder {
-    fn build(&self, _wid: WorkerId) -> MyWorker {
-        MyWorker {
-            counter: self.counter.clone(),
-        }
+impl WorkerBuilder<MyWorker, ()> for MyWorkerBuilder {
+    fn build(&self, _wid: WorkerId) -> (MyWorker, ()) {
+        (
+            MyWorker {
+                counter: self.counter.clone(),
+            },
+            (),
+        )
     }
 }
 
@@ -100,7 +103,7 @@ async fn test_worker_death_restarts_and_gets_next_message() {
     let worker_builder = MyWorkerBuilder {
         counter: counter.clone(),
     };
-    let factory_definition = Factory::<(), MyWorkerMessage, MyWorker> {
+    let factory_definition = Factory::<(), MyWorkerMessage, (), MyWorker> {
         worker_count: 1,
         routing_mode: RoutingMode::Queuer,
         discard_threshold: Some(10),

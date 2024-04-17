@@ -58,8 +58,8 @@ struct ExampleWorker;
 #[ractor::async_trait]
 impl Actor for ExampleWorker {
     type Msg = WorkerMessage<(), ExampleMessage>;
-    type State = WorkerStartContext<(), ExampleMessage>;
-    type Arguments = WorkerStartContext<(), ExampleMessage>;
+    type State = WorkerStartContext<(), ExampleMessage, ()>;
+    type Arguments = WorkerStartContext<(), ExampleMessage, ()>;
     async fn pre_start(
         &self,
         _myself: ActorRef<Self::Msg>,
@@ -107,14 +107,14 @@ impl Actor for ExampleWorker {
 }
 /// Used by the factory to build new [ExampleWorker]s.
 struct ExampleWorkerBuilder;
-impl WorkerBuilder<ExampleWorker> for ExampleWorkerBuilder {
-    fn build(&self, _wid: usize) -> ExampleWorker {
-        ExampleWorker
+impl WorkerBuilder<ExampleWorker, ()> for ExampleWorkerBuilder {
+    fn build(&self, _wid: usize) -> (ExampleWorker, ()) {
+        (ExampleWorker, ())
     }
 }
 #[tokio::main]
 async fn main() {
-    let factory_def = Factory::<(), ExampleMessage, ExampleWorker> {
+    let factory_def = Factory::<(), ExampleMessage, (), ExampleWorker> {
         worker_count: 5,
         routing_mode: RoutingMode::<()>::Queuer,
         ..Default::default()
@@ -165,6 +165,7 @@ use crate::{Actor, ActorProcessingErr, ActorRef, Message, RpcReplyPort, Supervis
 
 pub mod hash;
 pub mod job;
+pub mod lifecycle;
 pub mod routing_mode;
 pub mod stats;
 pub mod worker;
@@ -172,6 +173,7 @@ pub mod worker;
 use stats::MessageProcessingStats;
 
 pub use job::{Job, JobKey, JobOptions};
+pub use lifecycle::FactoryLifecycleHooks;
 pub use routing_mode::{CustomHashFunction, RoutingMode};
 pub use worker::{WorkerMessage, WorkerProperties, WorkerStartContext};
 
@@ -186,6 +188,23 @@ const PING_FREQUENCY_MS: u64 = 100;
 #[cfg(test)]
 mod tests;
 
+#[derive(Eq, PartialEq)]
+enum DrainState {
+    NotDraining,
+    Draining,
+    Drained,
+}
+
+/// Reason for discarding a job
+pub enum DiscardReason {
+    /// The job TTLd
+    TtlExpired,
+    /// The job was rejected or dropped due to loadshedding
+    Loadshed,
+    /// The job was dropped due to factory shutting down
+    Shutdown,
+}
+
 /// Trait defining the discard handler for a factory.
 pub trait DiscardHandler<TKey, TMsg>: Send + Sync + 'static
 where
@@ -193,21 +212,25 @@ where
     TMsg: Message,
 {
     /// Called on a job
-    fn discard(&self, job: Job<TKey, TMsg>);
+    fn discard(&self, reason: DiscardReason, job: Job<TKey, TMsg>);
 
     /// clone yourself into a box
     fn clone_box(&self) -> Box<dyn DiscardHandler<TKey, TMsg>>;
 }
 
 /// Trait defining a builder of workers for a factory
-pub trait WorkerBuilder<TWorker>: Send + Sync
+pub trait WorkerBuilder<TWorker, TWorkerStart>: Send + Sync
 where
     TWorker: Actor,
+    TWorkerStart: Message,
 {
     /// Build a new worker
     ///
     /// * `wid`: The worker's "id" or index in the worker pool
-    fn build(&self, wid: WorkerId) -> TWorker;
+    ///
+    /// Returns a tuple of the worker and a custom startup definition giving the worker
+    /// owned control of some structs that it may need to work.
+    fn build(&self, wid: WorkerId) -> (TWorker, TWorkerStart);
 }
 
 /// The configuration for the dead-man's switch functionality
@@ -220,11 +243,15 @@ pub struct DeadMansSwitchConfiguration {
 }
 
 /// A factory is a manager to a pool of worker actors used for job dispatching
-pub struct Factory<TKey, TMsg, TWorker>
+pub struct Factory<TKey, TMsg, TWorkerStart, TWorker>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
 {
     /// Number of workers in the factory
     pub worker_count: usize,
@@ -265,19 +292,27 @@ where
     /// can be killed and replaced by the factory
     pub dead_mans_switch: Option<DeadMansSwitchConfiguration>,
 
+    /// Lifecycle hooks which provide access to points in the thrift factory's lifecycle
+    /// for shutdown/startup
+    pub lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
+
     /// The worker type
     pub _worker: PhantomData<TWorker>,
 }
 
-impl<TKey, TMsg, TWorker> Factory<TKey, TMsg, TWorker>
+impl<TKey, TMsg, TWorkerStart, TWorker> Factory<TKey, TMsg, TWorkerStart, TWorker>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
 {
     fn maybe_dequeue(
         &self,
-        state: &mut FactoryState<TKey, TMsg, TWorker>,
+        state: &mut FactoryState<TKey, TMsg, TWorkerStart, TWorker>,
         who: WorkerId,
     ) -> Result<(), ActorProcessingErr> {
         match &self.routing_mode {
@@ -289,6 +324,9 @@ where
                         next_job = Some(job);
                         break;
                     } else {
+                        if let Some(handler) = &self.discard_handler {
+                            handler.discard(DiscardReason::TtlExpired, job);
+                        }
                         state.stats.job_ttl_expired();
                     }
                 }
@@ -314,14 +352,18 @@ where
         Ok(())
     }
 
-    fn maybe_enqueue(&self, state: &mut FactoryState<TKey, TMsg, TWorker>, job: Job<TKey, TMsg>) {
+    fn maybe_enqueue(
+        &self,
+        state: &mut FactoryState<TKey, TMsg, TWorkerStart, TWorker>,
+        job: Job<TKey, TMsg>,
+    ) {
         if let Some(limit) = self.discard_threshold {
             state.messages.push_back(job);
             while state.messages.len() > limit {
                 // try and shed a job
                 if let Some(msg) = state.messages.pop_front() {
                     if let Some(handler) = &self.discard_handler {
-                        handler.discard(msg);
+                        handler.discard(DiscardReason::Loadshed, msg);
                     }
                     state.stats.job_discarded();
                 }
@@ -333,11 +375,15 @@ where
     }
 }
 
-impl<TKey, TMsg, TWorker> Default for Factory<TKey, TMsg, TWorker>
+impl<TKey, TMsg, TWorkerStart, TWorker> Default for Factory<TKey, TMsg, TWorkerStart, TWorker>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
 {
     fn default() -> Self {
         Self {
@@ -349,30 +395,40 @@ where
             worker_parallel_capacity: 1,
             collect_worker_stats: false,
             dead_mans_switch: None,
+            lifecycle_hooks: None,
         }
     }
 }
 
 /// State of a factory (backlogged jobs, handler, etc)
-pub struct FactoryState<TKey, TMsg, TWorker>
+pub struct FactoryState<TKey, TMsg, TWorkerStart, TWorker>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>>,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
 {
-    worker_builder: Box<dyn WorkerBuilder<TWorker>>,
+    worker_builder: Box<dyn WorkerBuilder<TWorker, TWorkerStart>>,
     pool: HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
 
     messages: VecDeque<Job<TKey, TMsg>>,
     last_worker: WorkerId,
     stats: MessageProcessingStats,
+    drain_state: DrainState,
 }
 
-impl<TKey, TMsg, TWorker> FactoryState<TKey, TMsg, TWorker>
+impl<TKey, TMsg, TWorkerStart, TWorker> FactoryState<TKey, TMsg, TWorkerStart, TWorker>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg>>,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
 {
     fn log_stats(&mut self, factory: &ActorRef<FactoryMessage<TKey, TMsg>>) {
         let factory_identifier = if let Some(factory_name) = factory.get_name() {
@@ -383,6 +439,27 @@ where
 
         tracing::debug!("{factory_identifier}\n{}", self.stats);
         self.stats.reset_global_counters();
+    }
+
+    /// Denote if the factory has completed draining, and should now be shutdown
+    ///
+    /// Returns [true] if drained, [false] otherwise.
+    pub fn is_drained(&mut self) -> bool {
+        match &self.drain_state {
+            DrainState::NotDraining => false,
+            DrainState::Drained => true,
+            DrainState::Draining => {
+                let are_all_workers_free = self.pool.values().all(|worker| worker.is_available());
+                if are_all_workers_free && self.messages.is_empty() {
+                    tracing::debug!("Worker pool is free and queue is empty.");
+                    // everyone is free, all requests are drainined
+                    self.drain_state = DrainState::Drained;
+                    true
+                } else {
+                    false
+                }
+            }
+        }
     }
 }
 
@@ -419,6 +496,11 @@ where
 
     /// Retrieve the factory's statsistics
     GetStats(RpcReplyPort<MessageProcessingStats>),
+
+    /// Notify the factory that it's being drained, and to finish jobs
+    /// currently in the queue, but discard new work, and once drained
+    /// exit
+    DrainRequests,
 }
 #[cfg(feature = "cluster")]
 impl<TKey, TMsg> Message for FactoryMessage<TKey, TMsg>
@@ -443,29 +525,34 @@ where
 }
 
 #[cfg_attr(feature = "async-trait", crate::async_trait)]
-impl<TKey, TMsg, TWorker> Actor for Factory<TKey, TMsg, TWorker>
+impl<TKey, TMsg, TWorkerStart, TWorker> Actor for Factory<TKey, TMsg, TWorkerStart, TWorker>
 where
     TKey: JobKey,
     TMsg: Message,
-    TWorker: Actor<Msg = WorkerMessage<TKey, TMsg>, Arguments = WorkerStartContext<TKey, TMsg>>,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
 {
     type Msg = FactoryMessage<TKey, TMsg>;
-    type State = FactoryState<TKey, TMsg, TWorker>;
-    type Arguments = Box<dyn WorkerBuilder<TWorker>>;
+    type State = FactoryState<TKey, TMsg, TWorkerStart, TWorker>;
+    type Arguments = Box<dyn WorkerBuilder<TWorker, TWorkerStart>>;
 
     async fn pre_start(
         &self,
         myself: ActorRef<Self::Msg>,
-        builder: Box<dyn WorkerBuilder<TWorker>>,
+        builder: Box<dyn WorkerBuilder<TWorker, TWorkerStart>>,
     ) -> Result<Self::State, ActorProcessingErr> {
         // build the pool
         let mut pool = HashMap::new();
         for wid in 0..self.worker_count {
+            let (handler, custom_start) = builder.build(wid);
             let context = WorkerStartContext {
                 wid,
                 factory: myself.clone(),
+                custom_start,
             };
-            let handler = builder.build(wid);
             let (worker, worker_handle) =
                 Actor::spawn_linked(None, handler, context, myself.get_cell()).await?;
             pool.insert(
@@ -503,7 +590,20 @@ where
             pool,
             last_worker: 0,
             stats,
+            drain_state: DrainState::NotDraining,
         })
+    }
+
+    async fn post_start(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        tracing::debug!("Factory {:?} started", myself.get_name());
+        if let Some(hooks) = &self.lifecycle_hooks {
+            hooks.on_factory_started(myself).await?;
+        }
+        Ok(())
     }
 
     async fn post_stop(
@@ -521,6 +621,11 @@ where
                 let _ = handle.await;
             }
         }
+
+        if let Some(hooks) = &self.lifecycle_hooks {
+            hooks.on_factory_stopped().await?;
+        }
+
         Ok(())
     }
 
@@ -537,62 +642,69 @@ where
                 job.set_factory_time();
                 state.stats.job_submitted();
 
-                match &self.routing_mode {
-                    RoutingMode::KeyPersistent => {
-                        let key = hash::hash_with_max(&job.key, self.worker_count);
-                        if let Some(worker) = state.pool.get_mut(&key) {
-                            worker.enqueue_job(job)?;
+                if state.drain_state == DrainState::NotDraining {
+                    match &self.routing_mode {
+                        RoutingMode::KeyPersistent => {
+                            let key = hash::hash_with_max(&job.key, self.worker_count);
+                            if let Some(worker) = state.pool.get_mut(&key) {
+                                worker.enqueue_job(job)?;
+                            }
+                        }
+                        RoutingMode::Queuer => {
+                            if let Some(worker) =
+                                state.pool.values_mut().find(|worker| worker.is_available())
+                            {
+                                worker.enqueue_job(job)?;
+                            } else {
+                                // no free worker, maybe backlog the message
+                                self.maybe_enqueue(state, job);
+                            }
+                        }
+                        RoutingMode::StickyQueuer => {
+                            // See if there's a worker processing this given job key already, if yes route to that worker
+                            let maybe_worker = state
+                                .pool
+                                .values_mut()
+                                .find(|worker| worker.is_processing_key(&job.key));
+                            if let Some(worker) = maybe_worker {
+                                worker.enqueue_job(job)?;
+                            } else if let Some(worker) =
+                                state.pool.values_mut().find(|worker| worker.is_available())
+                            {
+                                // If no matching sticky worker, find the first free worker
+                                worker.enqueue_job(job)?;
+                            } else {
+                                // no free worker, maybe backlog the message
+                                self.maybe_enqueue(state, job);
+                            }
+                        }
+                        RoutingMode::RoundRobin => {
+                            let mut key = state.last_worker + 1;
+                            if key >= self.worker_count {
+                                key = 0;
+                            }
+                            if let Some(worker) = state.pool.get_mut(&key) {
+                                worker.enqueue_job(job)?;
+                            }
+                            state.last_worker = key;
+                        }
+                        RoutingMode::Random => {
+                            let key = rand::thread_rng().gen_range(0..self.worker_count);
+                            if let Some(worker) = state.pool.get_mut(&key) {
+                                worker.enqueue_job(job)?;
+                            }
+                        }
+                        RoutingMode::CustomHashFunction(hasher) => {
+                            let key = hasher.hash(&job.key, self.worker_count);
+                            if let Some(worker) = state.pool.get_mut(&key) {
+                                worker.enqueue_job(job)?;
+                            }
                         }
                     }
-                    RoutingMode::Queuer => {
-                        if let Some(worker) =
-                            state.pool.values_mut().find(|worker| worker.is_available())
-                        {
-                            worker.enqueue_job(job)?;
-                        } else {
-                            // no free worker, maybe backlog the message
-                            self.maybe_enqueue(state, job);
-                        }
-                    }
-                    RoutingMode::StickyQueuer => {
-                        // See if there's a worker processing this given job key already, if yes route to that worker
-                        let maybe_worker = state
-                            .pool
-                            .values_mut()
-                            .find(|worker| worker.is_processing_key(&job.key));
-                        if let Some(worker) = maybe_worker {
-                            worker.enqueue_job(job)?;
-                        } else if let Some(worker) =
-                            state.pool.values_mut().find(|worker| worker.is_available())
-                        {
-                            // If no matching sticky worker, find the first free worker
-                            worker.enqueue_job(job)?;
-                        } else {
-                            // no free worker, maybe backlog the message
-                            self.maybe_enqueue(state, job);
-                        }
-                    }
-                    RoutingMode::RoundRobin => {
-                        let mut key = state.last_worker + 1;
-                        if key >= self.worker_count {
-                            key = 0;
-                        }
-                        if let Some(worker) = state.pool.get_mut(&key) {
-                            worker.enqueue_job(job)?;
-                        }
-                        state.last_worker = key;
-                    }
-                    RoutingMode::Random => {
-                        let key = rand::thread_rng().gen_range(0..self.worker_count);
-                        if let Some(worker) = state.pool.get_mut(&key) {
-                            worker.enqueue_job(job)?;
-                        }
-                    }
-                    RoutingMode::CustomHashFunction(hasher) => {
-                        let key = hasher.hash(&job.key, self.worker_count);
-                        if let Some(worker) = state.pool.get_mut(&key) {
-                            worker.enqueue_job(job)?;
-                        }
+                } else {
+                    tracing::debug!("Factory is draining but a job was received");
+                    if let Some(discard_handler) = &self.discard_handler {
+                        discard_handler.discard(DiscardReason::Shutdown, job);
                     }
                 }
             }
@@ -651,6 +763,20 @@ where
             FactoryMessage::GetStats(reply) => {
                 let _ = reply.send(state.stats.clone());
             }
+            FactoryMessage::DrainRequests => {
+                // put us into a draining state
+                tracing::debug!("Factory is moving to draining state");
+                state.drain_state = DrainState::Draining;
+                if let Some(hooks) = &self.lifecycle_hooks {
+                    hooks.on_factory_draining(myself.clone()).await?;
+                }
+            }
+        }
+
+        if state.is_drained() {
+            // If we're in a draining state, and all requests are now drained
+            // stop the factory
+            myself.stop(None);
         }
 
         Ok(())
@@ -674,10 +800,11 @@ where
                         myself.get_name(),
                         worker.wid
                     );
-                    let new_worker = state.worker_builder.build(worker.wid);
+                    let (new_worker, custom_start) = state.worker_builder.build(worker.wid);
                     let spec = WorkerStartContext {
                         wid: worker.wid,
                         factory: myself.clone(),
+                        custom_start,
                     };
                     let (replacement, replacement_handle) =
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
@@ -702,10 +829,11 @@ where
                         myself.get_name(),
                         worker.wid
                     );
-                    let new_worker = state.worker_builder.build(worker.wid);
+                    let (new_worker, custom_start) = state.worker_builder.build(worker.wid);
                     let spec = WorkerStartContext {
                         wid: worker.wid,
                         factory: myself.clone(),
+                        custom_start,
                     };
                     let (replacement, replacement_handle) =
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;

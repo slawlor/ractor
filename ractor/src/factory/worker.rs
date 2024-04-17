@@ -16,7 +16,7 @@ use super::FactoryMessage;
 use super::Job;
 use super::JobKey;
 use super::WorkerId;
-use super::{DiscardHandler, JobOptions};
+use super::{DiscardHandler, DiscardReason, JobOptions};
 
 /// Message to a worker
 pub enum WorkerMessage<TKey, TMsg>
@@ -44,16 +44,20 @@ where
 }
 
 /// Startup context data (`Arguments`) which are passed to a worker on start
-pub struct WorkerStartContext<TKey, TMsg>
+pub struct WorkerStartContext<TKey, TMsg, TCustomStart>
 where
     TKey: JobKey,
     TMsg: Message,
+    TCustomStart: Message,
 {
     /// The worker's identifier
     pub wid: WorkerId,
 
     /// The factory the worker belongs to
     pub factory: ActorRef<FactoryMessage<TKey, TMsg>>,
+
+    /// Custom startup arguments to the worker
+    pub custom_start: TCustomStart,
 }
 
 /// Properties of a worker
@@ -105,6 +109,9 @@ where
             if !job.is_expired() {
                 return Some(job);
             } else {
+                if let Some(handler) = &self.discard_handler {
+                    handler.discard(DiscardReason::TtlExpired, job);
+                }
                 self.stats.job_ttl_expired();
             }
         }
@@ -217,7 +224,7 @@ where
                 if let Some(discarded) = self.get_next_non_expired_job() {
                     self.stats.job_discarded();
                     if let Some(handler) = &self.discard_handler {
-                        handler.discard(discarded);
+                        handler.discard(super::DiscardReason::Loadshed, discarded);
                     }
                 }
             }

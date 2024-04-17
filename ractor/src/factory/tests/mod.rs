@@ -15,6 +15,7 @@ use crate::{
     common_test::{periodic_async_check, periodic_check},
     concurrency::Duration,
     factory::DiscardHandler,
+    factory::DiscardReason,
     Actor, ActorProcessingErr, ActorRef,
 };
 
@@ -23,6 +24,8 @@ use super::{
     WorkerStartContext,
 };
 
+mod draining_requests;
+mod factory_lifecycle;
 mod worker_lifecycle;
 
 const NUM_TEST_WORKERS: usize = 3;
@@ -61,7 +64,7 @@ struct TestWorker {
 impl Actor for TestWorker {
     type Msg = super::WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;
-    type Arguments = WorkerStartContext<TestKey, TestMessage>;
+    type Arguments = WorkerStartContext<TestKey, TestMessage, ()>;
 
     async fn pre_start(
         &self,
@@ -106,12 +109,15 @@ struct FastTestWorkerBuilder {
     counters: [Arc<AtomicU16>; NUM_TEST_WORKERS],
 }
 
-impl super::WorkerBuilder<TestWorker> for FastTestWorkerBuilder {
-    fn build(&self, wid: usize) -> TestWorker {
-        TestWorker {
-            counter: self.counters[wid].clone(),
-            slow: None,
-        }
+impl super::WorkerBuilder<TestWorker, ()> for FastTestWorkerBuilder {
+    fn build(&self, wid: usize) -> (TestWorker, ()) {
+        (
+            TestWorker {
+                counter: self.counters[wid].clone(),
+                slow: None,
+            },
+            (),
+        )
     }
 }
 
@@ -119,12 +125,15 @@ struct SlowTestWorkerBuilder {
     counters: [Arc<AtomicU16>; NUM_TEST_WORKERS],
 }
 
-impl super::WorkerBuilder<TestWorker> for SlowTestWorkerBuilder {
-    fn build(&self, wid: usize) -> TestWorker {
-        TestWorker {
-            counter: self.counters[wid].clone(),
-            slow: Some(10),
-        }
+impl super::WorkerBuilder<TestWorker, ()> for SlowTestWorkerBuilder {
+    fn build(&self, wid: usize) -> (TestWorker, ()) {
+        (
+            TestWorker {
+                counter: self.counters[wid].clone(),
+                slow: Some(10),
+            },
+            (),
+        )
     }
 }
 
@@ -132,12 +141,15 @@ struct InsanelySlowWorkerBuilder {
     counters: [Arc<AtomicU16>; NUM_TEST_WORKERS],
 }
 
-impl super::WorkerBuilder<TestWorker> for InsanelySlowWorkerBuilder {
-    fn build(&self, wid: usize) -> TestWorker {
-        TestWorker {
-            counter: self.counters[wid].clone(),
-            slow: Some(10000),
-        }
+impl super::WorkerBuilder<TestWorker, ()> for InsanelySlowWorkerBuilder {
+    fn build(&self, wid: usize) -> (TestWorker, ()) {
+        (
+            TestWorker {
+                counter: self.counters[wid].clone(),
+                slow: Some(10000),
+            },
+            (),
+        )
     }
 }
 
@@ -153,7 +165,7 @@ async fn test_dispatch_key_persistent() {
     let worker_builder = FastTestWorkerBuilder {
         counters: worker_counters.clone(),
     };
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::KeyPersistent,
         ..Default::default()
@@ -202,7 +214,7 @@ async fn test_dispatch_queuer() {
     let worker_builder = FastTestWorkerBuilder {
         counters: worker_counters.clone(),
     };
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::Queuer,
         ..Default::default()
@@ -257,7 +269,7 @@ async fn test_dispatch_round_robin() {
     let worker_builder = FastTestWorkerBuilder {
         counters: worker_counters.clone(),
     };
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::RoundRobin,
         ..Default::default()
@@ -310,7 +322,7 @@ async fn test_dispatch_random() {
     let worker_builder = FastTestWorkerBuilder {
         counters: worker_counters.clone(),
     };
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::Random,
         ..Default::default()
@@ -381,7 +393,7 @@ async fn test_dispatch_custom_hashing() {
     let worker_builder = FastTestWorkerBuilder {
         counters: worker_counters.clone(),
     };
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::CustomHashFunction(Box::new(MyHasher {
             _key: PhantomData,
@@ -435,7 +447,7 @@ async fn test_dispatch_sticky_queueing() {
     let worker_builder = SlowTestWorkerBuilder {
         counters: worker_counters.clone(),
     };
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::StickyQueuer,
         ..Default::default()
@@ -497,7 +509,7 @@ async fn test_discards_on_queuer() {
                 counter: self.counter.clone(),
             })
         }
-        fn discard(&self, _job: Job<TestKey, TestMessage>) {
+        fn discard(&self, _reason: DiscardReason, _job: Job<TestKey, TestMessage>) {
             let _ = self.counter.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -505,7 +517,7 @@ async fn test_discards_on_queuer() {
     let worker_builder = InsanelySlowWorkerBuilder {
         counters: worker_counters.clone(),
     };
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::Queuer,
         discard_handler: Some(Box::new(TestDiscarder {
@@ -567,7 +579,7 @@ struct StuckWorker {
 impl Actor for StuckWorker {
     type Msg = super::WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;
-    type Arguments = WorkerStartContext<TestKey, TestMessage>;
+    type Arguments = WorkerStartContext<TestKey, TestMessage, ()>;
 
     async fn pre_start(
         &self,
@@ -620,12 +632,15 @@ async fn test_stuck_workers() {
         counters: [Arc<AtomicU16>; NUM_TEST_WORKERS],
     }
 
-    impl super::WorkerBuilder<TestWorker> for StuckWorkerBuilder {
-        fn build(&self, wid: usize) -> TestWorker {
-            TestWorker {
-                counter: self.counters[wid].clone(),
-                slow: Some(10000),
-            }
+    impl super::WorkerBuilder<TestWorker, ()> for StuckWorkerBuilder {
+        fn build(&self, wid: usize) -> (TestWorker, ()) {
+            (
+                TestWorker {
+                    counter: self.counters[wid].clone(),
+                    slow: Some(10000),
+                },
+                (),
+            )
         }
     }
 
@@ -633,7 +648,7 @@ async fn test_stuck_workers() {
         counters: worker_counters.clone(),
     };
 
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::RoundRobin,
         dead_mans_switch: Some(super::DeadMansSwitchConfiguration {
@@ -693,7 +708,7 @@ async fn test_worker_pings() {
     let worker_builder = FastTestWorkerBuilder {
         counters: worker_counters.clone(),
     };
-    let factory_definition = Factory::<TestKey, TestMessage, TestWorker> {
+    let factory_definition = Factory::<TestKey, TestMessage, (), TestWorker> {
         worker_count: NUM_TEST_WORKERS,
         routing_mode: RoutingMode::<TestKey>::KeyPersistent,
         collect_worker_stats: true,
