@@ -24,7 +24,8 @@ pub trait BytesConvertable {
 }
 
 #[cfg(feature = "blanket_serde")]
-mod impls{
+/// Contains a blanket implementation for all types that implement serde::Serialize and serde::Deserialize
+pub mod impls{
     use crate::BytesConvertable;
 
     impl<T: serde::Serialize + serde::de::DeserializeOwned> BytesConvertable for T {
@@ -38,7 +39,8 @@ mod impls{
 }
 
 #[cfg(not(feature = "blanket_serde"))]
-mod impls{
+/// Contains the default implementations for the `BytesConvertable` trait
+pub mod impls{
     use crate::BytesConvertable;
     
     // ==================== Primitive implementations ==================== //
