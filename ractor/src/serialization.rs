@@ -253,7 +253,7 @@ mod tests {
     #[allow(non_snake_case)]
     fn test_bytes_conversion_String() {
         let test_data: String = random_string();
-        let bytes = test_data.clone().into_bytes();
+        let bytes = <String as BytesConvertable>::into_bytes(test_data.clone());
         let back = <String as BytesConvertable>::from_bytes(bytes);
         assert_eq!(test_data, back);
     }
