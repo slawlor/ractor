@@ -23,160 +23,179 @@ pub trait BytesConvertable {
     fn from_bytes(bytes: Vec<u8>) -> Self;
 }
 
-// ==================== Primitive implementations ==================== //
+#[cfg(feature = "blanket_serde")]
+mod impls{
+    use crate::BytesConvertable;
 
-macro_rules! implement_numeric {
-    {$ty: ty} => {
-        impl BytesConvertable for $ty {
-            fn into_bytes(self) -> Vec<u8> {
-                self.to_be_bytes().to_vec()
-            }
-            fn from_bytes(bytes: Vec<u8>) -> Self {
-                let mut data = [0u8; std::mem::size_of::<Self>()];
-                data.copy_from_slice(&bytes[..std::mem::size_of::<Self>()]);
-                Self::from_be_bytes(data)
-            }
+    impl<T: serde::Serialize + serde::de::DeserializeOwned> BytesConvertable for T {
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            pot::from_slice(&bytes).unwrap()
         }
-    };
-}
-
-implement_numeric! {i8}
-implement_numeric! {i16}
-implement_numeric! {i32}
-implement_numeric! {i64}
-implement_numeric! {i128}
-
-implement_numeric! {u8}
-implement_numeric! {u16}
-implement_numeric! {u32}
-implement_numeric! {u64}
-implement_numeric! {u128}
-
-implement_numeric! {f32}
-implement_numeric! {f64}
-
-impl BytesConvertable for () {
-    fn into_bytes(self) -> Vec<u8> {
-        Vec::new()
-    }
-    fn from_bytes(_: Vec<u8>) -> Self {}
-}
-
-impl BytesConvertable for bool {
-    fn into_bytes(self) -> Vec<u8> {
-        if self {
-            vec![1u8]
-        } else {
-            vec![0u8]
+        fn into_bytes(self) -> Vec<u8> {
+            pot::to_vec(&self).unwrap()
         }
     }
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        bytes[0] == 1u8
-    }
 }
 
-impl BytesConvertable for char {
-    fn into_bytes(self) -> Vec<u8> {
-        let u = self as u32;
-        u.into_bytes()
-    }
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        let u = u32::from_bytes(bytes);
-        Self::from_u32(u).unwrap()
-    }
-}
-
-impl BytesConvertable for String {
-    fn into_bytes(self) -> Vec<u8> {
-        self.into_bytes()
-    }
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        String::from_utf8(bytes).unwrap()
-    }
-}
-
-// ==================== Vectorized implementations ==================== //
-
-macro_rules! implement_vectorized_numeric {
-    {$ty: ty} => {
-        impl BytesConvertable for Vec<$ty> {
-            fn into_bytes(self) -> Vec<u8> {
-                let mut result = vec![0u8; self.len() * std::mem::size_of::<$ty>()];
-                for (offset, item) in self.into_iter().enumerate() {
-                    result[offset * std::mem::size_of::<$ty>() .. offset * std::mem::size_of::<$ty>() + std::mem::size_of::<$ty>()].copy_from_slice(&item.to_be_bytes());
+#[cfg(not(feature = "blanket_serde"))]
+mod impls{
+    use crate::BytesConvertable;
+    
+    // ==================== Primitive implementations ==================== //
+    
+    macro_rules! implement_numeric {
+        {$ty: ty} => {
+            impl BytesConvertable for $ty {
+                fn into_bytes(self) -> Vec<u8> {
+                    self.to_be_bytes().to_vec()
                 }
-                result
-            }
-            fn from_bytes(bytes: Vec<u8>) -> Self {
-                let num_el = bytes.len() / std::mem::size_of::<$ty>();
-                let mut result = vec![<$ty>::MIN; num_el];
-
-                let mut data = [0u8; std::mem::size_of::<$ty>()];
-                for offset in 0..num_el {
-                    data.copy_from_slice(&bytes[offset * std::mem::size_of::<$ty>() .. offset * std::mem::size_of::<$ty>() + std::mem::size_of::<$ty>()]);
-                    result[offset] = <$ty>::from_be_bytes(data);
+                fn from_bytes(bytes: Vec<u8>) -> Self {
+                    let mut data = [0u8; std::mem::size_of::<Self>()];
+                    data.copy_from_slice(&bytes[..std::mem::size_of::<Self>()]);
+                    Self::from_be_bytes(data)
                 }
-
-                result
+            }
+        };
+    }
+    
+    implement_numeric! {i8}
+    implement_numeric! {i16}
+    implement_numeric! {i32}
+    implement_numeric! {i64}
+    implement_numeric! {i128}
+    
+    implement_numeric! {u8}
+    implement_numeric! {u16}
+    implement_numeric! {u32}
+    implement_numeric! {u64}
+    implement_numeric! {u128}
+    
+    implement_numeric! {f32}
+    implement_numeric! {f64}
+    
+    impl BytesConvertable for () {
+        fn into_bytes(self) -> Vec<u8> {
+            Vec::new()
+        }
+        fn from_bytes(_: Vec<u8>) -> Self {}
+    }
+    
+    impl BytesConvertable for bool {
+        fn into_bytes(self) -> Vec<u8> {
+            if self {
+                vec![1u8]
+            } else {
+                vec![0u8]
             }
         }
-    };
-}
-
-implement_vectorized_numeric! {i8}
-implement_vectorized_numeric! {i16}
-implement_vectorized_numeric! {i32}
-implement_vectorized_numeric! {i64}
-implement_vectorized_numeric! {i128}
-
-// We explicitly skip u8, as it has a more
-// optimized definition
-impl BytesConvertable for Vec<u8> {
-    fn into_bytes(self) -> Vec<u8> {
-        self
-    }
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        bytes
-    }
-}
-implement_vectorized_numeric! {u16}
-implement_vectorized_numeric! {u32}
-implement_vectorized_numeric! {u64}
-implement_vectorized_numeric! {u128}
-
-implement_vectorized_numeric! {f32}
-implement_vectorized_numeric! {f64}
-
-impl BytesConvertable for Vec<bool> {
-    fn into_bytes(self) -> Vec<u8> {
-        let mut result = vec![0u8; self.len()];
-        for (ptr, item) in self.into_iter().enumerate() {
-            let byte = if item { [1u8] } else { [0u8] };
-            result[ptr..ptr + 1].copy_from_slice(&byte);
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            bytes[0] == 1u8
         }
-        result
     }
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        let num_el = bytes.len();
-        let mut result = vec![false; num_el];
-        for (ptr, byte) in bytes.into_iter().enumerate() {
-            result[ptr] = byte == 1u8;
+    
+    impl BytesConvertable for char {
+        fn into_bytes(self) -> Vec<u8> {
+            let u = self as u32;
+            u.into_bytes()
         }
-
-        result
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            let u = u32::from_bytes(bytes);
+            Self::from_u32(u).unwrap()
+        }
     }
-}
-
-impl BytesConvertable for Vec<char> {
-    fn into_bytes(self) -> Vec<u8> {
-        let data = self.into_iter().map(|c| c as u32).collect::<Vec<_>>();
-        data.into_bytes()
+    
+    impl BytesConvertable for String {
+        fn into_bytes(self) -> Vec<u8> {
+            self.into_bytes()
+        }
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            String::from_utf8(bytes).unwrap()
+        }
     }
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        let u32s = <Vec<u32>>::from_bytes(bytes);
-        u32s.into_iter()
-            .map(|u| char::from_u32(u).unwrap())
-            .collect::<Vec<_>>()
+    
+    // ==================== Vectorized implementations ==================== //
+    
+    macro_rules! implement_vectorized_numeric {
+        {$ty: ty} => {
+            impl BytesConvertable for Vec<$ty> {
+                fn into_bytes(self) -> Vec<u8> {
+                    let mut result = vec![0u8; self.len() * std::mem::size_of::<$ty>()];
+                    for (offset, item) in self.into_iter().enumerate() {
+                        result[offset * std::mem::size_of::<$ty>() .. offset * std::mem::size_of::<$ty>() + std::mem::size_of::<$ty>()].copy_from_slice(&item.to_be_bytes());
+                    }
+                    result
+                }
+                fn from_bytes(bytes: Vec<u8>) -> Self {
+                    let num_el = bytes.len() / std::mem::size_of::<$ty>();
+                    let mut result = vec![<$ty>::MIN; num_el];
+    
+                    let mut data = [0u8; std::mem::size_of::<$ty>()];
+                    for offset in 0..num_el {
+                        data.copy_from_slice(&bytes[offset * std::mem::size_of::<$ty>() .. offset * std::mem::size_of::<$ty>() + std::mem::size_of::<$ty>()]);
+                        result[offset] = <$ty>::from_be_bytes(data);
+                    }
+    
+                    result
+                }
+            }
+        };
+    }
+    
+    implement_vectorized_numeric! {i8}
+    implement_vectorized_numeric! {i16}
+    implement_vectorized_numeric! {i32}
+    implement_vectorized_numeric! {i64}
+    implement_vectorized_numeric! {i128}
+    
+    // We explicitly skip u8, as it has a more
+    // optimized definition
+    impl BytesConvertable for Vec<u8> {
+        fn into_bytes(self) -> Vec<u8> {
+            self
+        }
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            bytes
+        }
+    }
+    implement_vectorized_numeric! {u16}
+    implement_vectorized_numeric! {u32}
+    implement_vectorized_numeric! {u64}
+    implement_vectorized_numeric! {u128}
+    
+    implement_vectorized_numeric! {f32}
+    implement_vectorized_numeric! {f64}
+    
+    impl BytesConvertable for Vec<bool> {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut result = vec![0u8; self.len()];
+            for (ptr, item) in self.into_iter().enumerate() {
+                let byte = if item { [1u8] } else { [0u8] };
+                result[ptr..ptr + 1].copy_from_slice(&byte);
+            }
+            result
+        }
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            let num_el = bytes.len();
+            let mut result = vec![false; num_el];
+            for (ptr, byte) in bytes.into_iter().enumerate() {
+                result[ptr] = byte == 1u8;
+            }
+    
+            result
+        }
+    }
+    
+    impl BytesConvertable for Vec<char> {
+        fn into_bytes(self) -> Vec<u8> {
+            let data = self.into_iter().map(|c| c as u32).collect::<Vec<_>>();
+            data.into_bytes()
+        }
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            let u32s = <Vec<u32>>::from_bytes(bytes);
+            u32s.into_iter()
+                .map(|u| char::from_u32(u).unwrap())
+                .collect::<Vec<_>>()
+        }
     }
 }
 
