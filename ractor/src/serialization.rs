@@ -25,7 +25,7 @@ pub trait BytesConvertable {
 
 #[cfg(feature = "blanket_serde")]
 /// Contains a blanket implementation for all types that implement serde::Serialize and serde::Deserialize
-pub mod impls{
+mod impls {
     use crate::BytesConvertable;
 
     impl<T: serde::Serialize + serde::de::DeserializeOwned> BytesConvertable for T {
@@ -40,11 +40,11 @@ pub mod impls{
 
 #[cfg(not(feature = "blanket_serde"))]
 /// Contains the default implementations for the `BytesConvertable` trait
-pub mod impls{
+mod impls {
     use crate::BytesConvertable;
-    
+
     // ==================== Primitive implementations ==================== //
-    
+
     macro_rules! implement_numeric {
         {$ty: ty} => {
             impl BytesConvertable for $ty {
@@ -59,29 +59,29 @@ pub mod impls{
             }
         };
     }
-    
+
     implement_numeric! {i8}
     implement_numeric! {i16}
     implement_numeric! {i32}
     implement_numeric! {i64}
     implement_numeric! {i128}
-    
+
     implement_numeric! {u8}
     implement_numeric! {u16}
     implement_numeric! {u32}
     implement_numeric! {u64}
     implement_numeric! {u128}
-    
+
     implement_numeric! {f32}
     implement_numeric! {f64}
-    
+
     impl BytesConvertable for () {
         fn into_bytes(self) -> Vec<u8> {
             Vec::new()
         }
         fn from_bytes(_: Vec<u8>) -> Self {}
     }
-    
+
     impl BytesConvertable for bool {
         fn into_bytes(self) -> Vec<u8> {
             if self {
@@ -94,7 +94,7 @@ pub mod impls{
             bytes[0] == 1u8
         }
     }
-    
+
     impl BytesConvertable for char {
         fn into_bytes(self) -> Vec<u8> {
             let u = self as u32;
@@ -105,7 +105,7 @@ pub mod impls{
             Self::from_u32(u).unwrap()
         }
     }
-    
+
     impl BytesConvertable for String {
         fn into_bytes(self) -> Vec<u8> {
             self.into_bytes()
@@ -114,9 +114,9 @@ pub mod impls{
             String::from_utf8(bytes).unwrap()
         }
     }
-    
+
     // ==================== Vectorized implementations ==================== //
-    
+
     macro_rules! implement_vectorized_numeric {
         {$ty: ty} => {
             impl BytesConvertable for Vec<$ty> {
@@ -130,25 +130,25 @@ pub mod impls{
                 fn from_bytes(bytes: Vec<u8>) -> Self {
                     let num_el = bytes.len() / std::mem::size_of::<$ty>();
                     let mut result = vec![<$ty>::MIN; num_el];
-    
+
                     let mut data = [0u8; std::mem::size_of::<$ty>()];
                     for offset in 0..num_el {
                         data.copy_from_slice(&bytes[offset * std::mem::size_of::<$ty>() .. offset * std::mem::size_of::<$ty>() + std::mem::size_of::<$ty>()]);
                         result[offset] = <$ty>::from_be_bytes(data);
                     }
-    
+
                     result
                 }
             }
         };
     }
-    
+
     implement_vectorized_numeric! {i8}
     implement_vectorized_numeric! {i16}
     implement_vectorized_numeric! {i32}
     implement_vectorized_numeric! {i64}
     implement_vectorized_numeric! {i128}
-    
+
     // We explicitly skip u8, as it has a more
     // optimized definition
     impl BytesConvertable for Vec<u8> {
@@ -163,10 +163,10 @@ pub mod impls{
     implement_vectorized_numeric! {u32}
     implement_vectorized_numeric! {u64}
     implement_vectorized_numeric! {u128}
-    
+
     implement_vectorized_numeric! {f32}
     implement_vectorized_numeric! {f64}
-    
+
     impl BytesConvertable for Vec<bool> {
         fn into_bytes(self) -> Vec<u8> {
             let mut result = vec![0u8; self.len()];
@@ -182,11 +182,11 @@ pub mod impls{
             for (ptr, byte) in bytes.into_iter().enumerate() {
                 result[ptr] = byte == 1u8;
             }
-    
+
             result
         }
     }
-    
+
     impl BytesConvertable for Vec<char> {
         fn into_bytes(self) -> Vec<u8> {
             let data = self.into_iter().map(|c| c as u32).collect::<Vec<_>>();
