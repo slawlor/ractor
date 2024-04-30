@@ -1252,3 +1252,87 @@ async fn test_simple_monitor() {
     m.stop(None);
     mh.await.unwrap();
 }
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_supervisor_exit_doesnt_call_child_post_stop() {
+    struct Child {
+        post_stop_calls: Arc<AtomicU8>,
+    }
+    struct Supervisor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for Child {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+        async fn post_stop(
+            &self,
+            _this_actor: ActorRef<Self::Msg>,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            self.post_stop_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for Supervisor {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+        async fn handle(
+            &self,
+            _this_actor: ActorRef<Self::Msg>,
+            _message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            panic!("Boom")
+        }
+    }
+
+    let flag = Arc::new(AtomicU8::new(0));
+
+    let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor, ())
+        .await
+        .expect("Supervisor panicked on startup");
+
+    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
+
+    let (_child_ref, c_handle) = Actor::spawn_linked(
+        None,
+        Child {
+            post_stop_calls: flag.clone(),
+        },
+        (),
+        supervisor_cell,
+    )
+    .await
+    .expect("Child panicked on startup");
+
+    // Send signal to blow-up the supervisor
+    supervisor_ref
+        .cast(())
+        .expect("Failed to send message to supervisor");
+
+    // Wait for exit
+    s_handle.await.unwrap();
+    c_handle.await.unwrap();
+
+    // Child's post-stop should NOT have been called.
+    assert_eq!(0, flag.load(Ordering::Relaxed));
+}
