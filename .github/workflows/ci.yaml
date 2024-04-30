@@ -23,6 +23,9 @@ jobs:
           - name: Test ractor with the `cluster` feature
             package: ractor
             flags: -F cluster
+          - name: Test ractor with the `blanket_serde` feature
+            package: ractor
+            flags: -F blanket_serde
           - name: Test ractor_cluster
             package: ractor_cluster
             # flags: 
