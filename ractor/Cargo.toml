@@ -17,7 +17,7 @@ rust-version = "1.64"
 ### Other features
 cluster = []
 tokio_runtime = ["tokio/time", "tokio/rt", "tokio/macros", "tokio/tracing"]
-blanket_serde = ["serde", "pot"]
+blanket_serde = ["serde", "pot", "cluster"]
 
 # default = ["async-std"]
 default = ["tokio_runtime", "async-trait"]
