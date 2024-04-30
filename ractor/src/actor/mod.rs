@@ -427,6 +427,40 @@ pub trait Actor: Sized + Sync + Send + 'static {
     }
 }
 
+/// Helper struct for tracking the results from actor processing loops
+#[doc(hidden)]
+struct ActorLoopResult {
+    should_exit: bool,
+    exit_reason: Option<String>,
+    was_killed: bool,
+}
+
+impl ActorLoopResult {
+    pub(crate) fn ok() -> Self {
+        Self {
+            should_exit: false,
+            exit_reason: None,
+            was_killed: false,
+        }
+    }
+
+    pub(crate) fn stop(reason: Option<String>) -> Self {
+        Self {
+            should_exit: true,
+            exit_reason: reason,
+            was_killed: false,
+        }
+    }
+
+    pub(crate) fn signal(signal_str: Option<String>) -> Self {
+        Self {
+            should_exit: true,
+            exit_reason: signal_str,
+            was_killed: true,
+        }
+    }
+}
+
 /// [ActorRuntime] is a struct which represents the processing actor.
 ///
 ///  This struct is consumed by the `start` operation, but results in an
@@ -738,18 +772,21 @@ where
             // the message processing loop. If we get an exit flag, try and capture the exit reason if there
             // is one
             loop {
-                let (should_exit, maybe_exit_reason) =
-                    Self::process_message(myself.clone(), state, handler, &mut ports)
-                        .await
-                        .map_err(ActorErr::Panic)?;
+                let ActorLoopResult {
+                    should_exit,
+                    exit_reason,
+                    was_killed,
+                } = Self::process_message(myself.clone(), state, handler, &mut ports)
+                    .await
+                    .map_err(ActorErr::Panic)?;
                 // processing loop exit
                 if should_exit {
-                    return Ok((state, maybe_exit_reason));
+                    return Ok((state, exit_reason, was_killed));
                 }
             }
         };
 
-        // capture any panicks in this future and convert to an ActorErr
+        // capture any panics in this future and convert to an ActorErr
         let loop_done = futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .map_err(|err| ActorErr::Panic(get_panic_string(err)))
             .await;
@@ -757,12 +794,14 @@ where
         // set status to stopping
         myself_clone.set_status(ActorStatus::Stopping);
 
-        let (exit_state, exit_reason) = loop_done??;
+        let (exit_state, exit_reason, was_killed) = loop_done??;
 
         // if we didn't exit in error mode, call `post_stop`
-        Self::do_post_stop(myself_clone, handler, exit_state)
-            .await?
-            .map_err(ActorErr::Panic)?;
+        if !was_killed {
+            Self::do_post_stop(myself_clone, handler, exit_state)
+                .await?
+                .map_err(ActorErr::Panic)?;
+        }
 
         Ok(exit_reason)
     }
@@ -782,11 +821,11 @@ where
         state: &mut TActor::State,
         handler: &TActor,
         ports: &mut ActorPortSet,
-    ) -> Result<(bool, Option<String>), ActorProcessingErr> {
+    ) -> Result<ActorLoopResult, ActorProcessingErr> {
         match ports.listen_in_priority().await {
             Ok(actor_port_message) => match actor_port_message {
                 actor_cell::ActorPortMessage::Signal(signal) => {
-                    Ok((true, Self::handle_signal(myself, signal)))
+                    Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
                 }
                 actor_cell::ActorPortMessage::Stop(stop_message) => {
                     let exit_reason = match stop_message {
@@ -802,30 +841,31 @@ where
                             Some(reason)
                         }
                     };
-                    Ok((true, exit_reason))
+                    Ok(ActorLoopResult::stop(exit_reason))
                 }
                 actor_cell::ActorPortMessage::Supervision(supervision) => {
-                    let new_state_future = Self::handle_supervision_message(
+                    let future = Self::handle_supervision_message(
                         myself.clone(),
                         state,
                         handler,
                         supervision,
                     );
-                    let new_state = ports.run_with_signal(new_state_future).await;
-                    match new_state {
-                        Ok(Ok(())) => Ok((false, None)),
+                    match ports.run_with_signal(future).await {
+                        Ok(Ok(())) => Ok(ActorLoopResult::ok()),
                         Ok(Err(internal_err)) => Err(internal_err),
-                        Err(signal) => Ok((true, Self::handle_signal(myself, signal))),
+                        Err(signal) => {
+                            Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
+                        }
                     }
                 }
                 actor_cell::ActorPortMessage::Message(msg) => {
-                    let new_state_future =
-                        Self::handle_message(myself.clone(), state, handler, msg);
-                    let new_state = ports.run_with_signal(new_state_future).await;
-                    match new_state {
-                        Ok(Ok(())) => Ok((false, None)),
+                    let future = Self::handle_message(myself.clone(), state, handler, msg);
+                    match ports.run_with_signal(future).await {
+                        Ok(Ok(())) => Ok(ActorLoopResult::ok()),
                         Ok(Err(internal_err)) => Err(internal_err),
-                        Err(signal) => Ok((true, Self::handle_signal(myself, signal))),
+                        Err(signal) => {
+                            Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
+                        }
                     }
                 }
             },
@@ -834,15 +874,24 @@ where
                 // the receiver was dropped and in this case
                 // we should always die. Therefore we flag
                 // to terminate
-                Ok((true, None))
+                Ok(ActorLoopResult::signal(Self::handle_signal(
+                    myself,
+                    Signal::Kill,
+                )))
             }
             Err(MessagingErr::InvalidActorType) => {
                 // not possible. Treat like a channel closed
-                Ok((true, None))
+                Ok(ActorLoopResult::signal(Self::handle_signal(
+                    myself,
+                    Signal::Kill,
+                )))
             }
             Err(MessagingErr::SendErr(_)) => {
                 // not possible. Treat like a channel closed
-                Ok((true, None))
+                Ok(ActorLoopResult::signal(Self::handle_signal(
+                    myself,
+                    Signal::Kill,
+                )))
             }
         }
     }
