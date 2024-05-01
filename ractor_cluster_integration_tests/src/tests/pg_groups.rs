@@ -23,24 +23,24 @@ use ractor_cluster::RactorClusterMessage;
 const NUM_PING_PONGS: u16 = 10;
 const PING_PONG_ALLOTED_MS: u128 = 1500;
 
-struct PingPongActor;
+struct HelloActor;
 
 #[derive(RactorClusterMessage)]
-enum PingPongActorMessage {
-    Ping,
+enum HelloActorMessage {
+    Hey(String),
     #[rpc]
     IsDone(RpcReplyPort<bool>),
 }
 
-struct PingPongActorState {
+struct HelloActorState {
     count: u16,
     done: bool,
 }
 
 #[ractor::async_trait]
-impl Actor for PingPongActor {
-    type Msg = PingPongActorMessage;
-    type State = PingPongActorState;
+impl Actor for HelloActor {
+    type Msg = HelloActorMessage;
+    type State = HelloActorState;
     type Arguments = ();
 
     async fn pre_start(
@@ -49,7 +49,7 @@ impl Actor for PingPongActor {
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         ractor::pg::join("test".to_string(), vec![myself.get_cell()]);
-        Ok(PingPongActorState {
+        Ok(HelloActorState {
             count: 0,
             done: false,
         })
@@ -68,13 +68,15 @@ impl Actor for PingPongActor {
             .map(ActorRef::<Self::Msg>::from)
             .collect::<Vec<_>>();
         match message {
-            Self::Msg::Ping => {
+            Self::Msg::Hey(message) => {
+                assert!(message.starts_with("Hey there"));
                 tracing::info!(
-                    "Received a ping, replying in kind to {} remote actors",
+                    "Received a hey {}, replying in kind to {} remote actors",
+                    message,
                     remote_actors.len()
                 );
                 for act in remote_actors {
-                    act.cast(PingPongActorMessage::Ping)?;
+                    act.cast(HelloActorMessage::Hey(message.clone()))?;
                 }
                 state.count += 1;
 
@@ -119,7 +121,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         .await
         .expect("Failed to start NodeServer A");
 
-    let (test_actor, test_handle) = Actor::spawn(None, PingPongActor, ())
+    let (test_actor, test_handle) = Actor::spawn(None, HelloActor, ())
         .await
         .expect("Ping pong actor failed to start up!");
 
@@ -173,10 +175,13 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
 
     if err_code == 0 {
         // we're authenticated. Startup our PG group testing
-        let _ = ractor::cast!(test_actor, PingPongActorMessage::Ping);
+        let _ = ractor::cast!(
+            test_actor,
+            HelloActorMessage::Hey("Hello there".to_string())
+        );
         let tic = Instant::now();
 
-        let mut rpc_result = ractor::call_t!(test_actor, PingPongActorMessage::IsDone, 500);
+        let mut rpc_result = ractor::call_t!(test_actor, HelloActorMessage::IsDone, 500);
         while rpc_result.is_ok() {
             let duration: Duration = Instant::now() - tic;
             if duration.as_millis() > PING_PONG_ALLOTED_MS {
@@ -200,7 +205,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
                     return -4;
                 }
             }
-            rpc_result = ractor::call_t!(test_actor, PingPongActorMessage::IsDone, 500);
+            rpc_result = ractor::call_t!(test_actor, HelloActorMessage::IsDone, 500);
         }
     } else {
         tracing::warn!("Failed to authenticate, failing test");
