@@ -175,10 +175,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
 
     if err_code == 0 {
         // we're authenticated. Startup our PG group testing
-        let _ = ractor::cast!(
-            test_actor,
-            HelloActorMessage::Hey("Hello there".to_string())
-        );
+        let _ = ractor::cast!(test_actor, HelloActorMessage::Hey("Hey there".to_string()));
         let tic = Instant::now();
 
         let mut rpc_result = ractor::call_t!(test_actor, HelloActorMessage::IsDone, 500);
