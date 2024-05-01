@@ -20,8 +20,8 @@ use ractor::concurrency::{sleep, Duration, Instant};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use ractor_cluster::RactorClusterMessage;
 
-const NUM_PING_PONGS: u16 = 10;
-const PING_PONG_ALLOTED_MS: u128 = 1500;
+const NUM_HELLOS: u16 = 10;
+const HELLO_ALLOTED_MS: u128 = 1500;
 
 struct HelloActor;
 
@@ -69,7 +69,10 @@ impl Actor for HelloActor {
             .collect::<Vec<_>>();
         match message {
             Self::Msg::Hey(message) => {
-                assert!(message.starts_with("Hey there"));
+                assert!(
+                    message.starts_with("Hey there"),
+                    "Invalid hey message received"
+                );
                 tracing::info!(
                     "Received a hey {}, replying in kind to {} remote actors",
                     message,
@@ -80,7 +83,7 @@ impl Actor for HelloActor {
                 }
                 state.count += 1;
 
-                if state.count > NUM_PING_PONGS {
+                if state.count > NUM_HELLOS {
                     state.done = true;
                 }
             }
@@ -181,15 +184,15 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         let mut rpc_result = ractor::call_t!(test_actor, HelloActorMessage::IsDone, 500);
         loop {
             let duration: Duration = Instant::now() - tic;
-            if duration.as_millis() > PING_PONG_ALLOTED_MS {
-                tracing::error!("Ping pong actor didn't complete in allotted time");
+            if duration.as_millis() > HELLO_ALLOTED_MS {
+                tracing::error!("Hello actor didn't complete in allotted time");
                 return -1;
             }
 
             match rpc_result {
                 Ok(true) => {
                     // test completed
-                    tracing::info!("Ping pong actor is completed");
+                    tracing::info!("Hello actor is completed");
                     break;
                 }
                 Ok(_) => {
