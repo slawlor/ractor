@@ -19,6 +19,7 @@ jobs:
       matrix:
         toolchain: [stable]
         os: [ubuntu]
+        features: [serde_blanket, cluster]
 
     steps:
       - uses: actions/checkout@main
@@ -31,20 +32,20 @@ jobs:
       - name: Authentication Handshake
         working-directory: .
         run: |
-          docker compose --env-file ./ractor_cluster_integration_tests/envs/auth-handshake.env up --exit-code-from node-b
+          FEATURES=${{matrix.features}} docker compose --env-file ./ractor_cluster_integration_tests/envs/auth-handshake.env up --exit-code-from node-b
 
       - name: Process Groups
         working-directory: .
         run: |
-          docker compose --env-file ./ractor_cluster_integration_tests/envs/pg-groups.env up --exit-code-from node-b
+          FEATURES=${{matrix.features}} docker compose --env-file ./ractor_cluster_integration_tests/envs/pg-groups.env up --exit-code-from node-b
 
       - name: Encrypted communications
         working-directory: .
         run: |
-          docker compose --env-file ./ractor_cluster_integration_tests/envs/encryption.env up --exit-code-from node-b
+          FEATURES=${{matrix.features}} docker compose --env-file ./ractor_cluster_integration_tests/envs/encryption.env up --exit-code-from node-b
           
       - name: Transitive connections
         working-directory: .
         run: |
-          docker compose --env-file ./ractor_cluster_integration_tests/envs/dist-connect.env up --exit-code-from node-c
+          FEATURES=${{matrix.features}} docker compose --env-file ./ractor_cluster_integration_tests/envs/dist-connect.env up --exit-code-from node-c
       

@@ -10,6 +10,10 @@ repository = "https://github.com/slawlor/ractor"
 readme = "../README.md"
 publish = false
 
+[features]
+blanket_serde = ["ractor/blanket_serde"]
+cluster = []
+
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
