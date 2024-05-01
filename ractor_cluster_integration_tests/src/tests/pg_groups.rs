@@ -182,7 +182,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         let tic = Instant::now();
 
         let mut rpc_result = ractor::call_t!(test_actor, HelloActorMessage::IsDone, 500);
-        while rpc_result.is_ok() {
+        loop {
             let duration: Duration = Instant::now() - tic;
             if duration.as_millis() > PING_PONG_ALLOTED_MS {
                 tracing::error!("Ping pong actor didn't complete in allotted time");
