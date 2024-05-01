@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: ractor_cluster_integration_tests/Dockerfile
+      args:
+        - FEATURES=${FEATURES}
     image: ractor_cluster_tests:latest
     networks:
       - test-net
@@ -19,6 +21,8 @@ services:
     build:
       context: .
       dockerfile: ractor_cluster_integration_tests/Dockerfile
+      args:
+        - FEATURES=${FEATURES}
     image: ractor_cluster_tests:latest
     networks:
       - test-net
@@ -34,6 +38,8 @@ services:
     build:
       context: .
       dockerfile: ractor_cluster_integration_tests/Dockerfile
+      args:
+        - FEATURES=${FEATURES}
     image: ractor_cluster_tests:latest
     networks:
       - test-net

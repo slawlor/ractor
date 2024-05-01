@@ -19,6 +19,7 @@ jobs:
       matrix:
         toolchain: [stable]
         os: [ubuntu]
+        features: [blanket_serde, cluster]
 
     steps:
       - uses: actions/checkout@main
@@ -26,7 +27,7 @@ jobs:
       - name: Build the docker image
         working-directory: .
         run: |
-          docker compose build
+          FEATURES=${{matrix.features}} docker compose build
 
       - name: Authentication Handshake
         working-directory: .

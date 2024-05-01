@@ -7,7 +7,8 @@ FROM rust:latest
 WORKDIR /usr/src/app
 RUN apt-get update && apt-get install -y cmake build-essential
 COPY . .
-RUN cargo install --path ractor_cluster_integration_tests/
+ARG FEATURES
+RUN cargo install --path ractor_cluster_integration_tests/ -F $FEATURES
 RUN mv /usr/local/cargo/bin/ractor_cluster_integration_tests /usr/local/bin/ractor_cluster_integration_tests
 RUN mv /usr/src/app/ractor_cluster_integration_tests/test-ca/ /usr/local/bin/test-ca
 WORKDIR /usr/local/bin

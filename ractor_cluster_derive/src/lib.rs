@@ -155,7 +155,7 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                     .unnamed
                     .iter()
                     .enumerate()
-                    .map(|(i, _)| format_ident!("field{}", i))
+                    .map(|(i, arg)| (format_ident!("field{}", i), &arg.ty))
                     .collect::<Vec<_>>();
                 // the last field is the port
                 let _ = fields.pop();
@@ -184,9 +184,10 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                         }
                     }
                 } else {
-                    let packed = fields.iter().map(pack_args);
+                    let field_names = fields.iter().map(|(a, _)| a);
+                    let packed = fields.iter().map(|(field, arg)| pack_args(field, arg));
                     quote! {
-                        Self::#name(#(#fields),*, #port) => {
+                        Self::#name(#(#field_names),*, #port) => {
                             let mut data = vec![];
                             #(#packed;)*
                             let target_port = #target_port;
@@ -222,12 +223,13 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                     .unnamed
                     .iter()
                     .enumerate()
-                    .map(|(i, _)| format_ident!("field{}", i))
+                    .map(|(i, arg)| (format_ident!("field{}", i), &arg.ty))
                     .collect::<Vec<_>>();
 
-                let packed = fields.iter().map(pack_args);
+                let field_names = fields.iter().map(|(a, _)| a);
+                let packed = fields.iter().map(|(field, arg)| pack_args(field, arg));
                 quote! {
-                    Self::#name(#(#fields),*) => {
+                    Self::#name(#(#field_names),*) => {
                         let mut data = vec![];
 
                         #(#packed ;)*
@@ -328,10 +330,10 @@ fn impl_call_variant_deserialize(variant: &Variant) -> impl ToTokens {
     }
 }
 
-fn pack_args(field: &Ident) -> impl ToTokens {
+fn pack_args(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
     quote! {
         {
-            let arg_data = #field.into_bytes();
+            let arg_data = <#target_type as ractor::BytesConvertable>::into_bytes(#field);
             let arg_len = (arg_data.len() as u64).to_be_bytes();
             data.extend(arg_len);
             data.extend(arg_data);
@@ -359,6 +361,7 @@ fn convert_deserialize_port(
     the_port: &Ident,
     port_type: &AngleBracketedGenericArguments,
 ) -> impl ToTokens {
+    let generic_args = &port_type.args;
     // TODO: catch unwind for the conversion? returning Err(BoxedDowncastErr)
     quote! {
         {
@@ -367,11 +370,11 @@ fn convert_deserialize_port(
             ractor::concurrency::spawn(async move {
                 if let Some(timeout) = o_timeout {
                     if let Ok(Ok(result)) = ractor::concurrency::timeout(timeout, rx).await {
-                        let _ = #the_port.send(result.into_bytes());
+                        let _ = #the_port.send(<#generic_args as BytesConvertable>::into_bytes(result));
                     }
                 } else {
                     if let Ok(result) = rx.await {
-                        let _ = #the_port.send(result.into_bytes());
+                        let _ = #the_port.send(<#generic_args as BytesConvertable>::into_bytes(result));
                     }
                 }
             });

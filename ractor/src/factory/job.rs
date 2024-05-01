@@ -83,8 +83,8 @@ impl BytesConvertable for JobOptions {
         } else {
             let ttl_bytes = data.split_off(8);
 
-            let submit_time = <u64 as BytesConvertable>::from_bytes(data);
-            let ttl = <u64 as BytesConvertable>::from_bytes(ttl_bytes);
+            let submit_time = u64::from_be_bytes(data.try_into().unwrap()); //Unwrap should be safe since we checked length earlier
+            let ttl = u64::from_be_bytes(ttl_bytes.try_into().unwrap());
 
             Self {
                 submit_time: std::time::UNIX_EPOCH + Duration::from_nanos(submit_time),
@@ -293,14 +293,14 @@ mod tests {
             match self {
                 Self::A(args) => Ok(crate::message::SerializedMessage::Cast {
                     variant: "A".to_string(),
-                    args: args.into_bytes(),
+                    args: <String as BytesConvertable>::into_bytes(args),
                     metadata: None,
                 }),
                 Self::B(args, _reply) => {
                     let (tx, _rx) = crate::concurrency::oneshot();
                     Ok(crate::message::SerializedMessage::Call {
                         variant: "B".to_string(),
-                        args: args.into_bytes(),
+                        args: <String as BytesConvertable>::into_bytes(args),
                         reply: tx.into(),
                         metadata: None,
                     })
@@ -313,7 +313,7 @@ mod tests {
             match bytes {
                 crate::message::SerializedMessage::Cast { variant, args, .. } => {
                     match variant.as_str() {
-                        "A" => Ok(Self::A(String::from_bytes(args))),
+                        "A" => Ok(Self::A(<String as BytesConvertable>::from_bytes(args))),
                         _ => Err(crate::message::BoxedDowncastErr),
                     }
                 }
@@ -321,7 +321,10 @@ mod tests {
                     match variant.as_str() {
                         "B" => {
                             let (tx, _rx) = crate::concurrency::oneshot();
-                            Ok(Self::B(String::from_bytes(args), tx.into()))
+                            Ok(Self::B(
+                                <String as BytesConvertable>::from_bytes(args),
+                                tx.into(),
+                            ))
                         }
                         _ => Err(crate::message::BoxedDowncastErr),
                     }

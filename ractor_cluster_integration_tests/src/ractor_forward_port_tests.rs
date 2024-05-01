@@ -34,7 +34,9 @@ async fn no_timeout_rpc() {
     match no_timeout_serialized {
         SerializedMessage::Call { args, reply, .. } => {
             let str = get_len_encoded_string(args);
-            let _ = reply.send(str.into_bytes());
+            let _ = reply.send(<String as ractor_cluster::BytesConvertable>::into_bytes(
+                str,
+            ));
         }
         _ => panic!("Invalid"),
     }
@@ -53,7 +55,9 @@ async fn with_timeout_rpc() {
     match with_timeout_serialized {
         SerializedMessage::Call { args, reply, .. } => {
             let str = get_len_encoded_string(args);
-            let _ = reply.send(str.into());
+            let _ = reply.send(<String as ractor_cluster::BytesConvertable>::into_bytes(
+                str,
+            ));
         }
         _ => panic!("Invalid"),
     }
