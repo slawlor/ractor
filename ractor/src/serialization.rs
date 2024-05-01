@@ -33,7 +33,7 @@ mod impls {
             pot::from_slice(&bytes).unwrap()
         }
         fn into_bytes(self) -> Vec<u8> {
-            vec![]
+            pot::to_vec(&self).unwrap()
         }
     }
 }
