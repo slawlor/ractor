@@ -7,7 +7,6 @@ use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::common_test::periodic_check;
 use crate::concurrency::sleep;
 use crate::concurrency::Duration;
 use crate::Actor;
@@ -26,15 +25,14 @@ enum MyWorkerMessage {
     Increment,
     Boom,
 }
-
 #[cfg(feature = "cluster")]
-impl Message for MyWorkerMessage {}
+impl crate::Message for MyWorkerMessage {}
 
 #[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Actor for MyWorker {
     type State = Self::Arguments;
     type Msg = WorkerMessage<(), MyWorkerMessage>;
-    type Arguments = WorkerStartContext<(), MyWorkerMessage>;
+    type Arguments = WorkerStartContext<(), MyWorkerMessage, ()>;
 
     async fn pre_start(
         &self,
@@ -85,11 +83,14 @@ struct MyWorkerBuilder {
     counter: Arc<AtomicU16>,
 }
 
-impl WorkerBuilder<MyWorker> for MyWorkerBuilder {
-    fn build(&self, _wid: WorkerId) -> MyWorker {
-        MyWorker {
-            counter: self.counter.clone(),
-        }
+impl WorkerBuilder<MyWorker, ()> for MyWorkerBuilder {
+    fn build(&self, _wid: crate::factory::WorkerId) -> (MyWorker, ()) {
+        (
+            MyWorker {
+                counter: self.counter.clone(),
+            },
+            (),
+        )
     }
 }
 
@@ -100,17 +101,35 @@ async fn test_worker_death_restarts_and_gets_next_message() {
     let worker_builder = MyWorkerBuilder {
         counter: counter.clone(),
     };
-    let factory_definition = Factory::<(), MyWorkerMessage, MyWorker> {
-        worker_count: 1,
-        routing_mode: RoutingMode::Queuer,
-        discard_threshold: Some(10),
-        ..Default::default()
-    };
-
-    let (factory, factory_handle) =
-        Actor::spawn(None, factory_definition, Box::new(worker_builder))
-            .await
-            .expect("Failed to spawn factory");
+    let factory_definition = Factory::<
+        (),
+        MyWorkerMessage,
+        (),
+        MyWorker,
+        routing::RoundRobinRouting<(), MyWorkerMessage>,
+        queues::DefaultQueue<(), MyWorkerMessage>,
+    >::default();
+    let (factory, factory_handle) = Actor::spawn(
+        None,
+        factory_definition,
+        FactoryArguments {
+            num_initial_workers: 1,
+            queue: Default::default(),
+            router: Default::default(),
+            capacity_controller: None,
+            dead_mans_switch: None,
+            discard_handler: None,
+            discard_settings: DiscardSettings::Static {
+                limit: 10,
+                mode: DiscardMode::Newest,
+            },
+            lifecycle_hooks: None,
+            worker_builder: Box::new(worker_builder),
+            collect_worker_stats: false,
+        },
+    )
+    .await
+    .expect("Failed to spawn factory");
 
     // Now we need to send a specific sequence of events
     // first make the worker busy so we can be sure the "boom" job is enqueued
@@ -142,10 +161,10 @@ async fn test_worker_death_restarts_and_gets_next_message() {
             }))
             .expect("Failed to send message to factory");
     }
-
-    periodic_check(
+    // now wait for everything to propogate
+    crate::periodic_check(
         || counter.load(Ordering::Relaxed) == 5,
-        Duration::from_secs(2),
+        Duration::from_secs(1),
     )
     .await;
 

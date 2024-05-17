@@ -80,14 +80,14 @@ async fn remote_actor_serialized_message_handling() {
         .await;
     assert!(call_output.is_ok());
     assert_eq!(1, remote_actor_state.message_tag);
-    assert!(remote_actor_state.pending_requests.get(&1).is_some());
+    assert!(remote_actor_state.pending_requests.contains_key(&1));
 
     let reply = SerializedMessage::CallReply(1, vec![3, 4, 5]);
     let reply_output = remote_actor_instance
         .handle_serialized(remote_actor_ref.clone(), reply, &mut remote_actor_state)
         .await;
     assert!(reply_output.is_ok());
-    assert!(remote_actor_state.pending_requests.get(&1).is_none());
+    assert!(!remote_actor_state.pending_requests.contains_key(&1));
 
     // cleanup
     remote_actor_ref.stop(None);

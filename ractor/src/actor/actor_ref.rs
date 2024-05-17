@@ -18,25 +18,16 @@ use super::ActorCell;
 ///
 /// An [ActorRef] is the primary means of communication typically used
 /// when interfacing with [super::Actor]s
-///
-/// The [ActorRef] is SPECIFICALLY marked [Sync], regardless of the message type
-/// because all usages of the message type are to send an owned instance of a message
-/// and in no case is that message instance shared across threads. This is guaranteed
-/// by the underlying Tokio channel usages. Without this manual marking of [Sync] on
-/// [ActorRef], we would need to constrain the message type [Message] to be [Sync] which
-/// is overly restrictive.
 pub struct ActorRef<TMessage> {
     pub(crate) inner: ActorCell,
-    _tactor: PhantomData<TMessage>,
+    _tactor: PhantomData<fn() -> TMessage>,
 }
-
-unsafe impl<T> Sync for ActorRef<T> {}
 
 impl<TMessage> Clone for ActorRef<TMessage> {
     fn clone(&self) -> Self {
         ActorRef {
             inner: self.inner.clone(),
-            _tactor: PhantomData::<TMessage>,
+            _tactor: PhantomData,
         }
     }
 }
@@ -53,7 +44,7 @@ impl<TMessage> From<ActorCell> for ActorRef<TMessage> {
     fn from(value: ActorCell) -> Self {
         Self {
             inner: value,
-            _tactor: PhantomData::<TMessage>,
+            _tactor: PhantomData,
         }
     }
 }

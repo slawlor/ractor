@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.9.8"
+version = "0.10.0"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -27,7 +27,7 @@ default = ["tokio_runtime", "async-trait"]
 dashmap = "5"
 futures = "0.3"
 once_cell = "1"
-rand = "0.8"
+strum = { version = "0.26", features = ["derive"] }
 
 ## Configurable dependencies
 # Tracing feature requires --cfg=tokio_unstable
