@@ -76,7 +76,7 @@ async fn test_supervision_panic_in_post_startup() {
             println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
-            if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
+            if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
                 self.flag
                     .store(dead_actor.get_id().pid(), Ordering::Relaxed);
                 this_actor.stop(None);
@@ -164,7 +164,7 @@ async fn test_supervision_error_in_post_startup() {
             println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
-            if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
+            if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
                 self.flag
                     .store(dead_actor.get_id().pid(), Ordering::Relaxed);
                 this_actor.stop(None);
@@ -253,7 +253,7 @@ async fn test_supervision_panic_in_handle() {
             println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
-            if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
+            if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
                 self.flag
                     .store(dead_actor.get_id().pid(), Ordering::Relaxed);
                 this_actor.stop(None);
@@ -350,7 +350,7 @@ async fn test_supervision_error_in_handle() {
             println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
-            if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
+            if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
                 self.flag
                     .store(dead_actor.get_id().pid(), Ordering::Relaxed);
                 this_actor.stop(None);
@@ -439,7 +439,7 @@ async fn test_supervision_panic_in_post_stop() {
             println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
-            if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
+            if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
                 self.flag
                     .store(dead_actor.get_id().pid(), Ordering::Relaxed);
                 this_actor.stop(None);
@@ -520,7 +520,7 @@ async fn test_supervision_error_in_post_stop() {
             println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
-            if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
+            if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
                 self.flag
                     .store(dead_actor.get_id().pid(), Ordering::Relaxed);
                 this_actor.stop(None);
@@ -600,7 +600,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
             _message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            if let SupervisionEvent::ActorPanicked(_child, _msg) = _message {
+            if let SupervisionEvent::ActorFailed(_child, _msg) = _message {
                 panic!("Boom again!");
             }
             Ok(())
@@ -637,7 +637,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
             println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
-            if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
+            if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
                 self.flag
                     .store(dead_actor.get_id().pid(), Ordering::Relaxed);
                 this_actor.stop(None);
@@ -742,7 +742,7 @@ async fn test_supervision_error_in_supervisor_handle() {
             _message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            if let SupervisionEvent::ActorPanicked(_child, _msg) = _message {
+            if let SupervisionEvent::ActorFailed(_child, _msg) = _message {
                 return Err(From::from("boom again!"));
             }
             Ok(())
@@ -779,7 +779,7 @@ async fn test_supervision_error_in_supervisor_handle() {
             println!("Supervisor event received {message:?}");
 
             // check that the panic was captured
-            if let SupervisionEvent::ActorPanicked(dead_actor, _panic_msg) = message {
+            if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
                 self.flag
                     .store(dead_actor.get_id().pid(), Ordering::Relaxed);
                 this_actor.stop(None);

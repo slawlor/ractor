@@ -203,7 +203,7 @@ impl Actor for Session {
         // sockets open, they close, the world goes round... If a reader or writer exits for any reason, we'll start the shutdown procedure
         // which requires that all actors exit
         match message {
-            SupervisionEvent::ActorPanicked(actor, panic_msg) => {
+            SupervisionEvent::ActorFailed(actor, panic_msg) => {
                 if actor.get_id() == state.reader.get_id() {
                     tracing::error!("TCP Session's reader panicked with '{panic_msg}'");
                 } else if actor.get_id() == state.writer.get_id() {

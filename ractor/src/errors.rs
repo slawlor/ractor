@@ -13,12 +13,10 @@ use crate::ActorName;
 pub type ActorProcessingErr = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Spawn errors starting an actor
-#[derive(Debug)] // TODO: why Eq, PartialEq?
+#[derive(Debug)]
 pub enum SpawnErr {
-    /// Actor panic'd during startup
-    StartupPanic(ActorProcessingErr),
-    /// Actor failed to startup because the startup task was cancelled
-    StartupCancelled,
+    /// Actor panic'd or returned an error during startup
+    StartupFailed(ActorProcessingErr),
     /// An actor cannot be started > 1 time
     ActorAlreadyStarted,
     /// The named actor is already registered in the registry
@@ -28,7 +26,7 @@ pub enum SpawnErr {
 impl std::error::Error for SpawnErr {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self {
-            Self::StartupPanic(inner) => Some(inner.as_ref()),
+            Self::StartupFailed(inner) => Some(inner.as_ref()),
             _ => None,
         }
     }
@@ -37,18 +35,12 @@ impl std::error::Error for SpawnErr {
 impl Display for SpawnErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::StartupPanic(panic_msg) => {
+            Self::StartupFailed(panic_msg) => {
                 if f.alternate() {
                     write!(f, "Actor panicked during startup '{panic_msg:#}'")
                 } else {
                     write!(f, "Actor panicked during startup '{panic_msg}'")
                 }
-            }
-            Self::StartupCancelled => {
-                write!(
-                    f,
-                    "Actor failed to startup due to processing task being cancelled"
-                )
             }
             Self::ActorAlreadyStarted => {
                 write!(f, "Actor cannot be re-started more than once")
@@ -79,13 +71,13 @@ pub enum ActorErr {
     /// Actor had a task cancelled internally during processing
     Cancelled,
     /// Actor had an internal panic
-    Panic(ActorProcessingErr),
+    Failed(ActorProcessingErr),
 }
 
 impl std::error::Error for ActorErr {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self {
-            Self::Panic(inner) => Some(inner.as_ref()),
+            Self::Failed(inner) => Some(inner.as_ref()),
             _ => None,
         }
     }
@@ -94,7 +86,7 @@ impl std::error::Error for ActorErr {
 impl Display for ActorErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Panic(panic_msg) => {
+            Self::Failed(panic_msg) => {
                 if f.alternate() {
                     write!(f, "Actor panicked '{panic_msg:#}'")
                 } else {

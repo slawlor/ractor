@@ -209,7 +209,7 @@ impl Actor for MidLevelActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            SupervisionEvent::ActorPanicked(dead_actor, panic_msg)
+            SupervisionEvent::ActorFailed(dead_actor, panic_msg)
                 if dead_actor.get_id() == state.leaf_actor.get_id() =>
             {
                 tracing::info!("MidLevelActor: {dead_actor:?} panicked with '{panic_msg}'");
@@ -295,7 +295,7 @@ impl Actor for RootActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            SupervisionEvent::ActorPanicked(dead_actor, panic_msg)
+            SupervisionEvent::ActorFailed(dead_actor, panic_msg)
                 if dead_actor.get_id() == state.mid_level_actor.get_id() =>
             {
                 tracing::info!("RootActor: {dead_actor:?} panicked with '{panic_msg}'");
