@@ -15,10 +15,6 @@ use crate::RactorErr;
 #[test]
 #[tracing_test::traced_test]
 fn test_error_conversions() {
-    let spawn = crate::SpawnErr::StartupCancelled;
-    let ractor_err = RactorErr::<()>::from(crate::SpawnErr::StartupCancelled);
-    assert_eq!(spawn.to_string(), ractor_err.to_string());
-
     let messaging = crate::MessagingErr::<()>::InvalidActorType;
     let ractor_err = RactorErr::<()>::from(crate::MessagingErr::InvalidActorType);
     assert_eq!(messaging.to_string(), ractor_err.to_string());

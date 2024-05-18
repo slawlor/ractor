@@ -956,7 +956,7 @@ impl Actor for NodeSession {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             SupervisionEvent::ActorStarted(_) => {}
-            SupervisionEvent::ActorPanicked(actor, msg) => {
+            SupervisionEvent::ActorFailed(actor, msg) => {
                 if state.is_tcp_actor(actor.get_id()) {
                     tracing::error!(
                         "Node session {:?}'s TCP session panicked with '{msg}'",

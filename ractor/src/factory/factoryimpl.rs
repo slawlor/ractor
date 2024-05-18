@@ -931,7 +931,7 @@ where
                     state.try_route_next_active_job(wid)?;
                 }
             }
-            SupervisionEvent::ActorPanicked(who, reason) => {
+            SupervisionEvent::ActorFailed(who, reason) => {
                 let wid = if let Some(worker) = state
                     .pool
                     .values_mut()

@@ -90,8 +90,8 @@ pub enum SupervisionEvent {
         Option<BoxedState>,
         Option<String>,
     ),
-    /// An actor panicked
-    ActorPanicked(super::actor_cell::ActorCell, ActorProcessingErr),
+    /// An actor failed (due to panic or error case)
+    ActorFailed(super::actor_cell::ActorCell, ActorProcessingErr),
 
     /// A subscribed process group changed
     ProcessGroupChanged(crate::pg::GroupChangeMessage),
@@ -110,8 +110,8 @@ impl SupervisionEvent {
     pub(crate) fn clone_no_data(&self) -> Self {
         match self {
             Self::ActorStarted(who) => Self::ActorStarted(who.clone()),
-            Self::ActorPanicked(who, what) => {
-                Self::ActorPanicked(who.clone(), From::from(format!("{what}")))
+            Self::ActorFailed(who, what) => {
+                Self::ActorFailed(who.clone(), From::from(format!("{what}")))
             }
             Self::ProcessGroupChanged(what) => Self::ProcessGroupChanged(what.clone()),
             Self::ActorTerminated(who, _state, msg) => {
@@ -131,7 +131,7 @@ impl SupervisionEvent {
     pub fn actor_cell(&self) -> Option<&super::actor_cell::ActorCell> {
         match self {
             Self::ActorStarted(who)
-            | Self::ActorPanicked(who, _)
+            | Self::ActorFailed(who, _)
             | Self::ActorTerminated(who, _, _) => Some(who),
             _ => None,
         }
@@ -166,7 +166,7 @@ impl std::fmt::Display for SupervisionEvent {
                     write!(f, "Stopped actor {actor:?}")
                 }
             }
-            SupervisionEvent::ActorPanicked(actor, panic_msg) => {
+            SupervisionEvent::ActorFailed(actor, panic_msg) => {
                 write!(f, "Actor panicked {actor:?} - {panic_msg}")
             }
             SupervisionEvent::ProcessGroupChanged(change) => {

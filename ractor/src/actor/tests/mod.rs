@@ -43,7 +43,7 @@ async fn test_panic_on_start_captured() {
     }
 
     let actor_output = Actor::spawn(None, TestActor, ()).await;
-    assert!(matches!(actor_output, Err(SpawnErr::StartupPanic(_))));
+    assert!(matches!(actor_output, Err(SpawnErr::StartupFailed(_))));
 }
 
 #[crate::concurrency::test]
@@ -67,7 +67,7 @@ async fn test_error_on_start_captured() {
     }
 
     let actor_output = Actor::spawn(None, TestActor, ()).await;
-    assert!(matches!(actor_output, Err(SpawnErr::StartupPanic(_))));
+    assert!(matches!(actor_output, Err(SpawnErr::StartupFailed(_))));
 }
 
 #[crate::concurrency::test]
@@ -935,7 +935,7 @@ fn returns_actor_references() {
         (true, SupervisionEvent::ActorStarted(dummy_actor_cell())),
         (
             true,
-            SupervisionEvent::ActorPanicked(dummy_actor_cell(), "Bang!".into()),
+            SupervisionEvent::ActorFailed(dummy_actor_cell(), "Bang!".into()),
         ),
         (
             true,

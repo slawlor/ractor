@@ -315,7 +315,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         async move {
             match message {
                 SupervisionEvent::ActorTerminated(who, _, _)
-                | SupervisionEvent::ActorPanicked(who, _) => {
+                | SupervisionEvent::ActorFailed(who, _) => {
                     myself.stop(None);
                 }
                 _ => {}
@@ -340,7 +340,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             SupervisionEvent::ActorTerminated(who, _, _)
-            | SupervisionEvent::ActorPanicked(who, _) => {
+            | SupervisionEvent::ActorFailed(who, _) => {
                 myself.stop(None);
             }
             _ => {}
@@ -620,7 +620,7 @@ where
         supervisor: ActorCell,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         if id.is_local() {
-            Err(SpawnErr::StartupPanic(From::from(
+            Err(SpawnErr::StartupFailed(From::from(
                 "Cannot spawn a remote actor when the identifier is not remote!",
             )))
         } else {
@@ -697,7 +697,7 @@ where
         // Perform the pre-start routine, crashing immediately if we fail to start
         let mut state = Self::do_pre_start(actor_ref.clone(), &handler, startup_args)
             .await?
-            .map_err(SpawnErr::StartupPanic)?;
+            .map_err(SpawnErr::StartupFailed)?;
 
         // setup supervision
         if let Some(sup) = &supervisor {
@@ -724,7 +724,7 @@ where
                         None,
                         Some("killed".to_string()),
                     ),
-                    ActorErr::Panic(msg) => SupervisionEvent::ActorPanicked(myself.get_cell(), msg),
+                    ActorErr::Failed(msg) => SupervisionEvent::ActorFailed(myself.get_cell(), msg),
                 },
             };
 
@@ -761,7 +761,7 @@ where
         // perform the post-start, with supervision enabled
         Self::do_post_start(myself.clone(), handler, state)
             .await?
-            .map_err(ActorErr::Panic)?;
+            .map_err(ActorErr::Failed)?;
 
         myself.set_status(ActorStatus::Running);
         myself.notify_supervisor_and_monitors(SupervisionEvent::ActorStarted(myself.get_cell()));
@@ -778,7 +778,7 @@ where
                     was_killed,
                 } = Self::process_message(myself.clone(), state, handler, &mut ports)
                     .await
-                    .map_err(ActorErr::Panic)?;
+                    .map_err(ActorErr::Failed)?;
                 // processing loop exit
                 if should_exit {
                     return Ok((state, exit_reason, was_killed));
@@ -788,7 +788,7 @@ where
 
         // capture any panics in this future and convert to an ActorErr
         let loop_done = futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
-            .map_err(|err| ActorErr::Panic(get_panic_string(err)))
+            .map_err(|err| ActorErr::Failed(get_panic_string(err)))
             .await;
 
         // set status to stopping
@@ -800,7 +800,7 @@ where
         if !was_killed {
             Self::do_post_stop(myself_clone, handler, exit_state)
                 .await?
-                .map_err(ActorErr::Panic)?;
+                .map_err(ActorErr::Failed)?;
         }
 
         Ok(exit_reason)
@@ -955,7 +955,7 @@ where
         let future = handler.pre_start(myself, arguments);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
-            .map_err(|err| SpawnErr::StartupPanic(get_panic_string(err)))
+            .map_err(|err| SpawnErr::StartupFailed(get_panic_string(err)))
     }
 
     async fn do_post_start(
@@ -966,7 +966,7 @@ where
         let future = handler.post_start(myself, state);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
-            .map_err(|err| ActorErr::Panic(get_panic_string(err)))
+            .map_err(|err| ActorErr::Failed(get_panic_string(err)))
     }
 
     async fn do_post_stop(
@@ -977,6 +977,6 @@ where
         let future = handler.post_stop(myself, state);
         futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
             .await
-            .map_err(|err| ActorErr::Panic(get_panic_string(err)))
+            .map_err(|err| ActorErr::Failed(get_panic_string(err)))
     }
 }

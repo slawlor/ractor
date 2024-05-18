@@ -430,7 +430,7 @@ impl Actor for NodeServer {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            SupervisionEvent::ActorPanicked(actor, msg) => {
+            SupervisionEvent::ActorFailed(actor, msg) => {
                 if state.listener.get_id() == actor.get_id() {
                     tracing::error!(
                         "The Node server's TCP listener failed with '{msg}'. Respawning!"
