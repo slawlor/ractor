@@ -147,6 +147,8 @@ impl<T> std::fmt::Debug for MessagingErr<T> {
     }
 }
 
+// SAFETY: This is required in order to map [MessagingErr] to
+// ActorProcessingErr which requires errors to be Sync.
 impl<T> std::error::Error for MessagingErr<T> {}
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for MessagingErr<T> {

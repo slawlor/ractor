@@ -196,7 +196,7 @@ where
     /// * `router`: The message routing implementation the factory should use. Implements
     /// the [Router] trait.
     /// * `queue`: The message queueing implementation the factory should use. Implements
-    /// the [FactoryQueue] trait.
+    /// the [Queue] trait.
     pub fn new<TBuilder: WorkerBuilder<TWorker, TWorkerStart> + 'static>(
         worker_builder: TBuilder,
         router: TRouter,
