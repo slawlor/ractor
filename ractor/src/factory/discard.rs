@@ -115,7 +115,7 @@ impl DiscardSettings {
 pub trait DynamicDiscardController: Send + Sync + 'static {
     /// Compute the new threshold for discarding
     ///
-    /// If you want to utilize metrics exposed in [crate::modular_factory::stats] you can gather them
+    /// If you want to utilize metrics exposed in [crate::factory::stats] you can gather them
     /// by utilizing `stats_facebook::service_data::get_service_data_singleton` to retrieve a
     /// accessor to `ServiceData` which you can then resolve stats by name (either timeseries or
     /// counters)
