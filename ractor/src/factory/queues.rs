@@ -117,9 +117,9 @@ impl From<usize> for StandardPriority {
 }
 
 /// The [PriorityManager] is responsible for extracting the job priority from
-/// a given job's key (`TKey`). Additionally in some scenarios (e.g. thrift servers)
-/// some jobs may be non-discardable, i.e. can be enqueued regardless of the backpressure
-/// status of the factory. This is also responsible for determining if a job can be loadshed.
+/// a given job's key (`TKey`). Additionally in some scenarios  some jobs may be non-discardable,
+/// i.e. can be enqueued regardless of the backpressure status of the factory. This is also
+/// responsible for determining if a job can be loadshed.
 pub trait PriorityManager<TKey, TPriority>: Send + Sync + 'static
 where
     TKey: JobKey,

@@ -140,7 +140,7 @@ where
     /// Controls the parallel capacity of the worker pool by dynamically growing/shrinking the pool
     pub capacity_controller: Option<Box<dyn WorkerCapacityController>>,
 
-    /// Lifecycle hooks which provide access to points in the thrift factory's lifecycle
+    /// Lifecycle hooks which provide access to points in the factory's lifecycle
     /// for shutdown/startup/draining
     pub lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
 
@@ -319,9 +319,9 @@ where
 
     /// Sets the factory's lifecycle hooks implementation
     ///
-    /// Lifecycle hooks provide access to points in the thrift factory's lifecycle
+    /// Lifecycle hooks provide access to points in the factory's lifecycle
     /// for shutdown/startup/draining where user-defined logic can execute (and
-    /// block factory lifecycle at critical points). For example, in thrift, this means
+    /// block factory lifecycle at critical points). This means
     /// the factory won't start accepting requests until the complete startup routine
     /// is completed.
     pub fn with_lifecycle_hooks<TLifecycle: FactoryLifecycleHooks<TKey, TMsg>>(
