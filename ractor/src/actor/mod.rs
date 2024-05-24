@@ -496,7 +496,12 @@ where
         startup_args: TActor::Arguments,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
-        actor.start(ports, startup_args, None).await
+        let aref = actor.actor_ref.clone();
+        let result = actor.start(ports, startup_args, None).await;
+        if result.is_err() {
+            aref.set_status(ActorStatus::Stopped);
+        }
+        result
     }
 
     /// Spawn an actor with a supervisor, automatically starting the actor
@@ -517,7 +522,12 @@ where
         supervisor: ActorCell,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
-        actor.start(ports, startup_args, Some(supervisor)).await
+        let aref = actor.actor_ref.clone();
+        let result = actor.start(ports, startup_args, Some(supervisor)).await;
+        if result.is_err() {
+            aref.set_status(ActorStatus::Stopped);
+        }
+        result
     }
 
     /// Spawn an actor instantly, not waiting on the actor's `pre_start` routine. This is helpful
@@ -550,8 +560,13 @@ where
     > {
         let (actor, ports) = Self::new(name.clone(), handler)?;
         let actor_ref = actor.actor_ref.clone();
+        let actor_ref2 = actor_ref.clone();
         let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
-            let (_, handle) = actor.start(ports, startup_args, None).await?;
+            let result = actor.start(ports, startup_args, None).await;
+            if result.is_err() {
+                actor_ref2.set_status(ActorStatus::Stopped);
+            }
+            let (_, handle) = result?;
             Ok(handle)
         });
         Ok((actor_ref, join_op))
@@ -592,8 +607,13 @@ where
     > {
         let (actor, ports) = Self::new(name.clone(), handler)?;
         let actor_ref = actor.actor_ref.clone();
+        let actor_ref2 = actor_ref.clone();
         let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
-            let (_, handle) = actor.start(ports, startup_args, Some(supervisor)).await?;
+            let result = actor.start(ports, startup_args, Some(supervisor)).await;
+            if result.is_err() {
+                actor_ref2.set_status(ActorStatus::Stopped);
+            }
+            let (_, handle) = result?;
             Ok(handle)
         });
         Ok((actor_ref, join_op))
@@ -627,6 +647,7 @@ where
             let (actor_cell, ports) = actor_cell::ActorCell::new_remote::<TActor>(name, id)?;
             let id = actor_cell.get_id();
             let name = actor_cell.get_name();
+            let actor_cell2 = actor_cell.clone();
             let (actor, ports) = (
                 Self {
                     actor_ref: actor_cell.into(),
@@ -636,7 +657,11 @@ where
                 },
                 ports,
             );
-            actor.start(ports, startup_args, Some(supervisor)).await
+            let result = actor.start(ports, startup_args, Some(supervisor)).await;
+            if result.is_err() {
+                actor_cell2.set_status(ActorStatus::Stopped);
+            }
+            result
         }
     }
 
