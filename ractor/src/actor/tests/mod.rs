@@ -956,3 +956,47 @@ fn returns_actor_references() {
         assert_eq!(event.actor_id().is_some(), want);
     }
 }
+
+/// https://github.com/slawlor/ractor/issues/240
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn actor_failing_in_spawn_err_doesnt_poison_registries() {
+    struct Test;
+
+    #[crate::async_trait]
+    impl Actor for Test {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(&self, _: ActorRef<Self::Msg>, _: ()) -> Result<(), ActorProcessingErr> {
+            Err("something".into())
+        }
+    }
+
+    struct Test2;
+
+    #[crate::async_trait]
+    impl Actor for Test2 {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(&self, _: ActorRef<Self::Msg>, _: ()) -> Result<(), ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let a = Actor::spawn(Some("test".to_owned()), Test, ()).await;
+    assert!(a.is_err());
+    drop(a);
+
+    let (a, h) = Actor::spawn(Some("test".to_owned()), Test2, ())
+        .await
+        .expect("Failed to spawn second actor with name clash");
+
+    // startup ok, we were able to reuse the name
+
+    a.stop(None);
+    h.await.unwrap();
+}

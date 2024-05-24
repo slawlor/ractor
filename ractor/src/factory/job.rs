@@ -231,7 +231,8 @@ where
     TKey: JobKey,
     TMsg: Message,
 {
-    pub(crate) fn is_expired(&self) -> bool {
+    /// Determine if this job is expired
+    pub fn is_expired(&self) -> bool {
         if let Some(ttl) = self.options.ttl {
             self.options.submit_time.elapsed().unwrap() > ttl
         } else {

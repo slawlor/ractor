@@ -195,7 +195,10 @@ where
         self.actor.get_id() == pid
     }
 
-    pub(crate) fn is_processing_key(&self, key: &TKey) -> bool {
+    /// Identifies if a worker is processing a specific job key
+    ///
+    /// Returns true if the worker is currently processing the given key
+    pub fn is_processing_key(&self, key: &TKey) -> bool {
         self.curr_jobs.contains_key(key)
     }
 
@@ -219,16 +222,17 @@ where
         Ok(())
     }
 
-    pub(crate) fn is_available(&self) -> bool {
+    /// Identify if the worker is available for enqueueing work
+    pub fn is_available(&self) -> bool {
         self.curr_jobs.is_empty()
     }
 
-    pub(crate) fn is_working(&self) -> bool {
+    /// Identify if the worker is currently processing any requests
+    pub fn is_working(&self) -> bool {
         !self.curr_jobs.is_empty()
     }
 
     /// Denotes if the worker is stuck (i.e. unable to complete it's current job)
-
     pub(crate) fn is_stuck(&self, duration: Duration) -> bool {
         if Instant::now() - self.stats.last_ping > duration {
             let key_strings = self
@@ -244,8 +248,9 @@ where
     }
 
     /// Enqueue a new job to this worker. If the discard threshold has been exceeded
-    /// it will discard the oldest elements from the message queue
-    pub(crate) fn enqueue_job(
+    /// it will discard the oldest or newest elements from the message queue (based
+    /// on discard semantics)
+    pub fn enqueue_job(
         &mut self,
         mut job: Job<TKey, TMsg>,
     ) -> Result<(), MessagingErr<WorkerMessage<TKey, TMsg>>> {
