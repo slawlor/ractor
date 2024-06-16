@@ -81,7 +81,7 @@ never be executed in parallel. Following the actor model leads to microservices 
 An example `ping-pong` actor might be the following
 
 ```rust
-use ractor::{cast, Actor, ActorProcessingErr, ActorRef};
+use ractor::{async_trait, cast, Actor, ActorProcessingErr, ActorRef};
 
 /// [PingPong] is a basic actor that will print
 /// ping..pong.. repeatedly until some exit
@@ -113,6 +113,7 @@ impl Message {
     }
 }
 
+#[async_trait]
 // the implementation of our actor's "logic"
 impl Actor for PingPong {
     // An actor has a message type
@@ -172,7 +173,7 @@ which will output
 ```bash
 $ cargo run
 ping..pong..ping..pong..ping..pong..ping..pong..ping..pong..
-$ 
+$
 ```
 
 ## Messaging actors
