@@ -5,6 +5,7 @@ authors = ["Sean Lawlor <seanlawlor@fb.com>"]
 description = "Derives for ractor_cluster"
 license = "MIT"
 edition = "2021"
+categories = []
 keywords = ["actor", "ractor"]
 repository = "https://github.com/slawlor/ractor"
 readme = "../README.md"
