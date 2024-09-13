@@ -259,19 +259,19 @@ pub trait NodeEventSubscription: Send + 'static {
     /// A node session has started up
     ///
     /// * `ses`: The [NodeServerSessionInformation] representing the current state
-    /// of the node session
+    ///   of the node session
     fn node_session_opened(&self, ses: NodeServerSessionInformation);
 
     /// A node session has shutdown
     ///
     /// * `ses`: The [NodeServerSessionInformation] representing the current state
-    /// of the node session
+    ///   of the node session
     fn node_session_disconnected(&self, ses: NodeServerSessionInformation);
 
     /// A node session authenticated
     ///
     /// * `ses`: The [NodeServerSessionInformation] representing the current state
-    /// of the node session
+    ///   of the node session
     fn node_session_authenicated(&self, ses: NodeServerSessionInformation);
 }
 

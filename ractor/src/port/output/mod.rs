@@ -64,8 +64,8 @@ where
     ///
     /// * `receiver` - The reference to the actor which will receive forwarded messages
     /// * `converter` - The converter which will convert the output message type to the
-    /// receiver's input type and return [Some(_)] if the message should be forwarded, [None]
-    /// if the message should be skipped.
+    ///   receiver's input type and return [Some(_)] if the message should be forwarded, [None]
+    ///   if the message should be skipped.
     pub fn subscribe<TReceiverMsg, F>(&self, receiver: ActorRef<TReceiverMsg>, converter: F)
     where
         F: Fn(TMsg) -> Option<TReceiverMsg> + Send + 'static,

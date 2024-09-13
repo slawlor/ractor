@@ -116,7 +116,7 @@ where
 /// * `actor` - A reference to the [ActorCell] to communicate with
 /// * `msg_builder` - The [FnOnce] to construct the message
 /// * `timeout_option` - An optional [Duration] which represents the amount of
-/// time until the operation times out
+///   time until the operation times out
 ///
 /// Returns [Ok(CallResult)] upon successful initial sending with the reply from
 /// the [crate::Actor], [Err(MessagingErr)] if the initial send operation failed
@@ -158,7 +158,7 @@ where
 /// * `actors` - A reference to the group of [ActorCell]s to communicate with
 /// * `msg_builder` - The [FnOnce] to construct the message
 /// * `timeout_option` - An optional [Duration] which represents the amount of
-/// time until the operation times out
+///   time until the operation times out
 ///
 /// Returns [Ok(`Vec<CallResult<TReply>>>`)] upon successful initial sending with the reply from
 /// the [crate::Actor]s, [Err(MessagingErr)] if the initial send operation failed
@@ -233,9 +233,9 @@ where
 /// * `msg_builder` - The [FnOnce] to construct the message
 /// * `response_forward` - The [ActorCell] to forward the message to
 /// * `forward_mapping` - The [FnOnce] which maps the response from the `actor` [ActorCell]'s reply message
-/// type to the `response_forward` [ActorCell]'s message type
+///   type to the `response_forward` [ActorCell]'s message type
 /// * `timeout_option` - An optional [Duration] which represents the amount of
-/// time until the operation times out
+///   time until the operation times out
 ///
 /// Returns: A [JoinHandle<CallResult<()>>] which can be awaited to see if the
 /// forward was successful or ignored

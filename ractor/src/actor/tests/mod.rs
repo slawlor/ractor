@@ -10,7 +10,11 @@ use std::sync::{
     Arc,
 };
 
-use crate::{common_test::periodic_check, concurrency::Duration, MessagingErr, RactorErr};
+use crate::{
+    common_test::periodic_check,
+    concurrency::{sleep, Duration},
+    MessagingErr, RactorErr,
+};
 
 use crate::{
     Actor, ActorCell, ActorProcessingErr, ActorRef, ActorStatus, SpawnErr, SupervisionEvent,
@@ -999,4 +1003,58 @@ async fn actor_failing_in_spawn_err_doesnt_poison_registries() {
 
     a.stop(None);
     h.await.unwrap();
+}
+
+/// https://github.com/slawlor/ractor/issues/254
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn actor_post_stop_executed_before_stop_and_wait_returns() {
+    struct TestActor {
+        signal: Arc<AtomicU8>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = EmptyMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn post_stop(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            sleep(Duration::from_millis(1000)).await;
+            let _ = self.signal.store(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    let signal = Arc::new(AtomicU8::new(0));
+    let (actor, handle) = Actor::spawn(
+        None,
+        TestActor {
+            signal: signal.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Failed to spawn test actor");
+
+    actor
+        .stop_and_wait(None, None)
+        .await
+        .expect("Failed to stop and wait");
+
+    assert_eq!(1, signal.load(Ordering::SeqCst));
+
+    handle.await.unwrap();
 }

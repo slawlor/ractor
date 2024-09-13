@@ -46,7 +46,7 @@ where
     /// Remove expired items from the queue
     ///
     /// * `discard_handler` - The handler to call for each discarded job. Will be called
-    /// with [DiscardReason::Loadshed].
+    ///   with [DiscardReason::Loadshed].
     ///
     /// Returns the number of elements removed from the queue
     fn remove_expired_items(

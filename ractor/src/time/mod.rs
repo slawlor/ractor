@@ -98,7 +98,7 @@ mod tests;
 /// * `period` - The [Duration] representing the period for the send interval
 /// * `actor` - The [ActorCell] representing the [crate::Actor] to communicate with
 /// * `msg` - The [Fn] message builder which is called to generate a message for each send
-/// operation.
+///   operation.
 ///
 /// Returns: The [JoinHandle] which represents the backgrounded work (can be ignored to
 /// "fire and forget")
@@ -132,7 +132,7 @@ where
 /// * `period` - The [Duration] representing the time to delay before sending
 /// * `actor` - The [ActorCell] representing the [crate::Actor] to communicate with
 /// * `msg` - The [FnOnce] message builder which is called to generate a message for the send
-/// operation
+///   operation
 ///
 /// Returns: The [JoinHandle<Result<(), MessagingErr>>] which represents the backgrounded work.
 /// Awaiting the handle will yield the result of the send operation. Can be safely ignored to

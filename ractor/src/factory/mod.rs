@@ -18,17 +18,17 @@
 //! on the intended workload. Some general guidance:
 //!
 //! 1. If you need to process a sequence of operations on a given key (i.e. the Job is a user, and
-//! there's a sequential list of updates to that user). You then want the job to land on the same
-//! worker and should select [routing::KeyPersistentRouting] or [routing::StickyQueuerRouting].
+//!    there's a sequential list of updates to that user). You then want the job to land on the same
+//!    worker and should select [routing::KeyPersistentRouting] or [routing::StickyQueuerRouting].
 //! 2. If you don't need a sequence of operations then [routing::QueuerRouting] is likely a good choice.
 //! 3. If your workers are making remote calls to other services/actors you probably want [routing::QueuerRouting]
-//! or [routing::StickyQueuerRouting] to prevent head-of-the-line contention. Otherwise [routing::KeyPersistentRouting]
-//! is sufficient.
+//!    or [routing::StickyQueuerRouting] to prevent head-of-the-line contention. Otherwise [routing::KeyPersistentRouting]
+//!    is sufficient.
 //! 4. For some custom defined routing, you can define your own [routing::CustomHashFunction] which will be
-//! used in conjunction with [routing::CustomRouting] to take the incoming job key and
-//! the space which should be hashed to (i.e. the number of workers).
+//!    used in conjunction with [routing::CustomRouting] to take the incoming job key and
+//!    the space which should be hashed to (i.e. the number of workers).
 //! 5. If you just want load balancing there's also [routing::RoundRobinRouting] for general 1-off
-//! dispatching of jobs
+//!    dispatching of jobs
 //!
 //! ## Factory queueing
 //!
