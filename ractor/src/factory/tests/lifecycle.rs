@@ -137,7 +137,7 @@ async fn test_lifecycle_hooks() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: Some(Box::new(hooks.clone())),
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await

@@ -131,7 +131,7 @@ async fn test_worker_pool_adjustment_manual() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -144,6 +144,7 @@ async fn test_worker_pool_adjustment_manual() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Count(i),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -170,6 +171,7 @@ async fn test_worker_pool_adjustment_manual() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Count(i),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -229,7 +231,7 @@ async fn test_worker_pool_adjustment_automatic() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -242,6 +244,7 @@ async fn test_worker_pool_adjustment_automatic() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Count(i),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -267,6 +270,7 @@ async fn test_worker_pool_adjustment_automatic() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Count(i),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }

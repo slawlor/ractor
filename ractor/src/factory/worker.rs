@@ -13,7 +13,7 @@ use crate::{Actor, ActorId, ActorProcessingErr};
 use crate::{ActorRef, Message, MessagingErr};
 
 use super::discard::{DiscardMode, WorkerDiscardSettings};
-use super::stats::MessageProcessingStats;
+use super::stats::FactoryStatsLayer;
 use super::FactoryMessage;
 use super::Job;
 use super::JobKey;
@@ -114,6 +114,9 @@ where
     /// Worker actor
     pub(crate) actor: ActorRef<WorkerMessage<TKey, TMsg>>,
 
+    /// Name of the factory that owns this worker
+    factory_name: String,
+
     /// The join handle for the worker
     handle: Option<JoinHandle<()>>,
 
@@ -132,8 +135,11 @@ where
     /// Flag indicating if this worker has a ping currently pending
     is_ping_pending: bool,
 
+    /// Time the last ping went out to the worker to track ping metrics
+    last_ping: Instant,
+
     /// Statistics for the worker
-    stats: MessageProcessingStats,
+    stats: Option<Arc<dyn FactoryStatsLayer>>,
 
     /// Current pending jobs dispatched to the worker (for tracking stats)
     curr_jobs: HashMap<TKey, JobOptions>,
@@ -155,25 +161,23 @@ where
                 if let Some(handler) = &self.discard_handler {
                     handler.discard(DiscardReason::TtlExpired, &mut job);
                 }
-                self.stats.job_ttl_expired();
+                self.stats.job_ttl_expired(&self.factory_name, 1);
             }
         }
         None
     }
 
     pub(crate) fn new(
+        factory_name: String,
         wid: WorkerId,
         actor: ActorRef<WorkerMessage<TKey, TMsg>>,
         discard_settings: WorkerDiscardSettings,
         discard_handler: Option<Arc<dyn DiscardHandler<TKey, TMsg>>>,
-        collect_stats: bool,
         handle: JoinHandle<()>,
+        stats: Option<Arc<dyn FactoryStatsLayer>>,
     ) -> Self {
-        let mut stats = MessageProcessingStats::default();
-        if collect_stats {
-            stats.enable();
-        }
         Self {
+            factory_name,
             actor,
             discard_settings,
             discard_handler,
@@ -184,6 +188,7 @@ where
             stats,
             handle: Some(handle),
             is_draining: false,
+            last_ping: Instant::now(),
         }
     }
 
@@ -209,7 +214,7 @@ where
     ) -> Result<(), ActorProcessingErr> {
         // these jobs are now "lost" as the worker is going to be killed
         self.is_ping_pending = false;
-        self.stats.last_ping = Instant::now();
+        self.last_ping = Instant::now();
         self.curr_jobs.clear();
 
         self.actor = nworker;
@@ -234,7 +239,7 @@ where
 
     /// Denotes if the worker is stuck (i.e. unable to complete it's current job)
     pub(crate) fn is_stuck(&self, duration: Duration) -> bool {
-        if Instant::now() - self.stats.last_ping > duration {
+        if Instant::now() - self.last_ping > duration {
             let key_strings = self
                 .curr_jobs
                 .keys()
@@ -255,7 +260,7 @@ where
         mut job: Job<TKey, TMsg>,
     ) -> Result<(), MessagingErr<WorkerMessage<TKey, TMsg>>> {
         // track per-job statistics
-        self.stats.job_submitted();
+        self.stats.new_job(&self.factory_name);
 
         if let Some((limit, DiscardMode::Newest)) = self.discard_settings.get_limit_and_mode() {
             if limit > 0 && self.message_queue.len() >= limit {
@@ -263,11 +268,13 @@ where
                 if let Some(handler) = &self.discard_handler {
                     handler.discard(DiscardReason::Loadshed, &mut job);
                 }
+                job.reject();
                 return Ok(());
             }
         }
 
         // if the job isn't front-load shedded, it's "accepted"
+        job.accept();
         if self.curr_jobs.is_empty() {
             self.curr_jobs.insert(job.key.clone(), job.options.clone());
             if let Some(mut older_job) = self.get_next_non_expired_job() {
@@ -311,9 +318,7 @@ where
     /// Comes back when a ping went out
     pub(crate) fn ping_received(&mut self, time: Duration, discard_limit: usize) {
         self.discard_settings.update_worker_limit(discard_limit);
-        if self.stats.ping_received(time) {
-            // TODO log metrics ? Should be configurable on the factory level
-        }
+        self.stats.worker_ping_received(&self.factory_name, time);
         self.is_ping_pending = false;
     }
 

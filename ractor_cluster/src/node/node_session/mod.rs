@@ -186,7 +186,7 @@ impl NodeSession {
                         // record the name
                         let name_message = auth_protocol::NameMessage {
                             name: server_challenge_value.name.clone(),
-                            flags: server_challenge_value.flags.clone(),
+                            flags: server_challenge_value.flags,
                             connection_string: server_challenge_value.connection_string.clone(),
                         };
                         state.name = Some(name_message.clone());
@@ -285,7 +285,7 @@ impl NodeSession {
                                                     auth_protocol::authentication_message::Msg::ServerChallenge(
                                                         auth_protocol::Challenge {
                                                             name: self.this_node_name.name.clone(),
-                                                            flags: self.this_node_name.flags.clone(),
+                                                            flags: self.this_node_name.flags,
                                                             challenge: *challenge,
                                                             connection_string: self.this_node_name.connection_string.clone(),
                                                         },

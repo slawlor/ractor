@@ -8,6 +8,7 @@
 use std::fmt::Debug;
 use std::{hash::Hash, time::SystemTime};
 
+use crate::RpcReplyPort;
 use crate::{concurrency::Duration, Message};
 
 #[cfg(feature = "cluster")]
@@ -116,6 +117,16 @@ where
     /// The job's options, mainly related to timing
     /// information of the job
     pub options: JobOptions,
+    /// If provided, this channel can be used to block pushes
+    /// into the factory until the factory can "accept" the message
+    /// into its internal processing. This can be used to synchronize
+    /// external threadpools to the Tokio processing pool and prevent
+    /// overloading the unbounded channel which fronts all actors.
+    ///
+    /// The reply channel return [None] if the job was accepted, or
+    /// [Some(`Job`)] if it was rejected & loadshed, and then the
+    /// job may be retried by the caller at a later time (if desired).
+    pub accepted: Option<RpcReplyPort<Option<Self>>>,
 }
 
 #[cfg(feature = "cluster")]
@@ -205,7 +216,12 @@ where
                     args,
                     metadata: None,
                 })?;
-                Ok(Self { msg, key, options })
+                Ok(Self {
+                    msg,
+                    key,
+                    options,
+                    accepted: None,
+                })
             }
             crate::message::SerializedMessage::Call {
                 variant,
@@ -220,7 +236,12 @@ where
                     reply,
                     metadata: None,
                 })?;
-                Ok(Self { msg, key, options })
+                Ok(Self {
+                    msg,
+                    key,
+                    options,
+                    accepted: None,
+                })
             }
         }
     }
@@ -248,6 +269,20 @@ where
     /// Set the time the worker began processing the job
     pub(crate) fn set_worker_time(&mut self) {
         self.options.worker_time = SystemTime::now();
+    }
+
+    /// Accept the job (telling the submitter that the job was accepted and enqueued to the factory)
+    pub(crate) fn accept(&mut self) {
+        if let Some(port) = self.accepted.take() {
+            let _ = port.send(None);
+        }
+    }
+
+    /// Reject the job. Consumes the job and returns it to the caller under backpressure scenarios.
+    pub(crate) fn reject(mut self) {
+        if let Some(port) = self.accepted.take() {
+            let _ = port.send(Some(self));
+        }
     }
 }
 
@@ -345,11 +380,13 @@ mod tests {
             key: TestKey { item: 123 },
             msg: TestMessage::A("Hello".to_string()),
             options: JobOptions::default(),
+            accepted: None,
         };
         let expected_a = TheJob {
             key: TestKey { item: 123 },
             msg: TestMessage::A("Hello".to_string()),
             options: job_a.options.clone(),
+            accepted: None,
         };
 
         let serialized_a = job_a.serialize().expect("Failed to serialize job A");
@@ -376,11 +413,13 @@ mod tests {
                 ttl: Some(Duration::from_millis(1000)),
                 ..Default::default()
             },
+            accepted: None,
         };
         let expected_b = TheJob {
             key: TestKey { item: 456 },
             msg: TestMessage::B("Hi".to_string(), crate::concurrency::oneshot().0.into()),
             options: job_b.options.clone(),
+            accepted: None,
         };
         let serialized_b = job_b.serialize().expect("Failed to serialize job B");
         let deserialized_b =
@@ -406,11 +445,13 @@ mod tests {
             key: TestKey { item: 123 },
             msg: TestMessage::A("Hello".to_string()),
             options: JobOptions::default(),
+            accepted: None,
         };
         let expected_a = TheJob {
             key: TestKey { item: 123 },
             msg: TestMessage::A("Hello".to_string()),
             options: job_a.options.clone(),
+            accepted: None,
         };
 
         let msg = FactoryMessage::Dispatch(job_a);

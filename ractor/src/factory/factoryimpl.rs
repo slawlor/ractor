@@ -144,8 +144,8 @@ where
     /// for shutdown/startup/draining
     pub lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
 
-    /// Identifies if the factory should collect statstics around each worker
-    pub collect_worker_stats: bool,
+    /// Defines the statistics collection layer for the factory. Useful for tracking factory properties.
+    pub stats: Option<Arc<dyn FactoryStatsLayer>>,
 }
 
 /// Builder for [FactoryArguments] which can be used to build the
@@ -173,7 +173,7 @@ where
     dead_mans_switch: Option<DeadMansSwitchConfiguration>,
     capacity_controller: Option<Box<dyn WorkerCapacityController>>,
     lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
-    collect_worker_stats: bool,
+    stats: Option<Arc<dyn FactoryStatsLayer>>,
 }
 
 impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
@@ -212,7 +212,7 @@ where
             dead_mans_switch: None,
             capacity_controller: None,
             lifecycle_hooks: None,
-            collect_worker_stats: false,
+            stats: None,
         }
     }
 
@@ -228,7 +228,7 @@ where
             dead_mans_switch,
             capacity_controller,
             lifecycle_hooks,
-            collect_worker_stats,
+            stats,
         } = self;
         FactoryArguments {
             worker_builder,
@@ -240,7 +240,7 @@ where
             dead_mans_switch,
             capacity_controller,
             lifecycle_hooks,
-            collect_worker_stats,
+            stats,
         }
     }
 
@@ -333,6 +333,16 @@ where
             ..self
         }
     }
+
+    /// Sets the factory's statistics collection implementation
+    ///
+    /// This can be used to aggregate various statistics about the factory's processing.
+    pub fn with_stats_collector<TStats: FactoryStatsLayer>(self, stats: TStats) -> Self {
+        Self {
+            stats: Some(Arc::new(stats)),
+            ..self
+        }
+    }
 }
 
 /// State of a factory (backlogged jobs, handler, etc)
@@ -348,11 +358,11 @@ where
     TRouter: Router<TKey, TMsg>,
     TQueue: Queue<TKey, TMsg>,
 {
+    factory_name: String,
     worker_builder: Box<dyn WorkerBuilder<TWorker, TWorkerStart>>,
     pool_size: usize,
     pool: HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
-    stats: MessageProcessingStats,
-    collect_worker_stats: bool,
+    stats: Option<Arc<dyn FactoryStatsLayer>>,
     router: TRouter,
     queue: TQueue,
     discard_handler: Option<Arc<dyn DiscardHandler<TKey, TMsg>>>,
@@ -391,17 +401,19 @@ where
         while let Some(true) = self.queue.peek().map(|m| m.is_expired()) {
             // remove the job from the queue
             if let Some(mut job) = self.queue.pop_front() {
-                self.stats.job_ttl_expired();
+                self.stats.job_ttl_expired(&self.factory_name, 1);
                 if let Some(handler) = &self.discard_handler {
                     handler.discard(DiscardReason::TtlExpired, &mut job);
                 }
+                job.reject();
             } else {
                 break;
             }
         }
 
         if let Some(worker) = self.pool.get_mut(&worker_hint).filter(|f| f.is_available()) {
-            if let Some(job) = self.queue.pop_front() {
+            if let Some(mut job) = self.queue.pop_front() {
+                job.accept();
                 worker.enqueue_job(job)?;
             }
         } else {
@@ -414,7 +426,8 @@ where
                         .choose_target_worker(job, self.pool_size, &self.pool)
                 })
                 .and_then(|wid| self.pool.get_mut(&wid));
-            if let (Some(job), Some(worker)) = (self.queue.pop_front(), target_worker) {
+            if let (Some(mut job), Some(worker)) = (self.queue.pop_front(), target_worker) {
+                job.accept();
                 worker.enqueue_job(job)?;
             }
         }
@@ -432,17 +445,20 @@ where
                     if let Some(handler) = &self.discard_handler {
                         handler.discard(DiscardReason::Loadshed, &mut job);
                     }
-                    self.stats.job_discarded();
+                    job.reject();
+                    self.stats.job_discarded(&self.factory_name);
                 } else {
+                    job.accept();
                     self.queue.push_back(job);
                 }
             }
             Some((limit, DiscardMode::Oldest)) => {
+                job.accept();
                 self.queue.push_back(job);
                 while self.queue.len() > limit {
                     // try and shed a job, of the lowest priority working up
                     if let Some(mut msg) = self.queue.discard_oldest() {
-                        self.stats.job_discarded();
+                        self.stats.job_discarded(&self.factory_name);
                         if let Some(handler) = &self.discard_handler {
                             handler.discard(DiscardReason::Loadshed, &mut msg);
                         }
@@ -451,6 +467,7 @@ where
             }
             None => {
                 // no load-shedding
+                job.accept();
                 self.queue.push_back(job);
             }
         }
@@ -485,12 +502,13 @@ where
                 self.pool.insert(
                     wid,
                     WorkerProperties::new(
+                        self.factory_name.clone(),
                         wid,
                         worker,
                         discard_settings,
                         self.discard_handler.clone(),
-                        self.collect_worker_stats,
                         handle,
+                        self.stats.clone(),
                     ),
                 );
             }
@@ -584,9 +602,16 @@ where
     fn dispatch(&mut self, mut job: Job<TKey, TMsg>) -> Result<(), ActorProcessingErr> {
         // set the time the factory received the message
         job.set_factory_time();
-        self.stats.job_submitted();
+        self.stats.new_job(&self.factory_name);
 
-        if self.drain_state == DrainState::NotDraining {
+        // Check if TTL has been exceeded prior to trying anything.
+        if job.is_expired() {
+            self.stats.job_ttl_expired(&self.factory_name, 1);
+            if let Some(discard_handler) = &self.discard_handler {
+                discard_handler.discard(DiscardReason::TtlExpired, &mut job);
+            }
+            job.reject();
+        } else if self.drain_state == DrainState::NotDraining {
             if let RouteResult::Backlog(busy_job) =
                 self.router
                     .route_message(job, self.pool_size, &mut self.pool)?
@@ -599,6 +624,7 @@ where
             if let Some(discard_handler) = &self.discard_handler {
                 discard_handler.discard(DiscardReason::Shutdown, &mut job);
             }
+            job.reject();
         }
         Ok(())
     }
@@ -607,7 +633,7 @@ where
         let (is_worker_draining, should_drop_worker) = if let Some(worker) = self.pool.get_mut(&who)
         {
             if let Some(job_options) = worker.worker_complete(key)? {
-                self.stats.factory_job_done(&job_options);
+                self.stats.job_completed(&self.factory_name, &job_options);
             }
 
             if worker.is_draining {
@@ -657,10 +683,8 @@ where
         // TTL expired on these items, remove them before even trying to dequeue & distribute them
         if self.router.is_factory_queueing() {
             let num_removed = self.queue.remove_expired_items(&self.discard_handler);
-            self.stats.jobs_ttls_expired(num_removed);
+            self.stats.job_ttl_expired(&self.factory_name, num_removed);
         }
-
-        self.stats.reset_global_counters();
 
         // schedule next calculation
         myself.send_after(CALCULATE_FREQUENCY, || FactoryMessage::Calculate);
@@ -672,7 +696,7 @@ where
         myself: &ActorRef<FactoryMessage<TKey, TMsg>>,
         when: Instant,
     ) -> Result<(), ActorProcessingErr> {
-        self.stats.ping_received(when.elapsed());
+        self.stats.factory_ping_received(&self.factory_name, when);
 
         // if we have dyanmic discarding, we update the discard threshold
         if let DiscardSettings::Dynamic { limit, updater, .. } = &mut self.discard_settings {
@@ -782,10 +806,11 @@ where
             dead_mans_switch,
             capacity_controller,
             lifecycle_hooks,
-            collect_worker_stats,
+            stats,
         }: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         tracing::debug!(factory = ?myself, "Factory starting");
+        let factory_name = myself.get_name().unwrap_or_else(|| "all".to_string());
 
         // build the pool
         let mut pool = HashMap::new();
@@ -807,12 +832,13 @@ where
             pool.insert(
                 wid,
                 WorkerProperties::new(
+                    factory_name.clone(),
                     wid,
                     worker,
                     worker_discard_settings,
                     discard_handler.clone(),
-                    collect_worker_stats,
                     worker_handle,
+                    stats.clone(),
                 ),
             );
         }
@@ -832,6 +858,7 @@ where
 
         // initial state
         Ok(FactoryState {
+            factory_name,
             worker_builder,
             pool_size: num_initial_workers,
             pool,
@@ -843,12 +870,7 @@ where
             lifecycle_hooks,
             queue,
             router,
-            stats: {
-                let mut s = MessageProcessingStats::default();
-                s.enable();
-                s
-            },
-            collect_worker_stats,
+            stats,
         })
     }
 
