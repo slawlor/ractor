@@ -36,12 +36,12 @@
 //! To link actors together in the supervision tree, there are 2 choices.
 //!
 //! 1. [Actor::spawn_linked] which requires supplying the supervisor to the actor upon spawning a child.
-//! This call will link the supervision tree as early as possible in the lifecycle of the actors,
-//! such that a failure or panic in `post_start` will be captured and notify the supervisor
+//!    This call will link the supervision tree as early as possible in the lifecycle of the actors,
+//!    such that a failure or panic in `post_start` will be captured and notify the supervisor
 //! 2. `ActorCell::link` will link actors together after-the-fact, once already spawned. This is helpful
-//! for actors which are originally created independently but have some latent relationship to each
-//! other. However due to startup routines and asynchronous processing, it's unlikely that failures
-//! in `post_start` and any other asynchronous handling will be captured in the supervision tree.
+//!    for actors which are originally created independently but have some latent relationship to each
+//!    other. However due to startup routines and asynchronous processing, it's unlikely that failures
+//!    in `post_start` and any other asynchronous handling will be captured in the supervision tree.
 //!
 //! ## Handling panics
 //!
@@ -485,7 +485,7 @@ where
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
+    ///   initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -509,7 +509,7 @@ where
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
+    ///   initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -540,7 +540,7 @@ where
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
+    ///   initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<Result<JoinHandle<()>, SpawnErr>>))] upon successful creation of the
     /// message queues, so you can begin sending messages. However the associated [JoinHandle] contains the inner
@@ -585,7 +585,7 @@ where
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The [Actor] defining the logic for this actor
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
+    ///   initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<Result<JoinHandle<()>, SpawnErr>>))] upon successful creation of the
@@ -625,7 +625,7 @@ where
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler`: The [Actor] defining the logic for this actor
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
+    ///   initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference

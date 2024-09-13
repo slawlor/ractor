@@ -51,7 +51,7 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    #[cfg(feature = "tracing")]
+    #[cfg(tokio_unstable)]
     {
         let mut builder = tokio::task::Builder::new();
         if let Some(name) = name {
@@ -60,7 +60,7 @@ where
         builder.spawn(future).expect("Tokio task spawn failed")
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(tokio_unstable))]
     {
         let _ = name;
         tokio::task::spawn(future)

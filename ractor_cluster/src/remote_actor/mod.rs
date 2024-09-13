@@ -36,7 +36,7 @@ impl RemoteActor {
     /// * `pid`: The actor's local id on the remote system
     /// * `node_id` The id of the [super::node::NodeSession]. Alongside `pid` this makes for a unique actor identifier
     /// * `supervisor`: The [super::node::NodeSession]'s [ActorCell] handle which will be linked in
-    /// the supervision tree
+    ///   the supervision tree
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if

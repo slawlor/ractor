@@ -127,7 +127,7 @@ where
     /// controlled by `discard_mode`).
     ///
     /// * For factories using [routing::QueuerRouting], [routing::StickyQueuerRouting] routing, these
-    /// are applied to the factory's internal queue.
+    ///   are applied to the factory's internal queue.
     /// * For all other routing protocols, this applies to the worker's message queue
     ///
     /// Default is [DiscardSettings::None]
@@ -192,11 +192,11 @@ where
     /// Construct a new [FactoryArguments] with the required arguments
     ///
     /// * `worker_builder`: The implementation of the [WorkerBuilder] trait which is
-    /// used to construct worker instances as needed
+    ///   used to construct worker instances as needed
     /// * `router`: The message routing implementation the factory should use. Implements
-    /// the [Router] trait.
+    ///   the [Router] trait.
     /// * `queue`: The message queueing implementation the factory should use. Implements
-    /// the [Queue] trait.
+    ///   the [Queue] trait.
     pub fn new<TBuilder: WorkerBuilder<TWorker, TWorkerStart> + 'static>(
         worker_builder: TBuilder,
         router: TRouter,
@@ -276,7 +276,7 @@ where
     /// (which is controlled by `discard_mode`).
     ///
     /// * For factories using [routing::QueuerRouting], [routing::StickyQueuerRouting] routing, these
-    /// are applied to the factory's internal queue.
+    ///   are applied to the factory's internal queue.
     /// * For all other routing protocols, this applies to the worker's message queue
     ///
     /// Default is [DiscardSettings::None]

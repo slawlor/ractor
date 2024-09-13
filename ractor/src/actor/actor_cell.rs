@@ -323,7 +323,11 @@ impl ActorCell {
             // Leave all + stop monitoring pg groups (if any)
             crate::pg::demonitor_all(self.get_id());
             crate::pg::leave_all(self.get_id());
+        }
 
+        // Fix for #254. We should only notify the stop listener AFTER post_stop
+        // has executed, which is when the state gets set to `Stopped`.
+        if status == ActorStatus::Stopped {
             // notify whoever might be waiting on the stop signal
             self.inner.notify_stop_listener();
         }

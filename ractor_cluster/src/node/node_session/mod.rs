@@ -62,7 +62,7 @@ impl AuthenticationState {
 /// 1. The state of the authentication handshake
 /// 2. Control messages for actor synchronization + group membership changes
 /// 3. `RemoteActor`s wishing to send messages to their remote counterparts on the
-/// remote system (and receive replies)
+///    remote system (and receive replies)
 ///
 /// A [NodeSession] can either be a client or server session, depending on the connection sequence.
 /// If it was an incoming request to the [crate::NodeServer] then it's a "server" session, as
