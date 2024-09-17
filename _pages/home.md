@@ -25,4 +25,4 @@ A pure-Rust actor framework. Inspired by [Erlang's `gen_server`](https://www.erl
 
 # News
 
-Ractor had a session at [RustConf'24](https://rustconf.com/schedule/#wednesday) about how it's used for distributed overload protection in Rust Thrift servers at Meta. [Slides]({{ '/assets/rustconf2024_presentation.png' | relative_url }})
+Ractor had a session at [RustConf'24](https://rustconf.com/schedule/#wednesday) about how it's used for distributed overload protection in Rust Thrift servers at Meta. [Slides]({{ '/assets/rustconf2024_presentation.pdf' | relative_url }})
