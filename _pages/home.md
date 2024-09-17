@@ -23,3 +23,6 @@ A pure-Rust actor framework. Inspired by [Erlang's `gen_server`](https://www.erl
 * `ractor`: ![ractor Downloads](https://img.shields.io/crates/d/ractor.svg)
 * `ractor_cluster`: ![ractor_cluster Downloads](https://img.shields.io/crates/d/ractor_cluster.svg)
 
+# News
+
+Ractor had a session at [RustConf'24](https://rustconf.com/schedule/#wednesday) about how it's used for distributed overload protection in Rust Thrift servers at Meta. [Slides](/assets/rustconf2024_presentation.pdf)
