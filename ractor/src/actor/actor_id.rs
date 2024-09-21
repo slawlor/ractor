@@ -13,7 +13,7 @@
 use std::{fmt::Display, sync::atomic::AtomicU64};
 
 /// An actor's globally unique identifier
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ActorId {
     /// A local pid
     Local(u64),

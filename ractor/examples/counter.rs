@@ -104,7 +104,6 @@ fn init_logging() {
 #[tokio::main]
 async fn main() {
     init_logging();
-
     let (actor, handle) = Actor::spawn(Some("test_name".to_string()), Counter, ())
         .await
         .expect("Failed to start actor!");
