@@ -74,7 +74,7 @@ impl<TMessage> ActorRef<TMessage> {
     ///
     /// * `evt` - The event to send to this [crate::Actor]'s supervisors
     pub fn notify_supervisor_and_monitors(&self, evt: SupervisionEvent) {
-        self.inner.notify_supervisor_and_monitors(evt)
+        self.inner.notify_supervisor(evt)
     }
 }
 

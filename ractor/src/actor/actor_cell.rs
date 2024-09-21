@@ -373,32 +373,6 @@ impl ActorCell {
         self.inner.tree.clear_supervisor();
     }
 
-    /// Monitor the provided [super::Actor] for supervision events. An actor in `ractor` can
-    /// only have a single supervisor, denoted by the `link` function, however they
-    /// may have multiple `monitors`. Monitor's receive copies of the [SupervisionEvent]s,
-    /// with non-cloneable information removed.
-    ///
-    /// * `who`: The actor to monitor
-    pub fn monitor(&self, who: ActorCell) {
-        who.inner.tree.set_monitor(self.clone());
-        self.inner.tree.mark_monitored(who);
-    }
-
-    /// Stop monitoring the provided [super::Actor] for supervision events.
-    ///
-    /// * `who`: The actor to stop monitoring
-    pub fn unmonitor(&self, who: ActorCell) {
-        self.inner.tree.unmark_monitored(who.get_id());
-        who.inner.tree.remove_monitor(self.get_id());
-    }
-
-    /// Clear all the [self::Actor]s which are monitored by this [self::Actor]
-    pub fn clear_monitors(&self) {
-        for id in self.inner.tree.monitored_actors() {
-            self.unmonitor(id);
-        }
-    }
-
     /// Kill this [super::Actor] forcefully (terminates async work)
     pub fn kill(&self) {
         let _ = self.inner.send_signal(Signal::Kill);
@@ -509,8 +483,8 @@ impl ActorCell {
     /// exception to a [String]
     ///
     /// * `evt` - The event to send to this [super::Actor]'s supervisors
-    pub fn notify_supervisor_and_monitors(&self, evt: SupervisionEvent) {
-        self.inner.tree.notify_supervisor_and_monitors(evt)
+    pub fn notify_supervisor(&self, evt: SupervisionEvent) {
+        self.inner.tree.notify_supervisor(evt)
     }
 
     pub(crate) fn get_type_id(&self) -> TypeId {

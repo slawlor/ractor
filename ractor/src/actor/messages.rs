@@ -102,26 +102,6 @@ pub enum SupervisionEvent {
 }
 
 impl SupervisionEvent {
-    /// Clone the supervision event, without requiring inner data
-    /// be cloneable. This means that the actor error (if present) is converted
-    /// to a string and copied as well as the state upon termination being not
-    /// propogated. If the state were cloneable, we could propogate it, however
-    /// that restriction is overly restrictive, so we've avoided it.
-    pub(crate) fn clone_no_data(&self) -> Self {
-        match self {
-            Self::ActorStarted(who) => Self::ActorStarted(who.clone()),
-            Self::ActorFailed(who, what) => {
-                Self::ActorFailed(who.clone(), From::from(format!("{what}")))
-            }
-            Self::ProcessGroupChanged(what) => Self::ProcessGroupChanged(what.clone()),
-            Self::ActorTerminated(who, _state, msg) => {
-                Self::ActorTerminated(who.clone(), None, msg.as_ref().cloned())
-            }
-            #[cfg(feature = "cluster")]
-            Self::PidLifecycleEvent(evt) => Self::PidLifecycleEvent(evt.clone()),
-        }
-    }
-
     /// If this supervision event refers to an [Actor] lifecycle event, return
     /// the [ActorCell] for that [actor][Actor].
     ///
