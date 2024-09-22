@@ -23,8 +23,7 @@ pub(crate) struct ActorProperties {
     pub(crate) id: ActorId,
     pub(crate) name: Option<ActorName>,
     status: Arc<AtomicU8>,
-    wait_handler: Arc<mpsc::BroadcastSender<()>>,
-    _wait_handler_rx: mpsc::BroadcastReceiver<()>,
+    wait_handler: Arc<mpsc::Notify>,
     pub(crate) signal: BoundedInputPort<Signal>,
     pub(crate) stop: BoundedInputPort<StopMessage>,
     pub(crate) supervision: InputPort<SupervisionEvent>,
@@ -64,19 +63,17 @@ impl ActorProperties {
     where
         TActor: Actor,
     {
-        let (tx_signal, rx_signal) = mpsc::mpsc_bounded(2);
-        let (tx_stop, rx_stop) = mpsc::mpsc_bounded(2);
+        let (tx_signal, rx_signal) = mpsc::mpsc_bounded(1);
+        let (tx_stop, rx_stop) = mpsc::mpsc_bounded(1);
         let (tx_supervision, rx_supervision) = mpsc::mpsc_unbounded();
         let (tx_message, rx_message) = mpsc::mpsc_unbounded();
-        let (tx_shutdown, rx_shutdown) = mpsc::broadcast(2);
         (
             Self {
                 id,
                 name,
                 status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
                 signal: tx_signal,
-                wait_handler: Arc::new(tx_shutdown),
-                _wait_handler_rx: rx_shutdown,
+                wait_handler: Arc::new(mpsc::Notify::new()),
                 stop: tx_stop,
                 supervision: tx_supervision,
                 message: tx_message,
@@ -162,20 +159,22 @@ impl ActorProperties {
         &self,
         reason: Option<String>,
     ) -> Result<(), MessagingErr<StopMessage>> {
-        let mut rx = self.wait_handler.subscribe();
+        let rx = self.wait_handler.notified();
         self.send_stop(reason)?;
-        rx.recv().await.map_err(|_| MessagingErr::ChannelClosed)
+        rx.await;
+        Ok(())
     }
 
     /// Send the kill signal, threading in a OneShot sender which notifies when the shutdown is completed
     pub async fn send_signal_and_wait(&self, signal: Signal) -> Result<(), MessagingErr<()>> {
         // first bind the wait handler
-        let mut rx = self.wait_handler.subscribe();
+        let rx = self.wait_handler.notified();
         let _ = self.send_signal(signal);
-        rx.recv().await.map_err(|_| MessagingErr::ChannelClosed)
+        rx.await;
+        Ok(())
     }
 
     pub fn notify_stop_listener(&self) {
-        let _ = self.wait_handler.send(());
+        self.wait_handler.notify_waiters();
     }
 }

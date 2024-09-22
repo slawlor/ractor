@@ -1,6 +1,6 @@
 [package]
 name = "ractor_cluster"
-version = "0.11.0"
+version = "0.11.1"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "Distributed cluster environment of Ractor actors"
 documentation = "https://docs.rs/ractor"
