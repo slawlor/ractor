@@ -15,6 +15,9 @@ impl std::fmt::Display for Timeout {
     }
 }
 
+/// A notification
+pub type Notify = tokio::sync::Notify;
+
 /// A one-use sender
 pub type OneshotSender<T> = tokio::sync::oneshot::Sender<T>;
 /// A one-use receiver
