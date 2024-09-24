@@ -18,9 +18,7 @@ use futures::FutureExt;
 use super::messages::{Signal, StopMessage};
 use super::SupervisionEvent;
 use crate::actor::actor_properties::ActorProperties;
-use crate::concurrency::{
-    MpscReceiver as BoundedInputPortReceiver, MpscUnboundedReceiver as InputPortReceiver,
-};
+use crate::concurrency::{MpscUnboundedReceiver as InputPortReceiver, OneshotReceiver};
 use crate::errors::MessagingErr;
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
@@ -57,9 +55,9 @@ pub const ACTIVE_STATES: [ActorStatus; 3] = [
 /// The collection of ports an actor needs to listen to
 pub(crate) struct ActorPortSet {
     /// The inner signal port
-    pub(crate) signal_rx: BoundedInputPortReceiver<Signal>,
+    pub(crate) signal_rx: OneshotReceiver<Signal>,
     /// The inner stop port
-    pub(crate) stop_rx: BoundedInputPortReceiver<StopMessage>,
+    pub(crate) stop_rx: OneshotReceiver<StopMessage>,
     /// The inner supervisor port
     pub(crate) supervisor_rx: InputPortReceiver<SupervisionEvent>,
     /// The inner message port
@@ -116,7 +114,7 @@ impl ActorPortSet {
                 // supervision or message processing work
                 // can be interrupted by the signal port receiving
                 // a kill signal
-                signal = self.signal_rx.recv().fuse() => {
+                signal = (&mut self.signal_rx).fuse() => {
                     Err(signal.unwrap_or(Signal::Kill))
                 }
                 new_state = future.fuse() => {
@@ -130,7 +128,7 @@ impl ActorPortSet {
                 // supervision or message processing work
                 // can be interrupted by the signal port receiving
                 // a kill signal
-                signal = self.signal_rx.recv() => {
+                signal = &mut self.signal_rx => {
                     Err(signal.unwrap_or(Signal::Kill))
                 }
                 new_state = future => {
@@ -152,11 +150,11 @@ impl ActorPortSet {
         #[cfg(feature = "async-std")]
         {
             crate::concurrency::select! {
-                signal = self.signal_rx.recv().fuse() => {
-                    signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
+                signal = (&mut self.signal_rx).fuse() => {
+                    signal.map(ActorPortMessage::Signal).map_err(|_| MessagingErr::ChannelClosed)
                 }
-                stop = self.stop_rx.recv().fuse() => {
-                    stop.map(ActorPortMessage::Stop).ok_or(MessagingErr::ChannelClosed)
+                stop = (&mut self.stop_rx).fuse() => {
+                    stop.map(ActorPortMessage::Stop).map_err(|_| MessagingErr::ChannelClosed)
                 }
                 supervision = self.supervisor_rx.recv().fuse() => {
                     supervision.map(ActorPortMessage::Supervision).ok_or(MessagingErr::ChannelClosed)
@@ -169,11 +167,11 @@ impl ActorPortSet {
         #[cfg(not(feature = "async-std"))]
         {
             crate::concurrency::select! {
-                signal = self.signal_rx.recv() => {
-                    signal.map(ActorPortMessage::Signal).ok_or(MessagingErr::ChannelClosed)
+                signal = &mut self.signal_rx => {
+                    signal.map(ActorPortMessage::Signal).map_err(|_| MessagingErr::ChannelClosed)
                 }
-                stop = self.stop_rx.recv() => {
-                    stop.map(ActorPortMessage::Stop).ok_or(MessagingErr::ChannelClosed)
+                stop = &mut self.stop_rx => {
+                    stop.map(ActorPortMessage::Stop).map_err(|_| MessagingErr::ChannelClosed)
                 }
                 supervision = self.supervisor_rx.recv() => {
                     supervision.map(ActorPortMessage::Supervision).ok_or(MessagingErr::ChannelClosed)

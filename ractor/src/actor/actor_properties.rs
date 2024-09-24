@@ -4,13 +4,13 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::actor::messages::StopMessage;
 use crate::actor::supervision::SupervisionTree;
 use crate::concurrency::{
-    MpscReceiver as BoundedInputPortReceiver, MpscSender as BoundedInputPort,
-    MpscUnboundedReceiver as InputPortReceiver, MpscUnboundedSender as InputPort,
+    MpscUnboundedReceiver as InputPortReceiver, MpscUnboundedSender as InputPort, OneshotReceiver,
+    OneshotSender as OneshotInputPort,
 };
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
@@ -24,8 +24,8 @@ pub(crate) struct ActorProperties {
     pub(crate) name: Option<ActorName>,
     status: Arc<AtomicU8>,
     wait_handler: Arc<mpsc::Notify>,
-    pub(crate) signal: BoundedInputPort<Signal>,
-    pub(crate) stop: BoundedInputPort<StopMessage>,
+    pub(crate) signal: Mutex<Option<OneshotInputPort<Signal>>>,
+    pub(crate) stop: Mutex<Option<OneshotInputPort<StopMessage>>>,
     pub(crate) supervision: InputPort<SupervisionEvent>,
     pub(crate) message: InputPort<BoxedMessage>,
     pub(crate) tree: SupervisionTree,
@@ -39,8 +39,8 @@ impl ActorProperties {
         name: Option<ActorName>,
     ) -> (
         Self,
-        BoundedInputPortReceiver<Signal>,
-        BoundedInputPortReceiver<StopMessage>,
+        OneshotReceiver<Signal>,
+        OneshotReceiver<StopMessage>,
         InputPortReceiver<SupervisionEvent>,
         InputPortReceiver<BoxedMessage>,
     )
@@ -55,16 +55,16 @@ impl ActorProperties {
         id: ActorId,
     ) -> (
         Self,
-        BoundedInputPortReceiver<Signal>,
-        BoundedInputPortReceiver<StopMessage>,
+        OneshotReceiver<Signal>,
+        OneshotReceiver<StopMessage>,
         InputPortReceiver<SupervisionEvent>,
         InputPortReceiver<BoxedMessage>,
     )
     where
         TActor: Actor,
     {
-        let (tx_signal, rx_signal) = mpsc::mpsc_bounded(1);
-        let (tx_stop, rx_stop) = mpsc::mpsc_bounded(1);
+        let (tx_signal, rx_signal) = mpsc::oneshot();
+        let (tx_stop, rx_stop) = mpsc::oneshot();
         let (tx_supervision, rx_supervision) = mpsc::mpsc_unbounded();
         let (tx_message, rx_message) = mpsc::mpsc_unbounded();
         (
@@ -72,9 +72,9 @@ impl ActorProperties {
                 id,
                 name,
                 status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
-                signal: tx_signal,
+                signal: Mutex::new(Some(tx_signal)),
                 wait_handler: Arc::new(mpsc::Notify::new()),
-                stop: tx_stop,
+                stop: Mutex::new(Some(tx_stop)),
                 supervision: tx_supervision,
                 message: tx_message,
                 tree: SupervisionTree::default(),
@@ -106,8 +106,12 @@ impl ActorProperties {
 
     pub fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr<()>> {
         self.signal
-            .try_send(signal)
-            .map_err(|_| MessagingErr::SendErr(()))
+            .lock()
+            .unwrap()
+            .take()
+            .map_or(Err(MessagingErr::ChannelClosed), |prt| {
+                prt.send(signal).map_err(|_| MessagingErr::ChannelClosed)
+            })
     }
 
     pub fn send_supervisor_evt(
@@ -151,7 +155,13 @@ impl ActorProperties {
 
     pub fn send_stop(&self, reason: Option<String>) -> Result<(), MessagingErr<StopMessage>> {
         let msg = reason.map(StopMessage::Reason).unwrap_or(StopMessage::Stop);
-        self.stop.try_send(msg).map_err(|e| e.into())
+        self.stop
+            .lock()
+            .unwrap()
+            .take()
+            .map_or(Err(MessagingErr::ChannelClosed), |prt| {
+                prt.send(msg).map_err(|_| MessagingErr::ChannelClosed)
+            })
     }
 
     /// Send the stop signal, threading in a OneShot sender which notifies when the shutdown is completed
