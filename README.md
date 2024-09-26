@@ -4,7 +4,7 @@
     <img src="https://raw.githubusercontent.com/slawlor/ractor/main/docs/ractor_logo.svg" width="50%" />
 </p>
 
-*Pronounced ract-er*
+*Pronounced rak-ter*
 
 A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.erlang.org/doc/man/gen_server.html), with the speed + performance of Rust!
 
@@ -17,7 +17,10 @@ A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.e
 * `ractor`: ![ractor Downloads](https://img.shields.io/crates/d/ractor.svg)
 * `ractor_cluster`: ![ractor_cluster Downloads](https://img.shields.io/crates/d/ractor_cluster.svg)
 
-**Website** Ractor has a companion website for more detailed getting-started guides along with some best practices and is updated regularly. Api docs will still be available at [docs.rs](https://docs.rs/ractor) however this will be a supplimentary site for `ractor`. Try it out! <https://slawlor.github.io/ractor/>
+## Updates
+
+* **Website**: Ractor has a companion website for more detailed getting-started guides along with some best practices and is updated regularly. Api docs will still be available at [docs.rs](https://docs.rs/ractor) however this will be a supplimentary site for `ractor`. Try it out! <https://slawlor.github.io/ractor/>
+* **RustConf'24** Ractor was a key part of a presentation at [RustConf'24](https://rustconf.com/schedule/#wednesday). It's used as the basis for Meta's Rust [thrift](https://github.com/facebook/fbthrift) overload protection scheme. The presentation's slides are [available here](https://slawlor.github.io/ractor/assets/rustconf2024_presentation.pdf).
 
 ## About
 
@@ -55,13 +58,15 @@ Actors in `ractor` are generally quite lightweight and there are benchmarks whic
 cargo bench -p ractor
 ```
 
+Further performance improvements are being tracked in [#262](https://github.com/slawlor/ractor/issues/262)
+
 ## Installation
 
 Install `ractor` by adding the following to your Cargo.toml dependencies.
 
 ```toml
 [dependencies]
-ractor = "0.10"
+ractor = "0.11"
 ```
 
 The minimum supported Rust version (MSRV) of `ractor` is `1.64`. However to utilize the native `async fn` support in traits and not rely on the `async-trait` crate's desugaring functionliaty, you need to be on Rust version `>= 1.75`. The stabilization of `async fn` in traits [was recently added](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html).
