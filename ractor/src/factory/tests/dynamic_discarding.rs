@@ -164,7 +164,7 @@ async fn test_dynamic_dispatch_basic() {
             },
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -177,6 +177,7 @@ async fn test_dynamic_dispatch_basic() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Count(i),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -201,6 +202,7 @@ async fn test_dynamic_dispatch_basic() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Count(i),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }

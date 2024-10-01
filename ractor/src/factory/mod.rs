@@ -145,6 +145,7 @@
 //!                 key: (),
 //!                 msg: ExampleMessage::PrintValue(i),
 //!                 options: JobOptions::default(),
+//!                 accepted: None,
 //!             }))
 //!             .expect("Failed to send to factory");
 //!     }
@@ -155,6 +156,7 @@
 //!                     key: (),
 //!                     msg: ExampleMessage::EchoValue(123, prt),
 //!                     options: JobOptions::default(),
+//!                     accepted: None,
 //!                 })
 //!             },
 //!             None,
@@ -186,7 +188,7 @@ pub mod worker;
 #[cfg(test)]
 mod tests;
 
-use stats::MessageProcessingStats;
+use stats::FactoryStatsLayer;
 
 pub use discard::{
     DiscardHandler, DiscardMode, DiscardReason, DiscardSettings, DynamicDiscardController,

@@ -125,7 +125,7 @@ async fn test_worker_death_restarts_and_gets_next_message() {
             },
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -138,6 +138,7 @@ async fn test_worker_death_restarts_and_gets_next_message() {
             key: (),
             msg: MyWorkerMessage::Busy,
             options: JobOptions::default(),
+            accepted: None,
         }))
         .expect("Failed to send message to factory");
     // After it's done being "busy" have it blow up, but we need to push some jobs into the queue asap so that
@@ -147,6 +148,7 @@ async fn test_worker_death_restarts_and_gets_next_message() {
             key: (),
             msg: MyWorkerMessage::Boom,
             options: JobOptions::default(),
+            accepted: None,
         }))
         .expect("Failed to send message to factory");
 
@@ -158,6 +160,7 @@ async fn test_worker_death_restarts_and_gets_next_message() {
                 key: (),
                 msg: MyWorkerMessage::Increment,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send message to factory");
     }

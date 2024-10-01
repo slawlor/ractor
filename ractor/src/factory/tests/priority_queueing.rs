@@ -159,7 +159,7 @@ async fn test_basic_priority_queueing() {
                 counters: counters.clone(),
                 signal: signal.clone(),
             }),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -175,6 +175,7 @@ async fn test_basic_priority_queueing() {
                 key: pri,
                 msg: TestMessage::Count(1),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -185,6 +186,7 @@ async fn test_basic_priority_queueing() {
                 key: pri,
                 msg: TestMessage::Count(1),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }

@@ -133,7 +133,7 @@ async fn test_request_draining() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -145,6 +145,7 @@ async fn test_request_draining() {
                 key: TestKey { id },
                 msg: TestMessage::Ok,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -155,13 +156,17 @@ async fn test_request_draining() {
         .expect("Failed to contact factory");
 
     // try and push a new message, but it should be rejected since we're now draining
+    let (tx, rx) = crate::concurrency::oneshot();
     factory
         .cast(FactoryMessage::Dispatch(Job {
             key: TestKey { id: 1000 },
             msg: TestMessage::Ok,
             options: JobOptions::default(),
+            accepted: Some(tx.into()),
         }))
         .expect("Failed to send to factory");
+
+    assert!(matches!(rx.await, Ok(Some(_))));
 
     // wait for factory to exit (it should once drained)
     factory_handle.await.unwrap();

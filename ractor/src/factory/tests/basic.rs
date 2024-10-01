@@ -180,7 +180,7 @@ async fn test_dispatch_key_persistent() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -192,6 +192,7 @@ async fn test_dispatch_key_persistent() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Ok,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -251,7 +252,7 @@ async fn test_dispatch_queuer() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -263,6 +264,7 @@ async fn test_dispatch_queuer() {
                 key: TestKey { id },
                 msg: TestMessage::Ok,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -325,7 +327,7 @@ async fn test_dispatch_round_robin() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -337,6 +339,7 @@ async fn test_dispatch_round_robin() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Ok,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -413,7 +416,7 @@ async fn test_dispatch_custom_hashing() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -425,6 +428,7 @@ async fn test_dispatch_custom_hashing() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Ok,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -481,7 +485,7 @@ async fn test_dispatch_sticky_queueing() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -494,6 +498,7 @@ async fn test_dispatch_sticky_queueing() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Ok,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -570,7 +575,7 @@ async fn test_discarding_old_records_on_queuer() {
             },
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -582,6 +587,7 @@ async fn test_discarding_old_records_on_queuer() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Ok,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -714,7 +720,7 @@ async fn test_stuck_workers() {
             discard_settings: DiscardSettings::None,
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -726,6 +732,7 @@ async fn test_stuck_workers() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Ok,
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
@@ -803,7 +810,7 @@ async fn test_discarding_new_records_on_queuer() {
             },
             lifecycle_hooks: None,
             worker_builder: Box::new(worker_builder),
-            collect_worker_stats: false,
+            stats: None,
         },
     )
     .await
@@ -815,6 +822,7 @@ async fn test_discarding_new_records_on_queuer() {
                 key: TestKey { id: 1 },
                 msg: TestMessage::Count(i),
                 options: JobOptions::default(),
+                accepted: None,
             }))
             .expect("Failed to send to factory");
     }
