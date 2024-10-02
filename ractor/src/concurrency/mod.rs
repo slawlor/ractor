@@ -59,11 +59,11 @@ pub fn broadcast<T: Clone>(buffer: usize) -> (BroadcastSender<T>, BroadcastRecei
 }
 
 #[cfg(not(feature = "async-std"))]
-pub mod tokio_primatives;
+pub mod tokio_primitives;
 #[cfg(not(feature = "async-std"))]
-pub use self::tokio_primatives::*;
+pub use self::tokio_primitives::*;
 
 #[cfg(feature = "async-std")]
-pub mod async_std_primatives;
+pub mod async_std_primitives;
 #[cfg(feature = "async-std")]
-pub use self::async_std_primatives::*;
+pub use self::async_std_primitives::*;
