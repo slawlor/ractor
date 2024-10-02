@@ -3,7 +3,7 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! Concurrency primitaves based on `tokio`
+//! Concurrency primitives based on `tokio`
 
 use std::future::Future;
 
