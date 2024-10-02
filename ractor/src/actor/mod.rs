@@ -55,6 +55,7 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::TryFutureExt;
+use tracing::Instrument;
 
 use crate::concurrency::JoinHandle;
 use crate::ActorId;
@@ -946,9 +947,14 @@ where
             }
         }
 
+        // The current [tracing::Span] is retrieved, boxed, and included in every
+        // `BoxedMessage` during the conversion of this `TActor::Msg`. It is used
+        // to automatically continue tracing span nesting when sending messages to Actors.
+        let current_span_when_message_was_sent = msg.span.clone();
+
         // An error here will bubble up to terminate the actor
         let typed_msg = TActor::Msg::from_boxed(msg)?;
-        handler.handle(myself, typed_msg, state).await
+        handler.handle(myself, typed_msg, state).instrument(*current_span_when_message_was_sent).await
     }
 
     fn handle_signal(myself: ActorRef<TActor::Msg>, signal: Signal) -> Option<String> {

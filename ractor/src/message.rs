@@ -63,6 +63,7 @@ pub struct BoxedMessage {
     /// A serialized message for a remote actor, accessed only by the `RemoteActorRuntime`
     #[cfg(feature = "cluster")]
     pub serialized_msg: Option<SerializedMessage>,
+    pub(crate) span: Box<tracing::Span>,
 }
 
 /// Message type for an actor. Generally an enum
@@ -144,6 +145,7 @@ pub trait Message: Any + Send + Sized + 'static {
     fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
         Ok(BoxedMessage {
             msg: Some(Box::new(self)),
+            span: Box::new(tracing::Span::current())
         })
     }
 
