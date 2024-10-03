@@ -246,6 +246,10 @@ where
     /// Retrieve the available capacity of the worker pool + queue
     GetAvailableCapacity(RpcReplyPort<usize>),
 
+    /// Instantaneous measurement of the number of currently processing
+    /// requests
+    GetNumActiveWorkers(RpcReplyPort<usize>),
+
     /// Notify the factory that it's being drained, and to finish jobs
     /// currently in the queue, but discard new work, and once drained
     /// exit

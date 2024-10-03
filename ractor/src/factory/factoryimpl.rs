@@ -773,6 +773,11 @@ where
             }
         }
     }
+
+    fn reply_with_num_active_workers(&self, reply: RpcReplyPort<usize>) {
+        let num_active_workers = self.pool.values().filter(|f| f.is_working()).count();
+        let _ = reply.send(num_active_workers);
+    }
 }
 
 #[cfg_attr(feature = "async-trait", crate::async_trait)]
@@ -813,7 +818,7 @@ where
         let factory_name = myself.get_name().unwrap_or_else(|| "all".to_string());
 
         // build the pool
-        let mut pool = HashMap::new();
+        let mut pool = HashMap::with_capacity(num_initial_workers);
         for wid in 0..num_initial_workers {
             let (handler, custom_start) = worker_builder.build(wid);
             let context = WorkerStartContext {
@@ -1021,6 +1026,9 @@ where
             }
             FactoryMessage::GetAvailableCapacity(reply) => {
                 state.reply_with_available_capacity(reply);
+            }
+            FactoryMessage::GetNumActiveWorkers(reply) => {
+                state.reply_with_num_active_workers(reply);
             }
             FactoryMessage::DrainRequests => {
                 state.drain_requests(&myself).await?;
