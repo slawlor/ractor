@@ -923,7 +923,7 @@ where
         myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
-        msg: crate::message::BoxedMessage,
+        mut msg: crate::message::BoxedMessage,
     ) -> Result<(), ActorProcessingErr> {
         // panic in order to kill the actor
         #[cfg(feature = "cluster")]
@@ -950,11 +950,19 @@ where
         // The current [tracing::Span] is retrieved, boxed, and included in every
         // `BoxedMessage` during the conversion of this `TActor::Msg`. It is used
         // to automatically continue tracing span nesting when sending messages to Actors.
-        let current_span_when_message_was_sent = msg.span.clone();
+        let current_span_when_message_was_sent = msg.span.take();
 
         // An error here will bubble up to terminate the actor
         let typed_msg = TActor::Msg::from_boxed(msg)?;
-        handler.handle(myself, typed_msg, state).instrument(*current_span_when_message_was_sent).await
+
+        if let Some(span) = current_span_when_message_was_sent {
+            handler
+                .handle(myself, typed_msg, state)
+                .instrument(span)
+                .await
+        } else {
+            handler.handle(myself, typed_msg, state).await
+        }
     }
 
     fn handle_signal(myself: ActorRef<TActor::Msg>, signal: Signal) -> Option<String> {
