@@ -827,6 +827,13 @@ async fn test_discarding_new_records_on_queuer() {
             .expect("Failed to send to factory");
     }
 
+    let active_requests = factory
+        .call(FactoryMessage::GetNumActiveWorkers, None)
+        .await
+        .expect("Failed to send query to factory")
+        .expect("Failed to get result from factory");
+    assert!(active_requests > 0);
+
     // give some time to process all the messages
     crate::concurrency::sleep(Duration::from_millis(250)).await;
 

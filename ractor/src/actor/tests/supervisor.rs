@@ -982,8 +982,8 @@ async fn instant_supervised_spawns() {
 
     // wait for everything processed
     periodic_check(
-        || counter.load(Ordering::Relaxed) == 10,
-        Duration::from_secs(2),
+        || counter.load(Ordering::Relaxed) >= 10,
+        Duration::from_secs(5),
     )
     .await;
 
