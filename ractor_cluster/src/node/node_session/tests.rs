@@ -784,11 +784,20 @@ async fn node_session_handle_control() {
         .await
         .expect("Failed to process control message");
     assert_eq!(1, state.remote_actors.len());
-    let id_set = ractor::pg::get_members(&group_name.to_string())
+    let id_set = ractor::pg::get_scoped_members(&scope_name.to_string(), &group_name.to_string())
         .into_iter()
         .map(|a| a.get_id())
         .collect::<HashSet<_>>();
     assert!(id_set.contains(&ActorId::Remote {
+        node_id: 1,
+        pid: 43
+    }));
+
+    let id_set = ractor::pg::get_members(&group_name.to_string())
+        .into_iter()
+        .map(|a| a.get_id())
+        .collect::<HashSet<_>>();
+    assert!(!id_set.contains(&ActorId::Remote {
         node_id: 1,
         pid: 43
     }));
@@ -814,6 +823,14 @@ async fn node_session_handle_control() {
         .await
         .expect("Failed to process control message");
     assert_eq!(1, state.remote_actors.len());
+    let id_set = ractor::pg::get_scoped_members(&scope_name.to_string(), &group_name.to_string())
+        .into_iter()
+        .map(|a| a.get_id())
+        .collect::<HashSet<_>>();
+    assert!(!id_set.contains(&ActorId::Remote {
+        node_id: 1,
+        pid: 43
+    }));
     let id_set = ractor::pg::get_members(&group_name.to_string())
         .into_iter()
         .map(|a| a.get_id())
