@@ -533,11 +533,12 @@ impl NodeSession {
                     // join the remote actors to the local PG group
                     if !cells.is_empty() {
                         tracing::debug!(
-                            "PG Join group '{}' for {} remote actors",
+                            "PG Join scope '{}' and group '{}' for {} remote actors",
+                            join.scope,
                             join.group,
                             cells.len()
                         );
-                        ractor::pg::join(join.group, cells);
+                        ractor::pg::join_scoped(join.scope, join.group, cells);
                     }
                 }
                 control_protocol::control_message::Msg::PgLeave(leave) => {
@@ -550,11 +551,12 @@ impl NodeSession {
                     // join the remote actors to the local PG group
                     if !cells.is_empty() {
                         tracing::debug!(
-                            "PG Leave group '{}' for {} remote actors",
+                            "PG Leave scope '{}' and group '{}' for {} remote actors",
+                            leave.scope,
                             leave.group,
                             cells.len()
                         );
-                        ractor::pg::leave(leave.group, cells);
+                        ractor::pg::leave_scoped(leave.scope, leave.group, cells);
                     }
                 }
                 control_protocol::control_message::Msg::EnumerateNodeSessions(whos_asking) => {
