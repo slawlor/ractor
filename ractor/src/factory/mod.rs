@@ -253,6 +253,13 @@ where
     /// Notify the factory that it's being drained, and to finish jobs
     /// currently in the queue, but discard new work, and once drained
     /// exit
+    ///
+    /// NOTE: This is different from draining the actor itself, which allows the
+    /// pending message queue to flush and then exit. Since the factory
+    /// holds an internal queue for jobs, it's possible that the internal
+    /// state still has work to do while the factory's input queue is drained.
+    /// Therefore in order to propertly drain a factory, you should use the
+    /// `DrainRequests` version so the internal pending queue is properly flushed.
     DrainRequests,
 }
 

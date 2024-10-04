@@ -15,12 +15,12 @@ use std::sync::Arc;
 #[cfg(feature = "async-std")]
 use futures::FutureExt;
 
+use super::actor_properties::MuxedMessage;
 use super::messages::{Signal, StopMessage};
 use super::SupervisionEvent;
 use crate::actor::actor_properties::ActorProperties;
 use crate::concurrency::{MpscUnboundedReceiver as InputPortReceiver, OneshotReceiver};
 use crate::errors::MessagingErr;
-use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
 use crate::RactorErr;
@@ -28,7 +28,7 @@ use crate::{Actor, ActorName, SpawnErr};
 use crate::{ActorId, Message};
 
 /// [ActorStatus] represents the status of an actor's lifecycle
-#[derive(Debug, Clone, Eq, PartialEq, Copy)]
+#[derive(Debug, Clone, Eq, PartialEq, Copy, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum ActorStatus {
     /// Created, but not yet started
@@ -39,10 +39,12 @@ pub enum ActorStatus {
     Running = 2u8,
     /// Upgrading
     Upgrading = 3u8,
+    /// Draining
+    Draining = 4u8,
     /// Stopping
-    Stopping = 4u8,
+    Stopping = 5u8,
     /// Dead
-    Stopped = 5u8,
+    Stopped = 6u8,
 }
 
 /// Actor states where operations can continue to interact with an agent
@@ -61,7 +63,7 @@ pub(crate) struct ActorPortSet {
     /// The inner supervisor port
     pub(crate) supervisor_rx: InputPortReceiver<SupervisionEvent>,
     /// The inner message port
-    pub(crate) message_rx: InputPortReceiver<BoxedMessage>,
+    pub(crate) message_rx: InputPortReceiver<MuxedMessage>,
 }
 
 impl Drop for ActorPortSet {
@@ -89,7 +91,7 @@ pub(crate) enum ActorPortMessage {
     /// A supervision message
     Supervision(SupervisionEvent),
     /// A regular message
-    Message(BoxedMessage),
+    Message(MuxedMessage),
 }
 
 impl ActorPortSet {
@@ -460,6 +462,13 @@ impl ActorCell {
         TMessage: Message,
     {
         self.inner.send_message::<TMessage>(message)
+    }
+
+    /// Drain the actor's message queue and when finished processing, terminate the actor.
+    ///
+    /// Any messages received after the drain marker but prior to shutdown will be rejected
+    pub fn drain(&self) -> Result<(), MessagingErr<()>> {
+        self.inner.drain()
     }
 
     /// Send a serialized binary message to the actor.

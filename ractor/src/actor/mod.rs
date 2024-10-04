@@ -54,6 +54,7 @@
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
+use actor_properties::MuxedMessage;
 use futures::TryFutureExt;
 use tracing::Instrument;
 
@@ -881,7 +882,7 @@ where
                         }
                     }
                 }
-                actor_cell::ActorPortMessage::Message(msg) => {
+                actor_cell::ActorPortMessage::Message(MuxedMessage::Message(msg)) => {
                     let future = Self::handle_message(myself.clone(), state, handler, msg);
                     match ports.run_with_signal(future).await {
                         Ok(Ok(())) => Ok(ActorLoopResult::ok()),
@@ -890,6 +891,11 @@ where
                             Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
                         }
                     }
+                }
+                actor_cell::ActorPortMessage::Message(MuxedMessage::Drain) => {
+                    // Drain is a stub marker that the actor should now stop, we've processed
+                    // all the messages and we want the actor to die now
+                    Ok(ActorLoopResult::stop(Some("Drained".to_string())))
                 }
             },
             Err(MessagingErr::ChannelClosed) => {

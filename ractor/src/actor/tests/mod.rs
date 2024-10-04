@@ -6,7 +6,7 @@
 //! General tests, more logic-specific tests are contained in sub-modules
 
 use std::sync::{
-    atomic::{AtomicU8, Ordering},
+    atomic::{AtomicU32, AtomicU8, Ordering},
     Arc,
 };
 
@@ -1057,4 +1057,67 @@ async fn actor_post_stop_executed_before_stop_and_wait_returns() {
     assert_eq!(1, signal.load(Ordering::SeqCst));
 
     handle.await.unwrap();
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn actor_drain_messages() {
+    struct TestActor {
+        signal: Arc<AtomicU32>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = EmptyMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Msg,
+            _: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            sleep(Duration::from_millis(10)).await;
+            let _ = self.signal.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    let signal = Arc::new(AtomicU32::new(0));
+    let (actor, handle) = Actor::spawn(
+        None,
+        TestActor {
+            signal: signal.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Failed to spawn test actor");
+
+    for _ in 0..1000 {
+        actor
+            .cast(EmptyMessage)
+            .expect("Failed to send message to actor");
+    }
+
+    assert!(signal.load(Ordering::SeqCst) < 1000);
+
+    actor.drain().expect("Failed to trigger actor draining");
+
+    // future cast's fail after draining triggered
+    assert!(actor.cast(EmptyMessage).is_err());
+
+    // wait for drain complete
+    handle.await.unwrap();
+
+    assert_eq!(1000, signal.load(Ordering::SeqCst));
 }
