@@ -66,7 +66,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies.
 
 ```toml
 [dependencies]
-ractor = "0.11"
+ractor = "0.12"
 ```
 
 The minimum supported Rust version (MSRV) of `ractor` is `1.64`. However to utilize the native `async fn` support in traits and not rely on the `async-trait` crate's desugaring functionliaty, you need to be on Rust version `>= 1.75`. The stabilization of `async fn` in traits [was recently added](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html).
