@@ -179,6 +179,7 @@ impl ActorProperties {
         let boxed = BoxedMessage {
             msg: None,
             serialized_msg: Some(message),
+            span: None,
         };
         self.message
             .send(MuxedMessage::Message(boxed))
