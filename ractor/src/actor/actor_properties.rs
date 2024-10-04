@@ -18,6 +18,13 @@ use crate::message::SerializedMessage;
 use crate::{concurrency as mpsc, Message};
 use crate::{Actor, ActorId, ActorName, ActorStatus, MessagingErr, Signal, SupervisionEvent};
 
+/// A muxed-message wrapper which allows the message port to receive either a message or a drain
+/// request which is a point-in-time marker that the actor's input channel should be drained
+pub(crate) enum MuxedMessage {
+    Drain,
+    Message(BoxedMessage),
+}
+
 // The inner-properties of an Actor
 pub(crate) struct ActorProperties {
     pub(crate) id: ActorId,
@@ -27,7 +34,7 @@ pub(crate) struct ActorProperties {
     pub(crate) signal: Mutex<Option<OneshotInputPort<Signal>>>,
     pub(crate) stop: Mutex<Option<OneshotInputPort<StopMessage>>>,
     pub(crate) supervision: InputPort<SupervisionEvent>,
-    pub(crate) message: InputPort<BoxedMessage>,
+    pub(crate) message: InputPort<MuxedMessage>,
     pub(crate) tree: SupervisionTree,
     pub(crate) type_id: std::any::TypeId,
     #[cfg(feature = "cluster")]
@@ -42,7 +49,7 @@ impl ActorProperties {
         OneshotReceiver<Signal>,
         OneshotReceiver<StopMessage>,
         InputPortReceiver<SupervisionEvent>,
-        InputPortReceiver<BoxedMessage>,
+        InputPortReceiver<MuxedMessage>,
     )
     where
         TActor: Actor,
@@ -58,7 +65,7 @@ impl ActorProperties {
         OneshotReceiver<Signal>,
         OneshotReceiver<StopMessage>,
         InputPortReceiver<SupervisionEvent>,
-        InputPortReceiver<BoxedMessage>,
+        InputPortReceiver<MuxedMessage>,
     )
     where
         TActor: Actor,
@@ -90,18 +97,19 @@ impl ActorProperties {
     }
 
     pub fn get_status(&self) -> ActorStatus {
-        match self.status.load(Ordering::Relaxed) {
+        match self.status.load(Ordering::SeqCst) {
             0u8 => ActorStatus::Unstarted,
             1u8 => ActorStatus::Starting,
             2u8 => ActorStatus::Running,
             3u8 => ActorStatus::Upgrading,
-            4u8 => ActorStatus::Stopping,
+            4u8 => ActorStatus::Draining,
+            5u8 => ActorStatus::Stopping,
             _ => ActorStatus::Stopped,
         }
     }
 
     pub fn set_status(&self, status: ActorStatus) {
-        self.status.store(status as u8, Ordering::Relaxed);
+        self.status.store(status as u8, Ordering::SeqCst);
     }
 
     pub fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr<()>> {
@@ -131,12 +139,36 @@ impl ActorProperties {
             return Err(MessagingErr::InvalidActorType);
         }
 
+        let status = self.get_status();
+        if status >= ActorStatus::Draining {
+            // if currently draining, stopping or stopped: reject messages directly.
+            return Err(MessagingErr::SendErr(message));
+        }
+
         let boxed = message
             .box_message(&self.id)
             .map_err(|_e| MessagingErr::InvalidActorType)?;
         self.message
-            .send(boxed)
-            .map_err(|e| MessagingErr::SendErr(TMessage::from_boxed(e.0).unwrap()))
+            .send(MuxedMessage::Message(boxed))
+            .map_err(|e| match e.0 {
+                MuxedMessage::Message(m) => MessagingErr::SendErr(TMessage::from_boxed(m).unwrap()),
+                _ => panic!("Expected a boxed message but got a drain message"),
+            })
+    }
+
+    pub fn drain(&self) -> Result<(), MessagingErr<()>> {
+        let _ = self
+            .status
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |f| {
+                if f < (ActorStatus::Stopping as u8) {
+                    Some(ActorStatus::Draining as u8)
+                } else {
+                    None
+                }
+            });
+        self.message
+            .send(MuxedMessage::Drain)
+            .map_err(|_| MessagingErr::SendErr(()))
     }
 
     #[cfg(feature = "cluster")]
@@ -149,8 +181,11 @@ impl ActorProperties {
             serialized_msg: Some(message),
         };
         self.message
-            .send(boxed)
-            .map_err(|e| MessagingErr::SendErr(e.0.serialized_msg.unwrap()))
+            .send(MuxedMessage::Message(boxed))
+            .map_err(|e| match e.0 {
+                MuxedMessage::Message(m) => MessagingErr::SendErr(m.serialized_msg.unwrap()),
+                _ => panic!("Expected a boxed message but got a drain message"),
+            })
     }
 
     pub fn send_stop(&self, reason: Option<String>) -> Result<(), MessagingErr<StopMessage>> {
