@@ -208,7 +208,7 @@ where
                 true
             }
         });
-        self.q.len() - before
+        before - self.q.len()
     }
 }
 
@@ -331,5 +331,171 @@ where
 
     fn is_job_discardable(&self, key: &TKey) -> bool {
         self.priority_manager.is_discardable(key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::concurrency::Duration;
+
+    use super::super::*;
+    use super::*;
+
+    #[derive(Default, Debug)]
+    enum BasicPriority {
+        #[default]
+        Low,
+        High,
+    }
+
+    impl Priority for BasicPriority {
+        fn get_index(&self) -> usize {
+            match self {
+                BasicPriority::Low => 1,
+                BasicPriority::High => 0,
+            }
+        }
+    }
+
+    impl From<usize> for BasicPriority {
+        fn from(value: usize) -> Self {
+            match value {
+                0 => BasicPriority::High,
+                _ => BasicPriority::Low,
+            }
+        }
+    }
+
+    struct BasicPriorityManager;
+
+    impl PriorityManager<u64, BasicPriority> for BasicPriorityManager {
+        fn get_priority(&self, _key: &u64) -> Option<BasicPriority> {
+            if *_key % 2 == 0 {
+                Some(BasicPriority::High)
+            } else {
+                Some(BasicPriority::Low)
+            }
+        }
+
+        fn is_discardable(&self, _key: &u64) -> bool {
+            false
+        }
+    }
+
+    #[crate::concurrency::test]
+    #[tracing_test::traced_test]
+    async fn test_basic_queueing() {
+        let mut queue = DefaultQueue::<u64, ()>::default();
+        for i in 0..99 {
+            queue.push_back(Job {
+                key: i,
+                accepted: None,
+                msg: (),
+                options: JobOptions::default(),
+            });
+        }
+
+        queue.push_back(Job {
+            key: 99,
+            accepted: None,
+            msg: (),
+            options: JobOptions {
+                ttl: Some(Duration::from_millis(1)),
+                ..Default::default()
+            },
+        });
+
+        let oldest = queue.discard_oldest();
+        assert!(matches!(oldest, Some(Job { key: 0, .. })));
+
+        let peeked = queue.peek();
+        assert!(matches!(peeked, Some(Job { key: 1, .. })));
+
+        let popped = queue.pop_front();
+        assert!(matches!(popped, Some(Job { key: 1, .. })));
+
+        let len = queue.len();
+        assert_eq!(len, 98);
+
+        let is_empty = queue.is_empty();
+        assert!(!is_empty);
+
+        crate::concurrency::sleep(Duration::from_millis(2)).await;
+
+        struct MyDiscardHandler;
+
+        impl DiscardHandler<u64, ()> for MyDiscardHandler {
+            fn discard(&self, _reason: DiscardReason, job: &mut Job<u64, ()>) {
+                tracing::info!("discarding job: {}", job.key);
+                assert_eq!(99, job.key);
+            }
+        }
+
+        // remove expired
+        _ = queue.remove_expired_items(&Some(Arc::new(MyDiscardHandler)));
+        let len = queue.len();
+        assert_eq!(len, 97);
+    }
+
+    #[crate::concurrency::test]
+    #[tracing_test::traced_test]
+    async fn test_priority_queueing() {
+        let mut queue = PriorityQueue::<u64, (), BasicPriority, BasicPriorityManager, 2>::new(
+            BasicPriorityManager,
+        );
+        for i in 0..99 {
+            queue.push_back(Job {
+                key: i,
+                accepted: None,
+                msg: (),
+                options: JobOptions::default(),
+            });
+        }
+
+        queue.push_back(Job {
+            key: 99,
+            accepted: None,
+            msg: (),
+            options: JobOptions {
+                ttl: Some(Duration::from_millis(1)),
+                ..Default::default()
+            },
+        });
+
+        // should discard lowest pri first
+        let oldest = queue.discard_oldest();
+        assert!(matches!(oldest, Some(Job { key: 1, .. })));
+
+        // peek from high pri queue
+        let peeked = queue.peek();
+        assert!(matches!(peeked, Some(Job { key: 0, .. })));
+
+        // pop the same item
+        let popped = queue.pop_front();
+        assert!(matches!(popped, Some(Job { key: 0, .. })));
+
+        // we should have 98 items left, as we popped 2
+        let len = queue.len();
+        assert_eq!(len, 98);
+
+        // queue isn't empty
+        let is_empty = queue.is_empty();
+        assert!(!is_empty);
+
+        crate::concurrency::sleep(Duration::from_millis(2)).await;
+
+        struct MyDiscardHandler;
+
+        impl DiscardHandler<u64, ()> for MyDiscardHandler {
+            fn discard(&self, _reason: DiscardReason, job: &mut Job<u64, ()>) {
+                tracing::info!("discarding job: {}", job.key);
+                assert_eq!(99, job.key);
+            }
+        }
+
+        // remove expired
+        _ = queue.remove_expired_items(&Some(Arc::new(MyDiscardHandler)));
+        let len = queue.len();
+        assert_eq!(len, 97);
     }
 }
