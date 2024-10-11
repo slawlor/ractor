@@ -265,6 +265,7 @@ where
         if let Some((limit, DiscardMode::Newest)) = self.discard_settings.get_limit_and_mode() {
             if limit > 0 && self.message_queue.len() >= limit {
                 // Discard THIS job as it's the newest one
+                self.stats.job_discarded(&self.factory_name);
                 if let Some(handler) = &self.discard_handler {
                     handler.discard(DiscardReason::Loadshed, &mut job);
                 }
@@ -293,6 +294,7 @@ where
             // load-shed the OLDEST jobs
             while limit > 0 && self.message_queue.len() > limit {
                 if let Some(mut discarded) = self.get_next_non_expired_job() {
+                    self.stats.job_discarded(&self.factory_name);
                     if let Some(handler) = &self.discard_handler {
                         handler.discard(DiscardReason::Loadshed, &mut discarded);
                     }

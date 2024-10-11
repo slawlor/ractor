@@ -442,11 +442,11 @@ where
             Some((limit, DiscardMode::Newest)) => {
                 if is_discardable && self.queue.len() >= limit {
                     // load-shed the job
+                    self.stats.job_discarded(&self.factory_name);
                     if let Some(handler) = &self.discard_handler {
                         handler.discard(DiscardReason::Loadshed, &mut job);
                     }
                     job.reject();
-                    self.stats.job_discarded(&self.factory_name);
                 } else {
                     job.accept();
                     self.queue.push_back(job);
@@ -672,6 +672,12 @@ where
         &mut self,
         myself: &ActorRef<FactoryMessage<TKey, TMsg>>,
     ) -> Result<(), ActorProcessingErr> {
+        let limit = self
+            .discard_settings
+            .get_limit_and_mode()
+            .map_or(0, |(l, _)| l);
+        self.stats.record_queue_limit(&self.factory_name, limit);
+
         if let Some(capacity_controller) = &mut self.capacity_controller {
             let new_capacity = capacity_controller.get_pool_size(self.pool_size).await;
             if self.pool_size != new_capacity {
@@ -679,6 +685,15 @@ where
                 self.resize_pool(myself, new_capacity).await?;
             }
         }
+
+        self.stats
+            .record_queue_depth(&self.factory_name, self.queue.len());
+        self.stats.record_processing_messages_count(
+            &self.factory_name,
+            self.pool.values().filter(|f| f.is_working()).count(),
+        );
+        self.stats
+            .record_worker_count(&self.factory_name, self.pool_size);
 
         // TTL expired on these items, remove them before even trying to dequeue & distribute them
         if self.router.is_factory_queueing() {
