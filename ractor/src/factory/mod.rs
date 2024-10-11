@@ -194,7 +194,7 @@ pub use discard::{
     DiscardHandler, DiscardMode, DiscardReason, DiscardSettings, DynamicDiscardController,
 };
 pub use factoryimpl::{Factory, FactoryArguments, FactoryArgumentsBuilder};
-pub use job::{Job, JobKey, JobOptions};
+pub use job::{Job, JobKey, JobOptions, RetriableJob};
 pub use lifecycle::FactoryLifecycleHooks;
 pub use worker::{
     DeadMansSwitchConfiguration, WorkerBuilder, WorkerCapacityController, WorkerMessage,

@@ -8,11 +8,13 @@
 use std::fmt::Debug;
 use std::{hash::Hash, time::SystemTime};
 
-use crate::RpcReplyPort;
 use crate::{concurrency::Duration, Message};
+use crate::{ActorRef, RpcReplyPort};
 
 #[cfg(feature = "cluster")]
 use crate::{message::BoxedDowncastErr, BytesConvertable};
+
+use super::FactoryMessage;
 
 /// Represents a key to a job. Needs to be hashable for routing properties. Additionally needs
 /// to be serializable for remote factories
@@ -283,6 +285,96 @@ where
         if let Some(port) = self.accepted.take() {
             let _ = port.send(Some(self));
         }
+    }
+}
+
+/// A retriable job is a job which will automatically be resubmitted to the factory in the event of
+/// a factory worker's failure (panic or unhandled error). This wraps the inner message in a struct which
+/// captures the drop, and if there's still some retries left, will reschedule the work to the factory.
+///
+/// CAVEATS: This is unable to handle front-of-queue loadshedding, and regular loadshed events will
+/// cause this message to be retried if there is still retries left and the job isn't expired.
+pub struct RetriableJob<TKey: JobKey, TMessage: Message + Clone> {
+    key: TKey,
+    message: TMessage,
+    /// The remaining number of retries this job can be
+    /// rescheduled in the factory
+    pub retries_remaining: Option<usize>,
+    state: Option<(JobOptions, ActorRef<FactoryMessage<TKey, Self>>)>,
+}
+
+#[cfg(feature = "cluster")]
+impl<TKey: JobKey, TMessage: Message + Clone> Message for RetriableJob<TKey, TMessage> {}
+
+impl<TKey: JobKey, TMessage: Message + Clone> Drop for RetriableJob<TKey, TMessage> {
+    fn drop(&mut self) {
+        if self.retries_remaining == Some(0) {
+            // no more retries left (None or Some(>0) mean there's still retries left)
+            return;
+        }
+        let Some((options, factory)) = self.state.as_ref() else {
+            // can't do a retry if the factory and options are not available
+            return;
+        };
+        let job = Self {
+            key: self.key.clone(),
+            message: self.message.clone(),
+            retries_remaining: self.retries_remaining.map(|a| a - 1),
+            state: Some((options.clone(), factory.clone())),
+        };
+        let job = Job {
+            accepted: None,
+            key: self.key.clone(),
+            msg: job,
+            options: options.clone(),
+        };
+        _ = factory.cast(FactoryMessage::Dispatch(job));
+    }
+}
+
+impl<TKey: JobKey, TMessage: Message + Clone> RetriableJob<TKey, TMessage> {
+    /// Construct a new retriable job with the provided number of retries. If the
+    /// retries are non, that means retry forever
+    pub fn new(key: TKey, message: TMessage, num_retries: Option<usize>) -> Self {
+        Self {
+            key,
+            message,
+            retries_remaining: num_retries,
+            state: None,
+        }
+    }
+
+    /// This needs to be called prior to sending the job to the factory the first time. This is where the factory's
+    /// handle and the job's options are captured which are needed to facilitate retries
+    ///
+    /// ```
+    /// use ractor::factory::*;
+    ///
+    /// let key = ();
+    /// let message = 42;
+    /// let mut job = Job {
+    ///     key: key.clone(),
+    ///     message: RetriableJob::new(key, message, Some(2)),
+    ///     options: JobOptions::default(),
+    ///     accepted: None,
+    /// };
+    /// job.message.capture_retry_state(&job.options, factory);
+    ///
+    /// _ = factory.cast(FactoryMessage::Dispatch(job));
+    ///
+    /// ```
+    pub fn capture_retry_state(
+        &mut self,
+        options: &JobOptions,
+        factory: ActorRef<FactoryMessage<TKey, Self>>,
+    ) {
+        self.state = Some((options.clone(), factory));
+    }
+
+    /// Tell this message to not be retried upon being dropped, since it
+    /// was handled successfully.
+    pub fn completed(&mut self) {
+        self.retries_remaining = Some(0);
     }
 }
 
