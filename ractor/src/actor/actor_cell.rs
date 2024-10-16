@@ -103,7 +103,7 @@ impl ActorPortSet {
     /// Returns [Ok(`TState`)] when the future completes without
     /// signal interruption, [Err(Signal)] in the event the
     /// signal interrupts the async work.
-    pub async fn run_with_signal<TState>(
+    pub(crate) async fn run_with_signal<TState>(
         &mut self,
         future: impl std::future::Future<Output = TState>,
     ) -> Result<TState, Signal>
@@ -148,7 +148,9 @@ impl ActorPortSet {
     ///
     /// Returns [Ok(ActorPortMessage)] on a successful message reception, [MessagingErr]
     /// in the event any of the channels is closed.
-    pub async fn listen_in_priority(&mut self) -> Result<ActorPortMessage, MessagingErr<()>> {
+    pub(crate) async fn listen_in_priority(
+        &mut self,
+    ) -> Result<ActorPortMessage, MessagingErr<()>> {
         #[cfg(feature = "async-std")]
         {
             crate::concurrency::select! {

@@ -3,6 +3,8 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
+#[cfg(not(feature = "async-trait"))]
+use futures::{future::BoxFuture, FutureExt};
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -120,8 +122,14 @@ struct DiscardController {}
 
 #[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl DynamicDiscardController for DiscardController {
+    #[cfg(feature = "async-trait")]
     async fn compute(&mut self, _current_threshold: usize) -> usize {
         10
+    }
+
+    #[cfg(not(feature = "async-trait"))]
+    fn compute(&mut self, _current_threshold: usize) -> BoxFuture<'_, usize> {
+        async { 10 }.boxed()
     }
 }
 

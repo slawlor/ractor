@@ -21,37 +21,37 @@ use super::{actor_cell::ActorCell, messages::SupervisionEvent};
 use crate::ActorId;
 
 /// A supervision tree
-#[derive(Default)]
-pub struct SupervisionTree {
+#[derive(Default, Debug)]
+pub(crate) struct SupervisionTree {
     children: Arc<Mutex<HashMap<ActorId, ActorCell>>>,
     supervisor: Arc<Mutex<Option<ActorCell>>>,
 }
 
 impl SupervisionTree {
     /// Push a child into the tere
-    pub fn insert_child(&self, child: ActorCell) {
+    pub(crate) fn insert_child(&self, child: ActorCell) {
         self.children.lock().unwrap().insert(child.get_id(), child);
     }
 
     /// Remove a specific actor from the supervision tree (e.g. actor died)
-    pub fn remove_child(&self, child: ActorId) {
+    pub(crate) fn remove_child(&self, child: ActorId) {
         self.children.lock().unwrap().remove(&child);
     }
 
     /// Push a parent into the tere
-    pub fn set_supervisor(&self, parent: ActorCell) {
+    pub(crate) fn set_supervisor(&self, parent: ActorCell) {
         *(self.supervisor.lock().unwrap()) = Some(parent);
     }
 
     /// Remove a specific actor from the supervision tree (e.g. actor died)
-    pub fn clear_supervisor(&self) {
+    pub(crate) fn clear_supervisor(&self) {
         *(self.supervisor.lock().unwrap()) = None;
     }
 
     /// Terminate all your supervised children and unlink them
     /// from the supervision tree since the supervisor is shutting down
     /// and can't deal with superivison events anyways
-    pub fn terminate_all_children(&self) {
+    pub(crate) fn terminate_all_children(&self) {
         let mut guard = self.children.lock().unwrap();
         let cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
         guard.clear();
@@ -64,7 +64,7 @@ impl SupervisionTree {
     }
 
     /// Determine if the specified actor is a parent of this actor
-    pub fn is_child_of(&self, id: ActorId) -> bool {
+    pub(crate) fn is_child_of(&self, id: ActorId) -> bool {
         if let Some(parent) = &*(self.supervisor.lock().unwrap()) {
             parent.get_id() == id
         } else {
@@ -73,7 +73,7 @@ impl SupervisionTree {
     }
 
     /// Send a notification to the supervisor.
-    pub fn notify_supervisor(&self, evt: SupervisionEvent) {
+    pub(crate) fn notify_supervisor(&self, evt: SupervisionEvent) {
         if let Some(parent) = &*(self.supervisor.lock().unwrap()) {
             let _ = parent.send_supervisor_evt(evt);
         }
@@ -81,13 +81,13 @@ impl SupervisionTree {
 
     /// Retrieve the number of supervised children
     #[cfg(test)]
-    pub fn get_num_children(&self) -> usize {
+    pub(crate) fn get_num_children(&self) -> usize {
         self.children.lock().unwrap().len()
     }
 
     /// Retrieve the number of supervised children
     #[cfg(test)]
-    pub fn get_num_parents(&self) -> usize {
+    pub(crate) fn get_num_parents(&self) -> usize {
         usize::from(self.supervisor.lock().unwrap().is_some())
     }
 }

@@ -26,6 +26,7 @@ impl std::error::Error for BoxedDowncastErr {}
 
 /// Represents a serialized call or cast message
 #[cfg(feature = "cluster")]
+#[derive(Debug)]
 pub enum SerializedMessage {
     /// A cast (one-way) with the serialized payload
     Cast {
@@ -64,6 +65,16 @@ pub struct BoxedMessage {
     #[cfg(feature = "cluster")]
     pub serialized_msg: Option<SerializedMessage>,
     pub(crate) span: Option<tracing::Span>,
+}
+
+impl std::fmt::Debug for BoxedMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.msg.is_some() {
+            write!(f, "BoxedMessage(Local)")
+        } else {
+            write!(f, "BoxedMessage(Serialized)")
+        }
+    }
 }
 
 /// Message type for an actor. Generally an enum

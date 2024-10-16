@@ -24,6 +24,12 @@ pub struct BoxedState {
     pub msg: Option<Box<dyn Any + Send>>,
 }
 
+impl Debug for BoxedState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BoxedState")
+    }
+}
+
 impl BoxedState {
     /// Create a new [BoxedState] from a strongly-typed message
     pub fn new<T>(msg: T) -> Self

@@ -42,7 +42,7 @@ pub(crate) struct ActorProperties {
 }
 
 impl ActorProperties {
-    pub fn new<TActor>(
+    pub(crate) fn new<TActor>(
         name: Option<ActorName>,
     ) -> (
         Self,
@@ -57,7 +57,7 @@ impl ActorProperties {
         Self::new_remote::<TActor>(name, crate::actor::actor_id::get_new_local_id())
     }
 
-    pub fn new_remote<TActor>(
+    pub(crate) fn new_remote<TActor>(
         name: Option<ActorName>,
         id: ActorId,
     ) -> (
@@ -96,7 +96,7 @@ impl ActorProperties {
         )
     }
 
-    pub fn get_status(&self) -> ActorStatus {
+    pub(crate) fn get_status(&self) -> ActorStatus {
         match self.status.load(Ordering::SeqCst) {
             0u8 => ActorStatus::Unstarted,
             1u8 => ActorStatus::Starting,
@@ -108,11 +108,11 @@ impl ActorProperties {
         }
     }
 
-    pub fn set_status(&self, status: ActorStatus) {
+    pub(crate) fn set_status(&self, status: ActorStatus) {
         self.status.store(status as u8, Ordering::SeqCst);
     }
 
-    pub fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr<()>> {
+    pub(crate) fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr<()>> {
         self.signal
             .lock()
             .unwrap()
@@ -122,14 +122,17 @@ impl ActorProperties {
             })
     }
 
-    pub fn send_supervisor_evt(
+    pub(crate) fn send_supervisor_evt(
         &self,
         message: SupervisionEvent,
     ) -> Result<(), MessagingErr<SupervisionEvent>> {
         self.supervision.send(message).map_err(|e| e.into())
     }
 
-    pub fn send_message<TMessage>(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>>
+    pub(crate) fn send_message<TMessage>(
+        &self,
+        message: TMessage,
+    ) -> Result<(), MessagingErr<TMessage>>
     where
         TMessage: Message,
     {
@@ -156,7 +159,7 @@ impl ActorProperties {
             })
     }
 
-    pub fn drain(&self) -> Result<(), MessagingErr<()>> {
+    pub(crate) fn drain(&self) -> Result<(), MessagingErr<()>> {
         let _ = self
             .status
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |f| {
@@ -172,7 +175,7 @@ impl ActorProperties {
     }
 
     #[cfg(feature = "cluster")]
-    pub fn send_serialized(
+    pub(crate) fn send_serialized(
         &self,
         message: SerializedMessage,
     ) -> Result<(), MessagingErr<SerializedMessage>> {
@@ -189,7 +192,10 @@ impl ActorProperties {
             })
     }
 
-    pub fn send_stop(&self, reason: Option<String>) -> Result<(), MessagingErr<StopMessage>> {
+    pub(crate) fn send_stop(
+        &self,
+        reason: Option<String>,
+    ) -> Result<(), MessagingErr<StopMessage>> {
         let msg = reason.map(StopMessage::Reason).unwrap_or(StopMessage::Stop);
         self.stop
             .lock()
@@ -201,7 +207,7 @@ impl ActorProperties {
     }
 
     /// Send the stop signal, threading in a OneShot sender which notifies when the shutdown is completed
-    pub async fn send_stop_and_wait(
+    pub(crate) async fn send_stop_and_wait(
         &self,
         reason: Option<String>,
     ) -> Result<(), MessagingErr<StopMessage>> {
@@ -212,7 +218,10 @@ impl ActorProperties {
     }
 
     /// Send the kill signal, threading in a OneShot sender which notifies when the shutdown is completed
-    pub async fn send_signal_and_wait(&self, signal: Signal) -> Result<(), MessagingErr<()>> {
+    pub(crate) async fn send_signal_and_wait(
+        &self,
+        signal: Signal,
+    ) -> Result<(), MessagingErr<()>> {
         // first bind the wait handler
         let rx = self.wait_handler.notified();
         let _ = self.send_signal(signal);
@@ -220,7 +229,7 @@ impl ActorProperties {
         Ok(())
     }
 
-    pub fn notify_stop_listener(&self) {
+    pub(crate) fn notify_stop_listener(&self) {
         self.wait_handler.notify_waiters();
     }
 }

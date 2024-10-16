@@ -9,7 +9,7 @@ use super::JobKey;
 use crate::Message;
 
 /// The discard mode of a factory
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum DiscardMode {
     /// Discard oldest incoming jobs under backpressure
     Oldest,
@@ -28,6 +28,7 @@ pub enum DiscardMode {
 /// workers. The workers "think" it's static, but the factory handles the dynamics.
 /// This way the factory can keep the [DynamicDiscardHandler] as a single, uncloned
 /// instance. It also moves NUM_WORKER calculations to 1.
+#[derive(Debug)]
 pub(crate) enum WorkerDiscardSettings {
     None,
     Static { limit: usize, mode: DiscardMode },
@@ -84,6 +85,26 @@ pub enum DiscardSettings {
     },
 }
 
+impl std::fmt::Debug for DiscardSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DiscardSettings::None => {
+                write!(f, "DiscardSettings::None")
+            }
+            DiscardSettings::Static { limit, mode } => f
+                .debug_struct("DiscardSettings::Static")
+                .field("limit", limit)
+                .field("mode", mode)
+                .finish(),
+            DiscardSettings::Dynamic { limit, mode, .. } => f
+                .debug_struct("DiscardSettings::Dynamic")
+                .field("limit", limit)
+                .field("mode", mode)
+                .finish(),
+        }
+    }
+}
+
 impl DiscardSettings {
     pub(crate) fn get_worker_settings(&self) -> WorkerDiscardSettings {
         match &self {
@@ -124,10 +145,26 @@ pub trait DynamicDiscardController: Send + Sync + 'static {
     /// `base_controller.factory.{FACTORY_NAME}.{STAT}`
     ///
     /// If no factory name is set, then "all" will be inserted
+    #[cfg(feature = "async-trait")]
     async fn compute(&mut self, current_threshold: usize) -> usize;
+
+    /// Compute the new threshold for discarding
+    ///
+    /// If you want to utilize metrics exposed in [crate::factory::stats] you can gather them
+    /// by utilizing `stats_facebook::service_data::get_service_data_singleton` to retrieve a
+    /// accessor to `ServiceData` which you can then resolve stats by name (either timeseries or
+    /// counters)
+    ///
+    /// The namespace of stats collected on the base controller factory are
+    /// `base_controller.factory.{FACTORY_NAME}.{STAT}`
+    ///
+    /// If no factory name is set, then "all" will be inserted
+    #[cfg(not(feature = "async-trait"))]
+    fn compute(&mut self, current_threshold: usize) -> futures::future::BoxFuture<'_, usize>;
 }
 
 /// Reason for discarding a job
+#[derive(Debug)]
 pub enum DiscardReason {
     /// The job TTLd
     TtlExpired,

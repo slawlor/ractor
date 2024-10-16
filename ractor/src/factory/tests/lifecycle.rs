@@ -9,6 +9,9 @@ use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+#[cfg(not(feature = "async-trait"))]
+use futures::{future::BoxFuture, FutureExt};
+
 use crate::concurrency::sleep;
 use crate::concurrency::Duration;
 use crate::Actor;
@@ -25,6 +28,7 @@ struct AtomicHooks {
 
 #[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl FactoryLifecycleHooks<(), ()> for AtomicHooks {
+    #[cfg(feature = "async-trait")]
     async fn on_factory_started(
         &self,
         _factory_ref: ActorRef<FactoryMessage<(), ()>>,
@@ -33,17 +37,52 @@ impl FactoryLifecycleHooks<(), ()> for AtomicHooks {
         Ok(())
     }
 
+    #[cfg(not(feature = "async-trait"))]
+    fn on_factory_started(
+        &self,
+        _factory_ref: ActorRef<FactoryMessage<(), ()>>,
+    ) -> BoxFuture<'_, Result<(), ActorProcessingErr>> {
+        async {
+            self.state.store(1, Ordering::SeqCst);
+            Ok(())
+        }
+        .boxed()
+    }
+
+    #[cfg(feature = "async-trait")]
     async fn on_factory_stopped(&self) -> Result<(), ActorProcessingErr> {
         self.state.store(3, Ordering::SeqCst);
         Ok(())
     }
 
+    #[cfg(not(feature = "async-trait"))]
+    fn on_factory_stopped(&self) -> BoxFuture<'_, Result<(), ActorProcessingErr>> {
+        async {
+            self.state.store(3, Ordering::SeqCst);
+            Ok(())
+        }
+        .boxed()
+    }
+
+    #[cfg(feature = "async-trait")]
     async fn on_factory_draining(
         &self,
         _factory_ref: ActorRef<FactoryMessage<(), ()>>,
     ) -> Result<(), ActorProcessingErr> {
         self.state.store(2, Ordering::SeqCst);
         Ok(())
+    }
+
+    #[cfg(not(feature = "async-trait"))]
+    fn on_factory_draining(
+        &self,
+        _factory_ref: ActorRef<FactoryMessage<(), ()>>,
+    ) -> BoxFuture<'_, Result<(), ActorProcessingErr>> {
+        async {
+            self.state.store(2, Ordering::SeqCst);
+            Ok(())
+        }
+        .boxed()
     }
 }
 

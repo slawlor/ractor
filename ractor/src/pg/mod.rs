@@ -91,7 +91,7 @@ pub const ALL_GROUPS_NOTIFICATION: &str = "__world_group_";
 mod tests;
 
 /// Represents a change in a process group's membership
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum GroupChangeMessage {
     /// Some actors joined a group
     Join(ScopeName, GroupName, Vec<ActorCell>),
@@ -119,7 +119,7 @@ impl GroupChangeMessage {
 
 /// Represents the combination of a `ScopeName` and a `GroupName`
 /// that uniquely identifies a specific group in a specific scope
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ScopeGroupKey {
     /// the `ScopeName`
     scope: ScopeName,

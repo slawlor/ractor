@@ -10,7 +10,7 @@
 //! to them which are automatically forwarded to downstream actors waiting for inputs. They optionally
 //! have a message transformer attached to them to convert them to the appropriate message type
 
-use std::sync::RwLock;
+use std::{fmt::Debug, sync::RwLock};
 
 use crate::concurrency::JoinHandle;
 use tokio::sync::broadcast as pubsub;
@@ -38,6 +38,12 @@ where
 {
     tx: pubsub::Sender<Option<TMsg>>,
     subscriptions: RwLock<Vec<OutputPortSubscription>>,
+}
+
+impl<TMsg: OutputMessage> Debug for OutputPort<TMsg> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OutputPort({})", std::any::type_name::<TMsg>())
+    }
 }
 
 impl<TMsg> Default for OutputPort<TMsg>
@@ -118,17 +124,17 @@ struct OutputPortSubscription {
 
 impl OutputPortSubscription {
     /// Determine if the subscription is dead
-    pub fn is_dead(&self) -> bool {
+    pub(crate) fn is_dead(&self) -> bool {
         self.handle.is_finished()
     }
 
     /// Stop the subscription, by aborting the underlying [JoinHandle]
-    pub fn stop(&mut self) {
+    pub(crate) fn stop(&mut self) {
         self.handle.abort();
     }
 
     /// Create a new subscription
-    pub fn new<TMsg, F, TReceiverMsg>(
+    pub(crate) fn new<TMsg, F, TReceiverMsg>(
         mut port: pubsub::Receiver<Option<TMsg>>,
         converter: F,
         receiver: ActorRef<TReceiverMsg>,

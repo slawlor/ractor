@@ -194,7 +194,7 @@ pub use discard::{
     DiscardHandler, DiscardMode, DiscardReason, DiscardSettings, DynamicDiscardController,
 };
 pub use factoryimpl::{Factory, FactoryArguments, FactoryArgumentsBuilder};
-pub use job::{Job, JobKey, JobOptions};
+pub use job::{Job, JobKey, JobOptions, MessageRetryStrategy, RetriableMessage};
 pub use lifecycle::FactoryLifecycleHooks;
 pub use worker::{
     DeadMansSwitchConfiguration, WorkerBuilder, WorkerCapacityController, WorkerMessage,
@@ -212,6 +212,7 @@ pub type WorkerId = usize;
 /// in-host communication. This means if you're communicating to a factory you would
 /// send only a serialized [Job] which would automatically be converted to a
 /// [FactoryMessage::Dispatch(Job)]
+#[derive(Debug)]
 pub enum FactoryMessage<TKey, TMsg>
 where
     TKey: JobKey,

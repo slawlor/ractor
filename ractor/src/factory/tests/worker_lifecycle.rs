@@ -3,12 +3,15 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
+use std::marker::PhantomData;
 use std::sync::atomic::AtomicU16;
+use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::concurrency::sleep;
 use crate::concurrency::Duration;
+use crate::concurrency::JoinHandle;
 use crate::Actor;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
@@ -174,4 +177,136 @@ async fn test_worker_death_restarts_and_gets_next_message() {
     // Cleanup
     factory.stop(None);
     factory_handle.await.unwrap();
+}
+
+enum MockFactoryMessage {
+    Boom(bool, crate::concurrency::MpscUnboundedSender<()>),
+}
+
+#[cfg(feature = "cluster")]
+impl Message for MockFactoryMessage {}
+
+/// Create a mock factory with specific, defined logic
+async fn make_mock_factory<F, TKey, TMessage>(
+    mock_logic: F,
+) -> (
+    ActorRef<FactoryMessage<TKey, RetriableMessage<TKey, TMessage>>>,
+    JoinHandle<()>,
+)
+where
+    TKey: JobKey,
+    TMessage: Message,
+    F: Fn(&mut Job<TKey, RetriableMessage<TKey, TMessage>>) + Send + Sync + 'static,
+{
+    struct MockFactory<F2, TKey2, TMessage2>
+    where
+        TKey2: JobKey,
+        TMessage2: Message,
+        F2: Fn(&mut Job<TKey2, RetriableMessage<TKey2, TMessage2>>) + Send + Sync + 'static,
+    {
+        message_handler_logic: F2,
+        _k: PhantomData<fn() -> TKey2>,
+        _m: PhantomData<fn() -> TMessage2>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl<F2, TKey2, TMessage2> Actor for MockFactory<F2, TKey2, TMessage2>
+    where
+        TKey2: JobKey,
+        TMessage2: Message,
+        F2: Fn(&mut Job<TKey2, RetriableMessage<TKey2, TMessage2>>) + Send + Sync + 'static,
+    {
+        type Msg = FactoryMessage<TKey2, RetriableMessage<TKey2, TMessage2>>;
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            tracing::info!("pre-starting the mock factory");
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            tracing::info!("message handler called on the mock factory");
+            if let FactoryMessage::Dispatch(mut job) = message {
+                (self.message_handler_logic)(&mut job);
+            }
+            Ok(())
+        }
+    }
+
+    Actor::spawn(
+        None,
+        MockFactory {
+            message_handler_logic: mock_logic,
+            _k: PhantomData,
+            _m: PhantomData,
+        },
+        (),
+    )
+    .await
+    .expect("Failed to spawn mock factory")
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_factory_can_silent_retry() {
+    let num_retries = Arc::new(AtomicU8::new(0));
+
+    let (factory, handle) = make_mock_factory(move |msg| {
+        match msg.msg.message.as_mut() {
+            Some(MockFactoryMessage::Boom(should_panic, response)) => {
+                if *should_panic {
+                    *should_panic = false;
+                    // Simulate a panic by dropping the message without sending a reply or marking it completed
+                    tracing::info!("Dropping the request without marking it completed!");
+                    return;
+                }
+                tracing::info!("Sending response");
+                _ = response.send(());
+            }
+            _ => {
+                tracing::info!("Got handler with no message payload");
+            }
+        }
+        msg.msg.completed();
+    })
+    .await;
+    let (tx, mut rx) = crate::concurrency::mpsc_unbounded();
+
+    let message = MockFactoryMessage::Boom(true, tx);
+    let mut job = RetriableMessage::from_job(
+        Job {
+            accepted: None,
+            options: JobOptions::default(),
+            key: (),
+            msg: message,
+        },
+        MessageRetryStrategy::Count(1),
+        factory.clone(),
+    );
+    let counter = num_retries.clone();
+    job.msg.set_retry_hook(move |_| {
+        tracing::info!("Job is being retried");
+        counter.fetch_add(1, Ordering::SeqCst);
+    });
+    factory
+        .cast(FactoryMessage::Dispatch(job))
+        .expect("Failed to dispatch job");
+
+    // wait for RPC to complete
+    let result = rx.recv().await;
+    assert!(result.is_some());
+
+    assert_eq!(1, num_retries.load(Ordering::SeqCst));
+    factory.stop(None);
+    handle.await.unwrap();
 }

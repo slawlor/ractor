@@ -7,6 +7,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -38,7 +39,7 @@ const PING_FREQUENCY: Duration = Duration::from_millis(150);
 const PING_FREQUENCY: Duration = Duration::from_millis(10_000);
 const CALCULATE_FREQUENCY: Duration = Duration::from_millis(100);
 
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 enum DrainState {
     NotDraining,
     Draining,
@@ -49,6 +50,7 @@ enum DrainState {
 ///
 /// This is a placeholder instance which contains all of the type specifications
 /// for the factories properties
+#[derive(Debug)]
 pub struct Factory<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
 where
     TKey: JobKey,
@@ -148,6 +150,30 @@ where
     pub stats: Option<Arc<dyn FactoryStatsLayer>>,
 }
 
+impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> Debug
+    for FactoryArguments<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
+where
+    TKey: JobKey,
+    TMsg: Message,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
+    TRouter: Router<TKey, TMsg>,
+    TQueue: Queue<TKey, TMsg>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FactoryArguments")
+            .field("num_initial_workers", &self.num_initial_workers)
+            .field("router", &std::any::type_name::<TRouter>())
+            .field("queue", &std::any::type_name::<TQueue>())
+            .field("discard_settings", &self.discard_settings)
+            .field("dead_mans_switch", &self.dead_mans_switch)
+            .finish()
+    }
+}
+
 /// Builder for [FactoryArguments] which can be used to build the
 /// [Factory]'s startup arguments.
 pub struct FactoryArgumentsBuilder<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
@@ -174,6 +200,30 @@ where
     capacity_controller: Option<Box<dyn WorkerCapacityController>>,
     lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
     stats: Option<Arc<dyn FactoryStatsLayer>>,
+}
+
+impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> Debug
+    for FactoryArgumentsBuilder<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
+where
+    TKey: JobKey,
+    TMsg: Message,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
+    TRouter: Router<TKey, TMsg>,
+    TQueue: Queue<TKey, TMsg>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FactoryArgumentsBuilder")
+            .field("num_initial_workers", &self.num_initial_workers)
+            .field("router", &std::any::type_name::<TRouter>())
+            .field("queue", &std::any::type_name::<TQueue>())
+            .field("discard_settings", &self.discard_settings)
+            .field("dead_mans_switch", &self.dead_mans_switch)
+            .finish()
+    }
 }
 
 impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
@@ -371,6 +421,32 @@ where
     dead_mans_switch: Option<DeadMansSwitchConfiguration>,
     capacity_controller: Option<Box<dyn WorkerCapacityController>>,
     lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
+}
+
+impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> Debug
+    for FactoryState<TKey, TMsg, TWorker, TWorkerStart, TRouter, TQueue>
+where
+    TKey: JobKey,
+    TMsg: Message,
+    TWorkerStart: Message,
+    TWorker: Actor<
+        Msg = WorkerMessage<TKey, TMsg>,
+        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
+    >,
+    TRouter: Router<TKey, TMsg>,
+    TQueue: Queue<TKey, TMsg>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FactoryState")
+            .field("factory_name", &self.factory_name)
+            .field("pool_size", &self.pool_size)
+            .field("router", &std::any::type_name::<TRouter>())
+            .field("queue", &std::any::type_name::<TQueue>())
+            .field("discard_settings", &self.discard_settings)
+            .field("dead_mans_switch", &self.dead_mans_switch)
+            .field("drain_state", &self.drain_state)
+            .finish()
+    }
 }
 
 impl<TKey, TMsg, TWorker, TWorkerStart, TRouter, TQueue>

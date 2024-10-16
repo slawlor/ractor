@@ -50,6 +50,7 @@
 //! log to `stderr` for tracing. You can additionally setup a [panic hook](https://doc.rust-lang.org/std/panic/fn.set_hook.html)
 //! to do things like capturing backtraces on the unwinding panic.
 
+use std::fmt::Debug;
 #[cfg(not(feature = "async-trait"))]
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -476,6 +477,16 @@ where
     handler: TActor,
     id: ActorId,
     name: Option<String>,
+}
+
+impl<TActor: Actor> Debug for ActorRuntime<TActor> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(name) = self.name.as_ref() {
+            write!(f, "ActorRuntime('{}' - {})", name, self.id)
+        } else {
+            write!(f, "ActorRuntime({})", self.id)
+        }
+    }
 }
 
 impl<TActor> ActorRuntime<TActor>
