@@ -59,7 +59,17 @@ pub trait WorkerCapacityController: 'static + Send + Sync {
     ///
     /// Returns the "new" pool size. If returns 0, adjustment will be
     /// ignored
+    #[cfg(feature = "async-trait")]
     async fn get_pool_size(&mut self, current: usize) -> usize;
+
+    /// Retrieve the new pool size
+    ///
+    /// * `current` - The current pool size
+    ///
+    /// Returns the "new" pool size. If returns 0, adjustment will be
+    /// ignored
+    #[cfg(not(feature = "async-trait"))]
+    fn get_pool_size(&mut self, current: usize) -> futures::future::BoxFuture<'_, usize>;
 }
 
 /// Message to a worker

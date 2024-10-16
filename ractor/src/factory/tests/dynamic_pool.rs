@@ -8,6 +8,9 @@
 
 use std::sync::Arc;
 
+#[cfg(not(feature = "async-trait"))]
+use futures::{future::BoxFuture, FutureExt};
+
 use crate::concurrency::Duration;
 use crate::Actor;
 use crate::ActorProcessingErr;
@@ -200,8 +203,14 @@ async fn test_worker_pool_adjustment_automatic() {
 
     #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl WorkerCapacityController for DynamicWorkerController {
+        #[cfg(feature = "async-trait")]
         async fn get_pool_size(&mut self, _current: usize) -> usize {
             10
+        }
+
+        #[cfg(not(feature = "async-trait"))]
+        fn get_pool_size(&mut self, _current: usize) -> BoxFuture<'_, usize> {
+            async { 10 }.boxed()
         }
     }
 

@@ -165,7 +165,6 @@ pub(crate) mod common_test;
 pub use common_test::*;
 pub mod concurrency;
 pub mod errors;
-#[cfg(feature = "async-trait")]
 pub mod factory;
 pub mod macros;
 pub mod message;

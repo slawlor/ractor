@@ -967,7 +967,7 @@ fn returns_actor_references() {
 async fn actor_failing_in_spawn_err_doesnt_poison_registries() {
     struct Test;
 
-    #[crate::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Test {
         type Msg = ();
         type State = ();
@@ -980,7 +980,7 @@ async fn actor_failing_in_spawn_err_doesnt_poison_registries() {
 
     struct Test2;
 
-    #[crate::async_trait]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Test2 {
         type Msg = ();
         type State = ();

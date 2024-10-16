@@ -369,7 +369,7 @@ pub struct RetriableMessage<TKey: JobKey, TMessage: Message> {
     #[allow(clippy::type_complexity)]
     pub retry_hook: Option<Arc<dyn Fn(&TKey) + 'static + Send + Sync + RefUnwindSafe>>,
 
-    state: Option<(JobOptions, ActorRef<FactoryMessage<TKey, Self>>)>,
+    retry_state: Option<(JobOptions, ActorRef<FactoryMessage<TKey, Self>>)>,
 }
 
 impl<TKey, TMsg> Debug for RetriableMessage<TKey, TMsg>
@@ -379,7 +379,11 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RetriableMessage")
+            .field("key", &self.key)
             .field("strategy", &self.strategy)
+            .field("message", &self.message.is_some())
+            .field("retry_hook", &self.retry_hook.is_some())
+            .field("retry_state", &self.retry_state.is_some())
             .finish()
     }
 }
@@ -389,12 +393,13 @@ impl<TKey: JobKey, TMessage: Message> Message for RetriableMessage<TKey, TMessag
 
 impl<TKey: JobKey, TMessage: Message> Drop for RetriableMessage<TKey, TMessage> {
     fn drop(&mut self) {
-        if self.strategy.has_retries() || self.message.is_none() {
+        tracing::trace!("Drop handler for retriable message executing {self:?}");
+        if !self.strategy.has_retries() || self.message.is_none() {
             // no more retries left (None or Some(>0) mean there's still retries left)
             // or the payload has been consumed
             return;
         }
-        let Some((options, factory)) = self.state.as_ref() else {
+        let Some((options, factory)) = self.retry_state.as_ref() else {
             // can't do a retry if the factory and options are not available
             return;
         };
@@ -403,7 +408,7 @@ impl<TKey: JobKey, TMessage: Message> Drop for RetriableMessage<TKey, TMessage> 
             key: self.key.clone(),
             message: self.message.take(),
             strategy: self.strategy.decrement(),
-            state: Some((options.clone(), factory.clone())),
+            retry_state: Some((options.clone(), factory.clone())),
             retry_hook: self.retry_hook.take(),
         };
         let job = Job {
@@ -463,7 +468,7 @@ impl<TKey: JobKey, TMessage: Message> RetriableMessage<TKey, TMessage> {
             key,
             message: Some(message),
             strategy,
-            state: None,
+            retry_state: None,
             retry_hook: None,
         }
     }
@@ -509,7 +514,7 @@ impl<TKey: JobKey, TMessage: Message> RetriableMessage<TKey, TMessage> {
         options: &JobOptions,
         factory: ActorRef<FactoryMessage<TKey, Self>>,
     ) {
-        self.state = Some((options.clone(), factory));
+        self.retry_state = Some((options.clone(), factory));
     }
 
     /// Mark this message to not be retried upon being dropped, since it

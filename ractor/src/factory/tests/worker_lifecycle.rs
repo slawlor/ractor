@@ -3,7 +3,7 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-use std::sync::atomic::AtomicBool;
+use std::marker::PhantomData;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
@@ -187,39 +187,36 @@ enum MockFactoryMessage {
 impl Message for MockFactoryMessage {}
 
 /// Create a mock factory with specific, defined logic
-async fn make_mock_factory<F>(
-    panicked: Arc<AtomicBool>,
+async fn make_mock_factory<F, TKey, TMessage>(
     mock_logic: F,
 ) -> (
-    ActorRef<FactoryMessage<(), RetriableMessage<(), MockFactoryMessage>>>,
+    ActorRef<FactoryMessage<TKey, RetriableMessage<TKey, TMessage>>>,
     JoinHandle<()>,
 )
 where
-    F: Fn(&mut Job<(), RetriableMessage<(), MockFactoryMessage>>, Arc<AtomicBool>)
-        + Send
-        + Sync
-        + 'static,
+    TKey: JobKey,
+    TMessage: Message,
+    F: Fn(&mut Job<TKey, RetriableMessage<TKey, TMessage>>) + Send + Sync + 'static,
 {
-    struct MockFactory<F2>
+    struct MockFactory<F2, TKey2, TMessage2>
     where
-        F2: Fn(&mut Job<(), RetriableMessage<(), MockFactoryMessage>>, Arc<AtomicBool>)
-            + Send
-            + Sync
-            + 'static,
+        TKey2: JobKey,
+        TMessage2: Message,
+        F2: Fn(&mut Job<TKey2, RetriableMessage<TKey2, TMessage2>>) + Send + Sync + 'static,
     {
         message_handler_logic: F2,
-        panicked: Arc<AtomicBool>,
+        _k: PhantomData<fn() -> TKey2>,
+        _m: PhantomData<fn() -> TMessage2>,
     }
 
-    #[crate::async_trait]
-    impl<F2> Actor for MockFactory<F2>
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl<F2, TKey2, TMessage2> Actor for MockFactory<F2, TKey2, TMessage2>
     where
-        F2: Fn(&mut Job<(), RetriableMessage<(), MockFactoryMessage>>, Arc<AtomicBool>)
-            + Send
-            + Sync
-            + 'static,
+        TKey2: JobKey,
+        TMessage2: Message,
+        F2: Fn(&mut Job<TKey2, RetriableMessage<TKey2, TMessage2>>) + Send + Sync + 'static,
     {
-        type Msg = FactoryMessage<(), RetriableMessage<(), MockFactoryMessage>>;
+        type Msg = FactoryMessage<TKey2, RetriableMessage<TKey2, TMessage2>>;
         type State = ();
         type Arguments = ();
 
@@ -228,6 +225,7 @@ where
             _: ActorRef<Self::Msg>,
             _: Self::Arguments,
         ) -> Result<Self::State, ActorProcessingErr> {
+            tracing::info!("pre-starting the mock factory");
             Ok(())
         }
 
@@ -237,8 +235,9 @@ where
             message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
+            tracing::info!("message handler called on the mock factory");
             if let FactoryMessage::Dispatch(mut job) = message {
-                (self.message_handler_logic)(&mut job, self.panicked.clone());
+                (self.message_handler_logic)(&mut job);
             }
             Ok(())
         }
@@ -248,7 +247,8 @@ where
         None,
         MockFactory {
             message_handler_logic: mock_logic,
-            panicked,
+            _k: PhantomData,
+            _m: PhantomData,
         },
         (),
     )
@@ -259,30 +259,27 @@ where
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
 async fn test_factory_can_silent_retry() {
-    let panicked = Arc::new(AtomicBool::new(false));
     let num_retries = Arc::new(AtomicU8::new(0));
 
-    let (factory, handle) =
-        make_mock_factory(panicked.clone(), move |msg, panic_check| {
-            match msg.msg.message.as_mut() {
-                Some(MockFactoryMessage::Boom(should_panic, response)) => {
-                    if *should_panic {
-                        assert!(!panic_check.load(std::sync::atomic::Ordering::SeqCst), "We already fake-panicked once during this test, and we should have updated our internal message state to not doing it > 1 time");
-                        panic_check.store(true, std::sync::atomic::Ordering::SeqCst);
-                        *should_panic = false;
-                        // Simulate a panic by dropping the message without sending a reply
-                        return;
-                    }
-                    tracing::info!("Sending response");
-                    _ = response.send(());
+    let (factory, handle) = make_mock_factory(move |msg| {
+        match msg.msg.message.as_mut() {
+            Some(MockFactoryMessage::Boom(should_panic, response)) => {
+                if *should_panic {
+                    *should_panic = false;
+                    // Simulate a panic by dropping the message without sending a reply or marking it completed
+                    tracing::info!("Dropping the request without marking it completed!");
+                    return;
                 }
-                _ => {
-                    tracing::info!("Got handler with no message payload");
-                }
+                tracing::info!("Sending response");
+                _ = response.send(());
             }
-            msg.msg.completed();
-        })
-        .await;
+            _ => {
+                tracing::info!("Got handler with no message payload");
+            }
+        }
+        msg.msg.completed();
+    })
+    .await;
     let (tx, mut rx) = crate::concurrency::mpsc_unbounded();
 
     let message = MockFactoryMessage::Boom(true, tx);
@@ -309,7 +306,6 @@ async fn test_factory_can_silent_retry() {
     let result = rx.recv().await;
     assert!(result.is_some());
 
-    assert!(panicked.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(1, num_retries.load(Ordering::SeqCst));
     factory.stop(None);
     handle.await.unwrap();
