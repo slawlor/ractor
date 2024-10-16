@@ -143,12 +143,18 @@
 //!    are how an actor's supervisor(s) are notified of events of their children and can handle lifetime events for them.
 //! 4. Messages: Regular, user-defined, messages are the last channel of communication to actors. They are the lowest priority of the 4 message types and denote general actor work. The first
 //!    3 messages types (signals, stop, supervision) are generally quiet unless it's a lifecycle event for the actor, but this channel is the "work" channel doing what your actor wants to do!
-
-#![warn(unused_imports)]
-// #![warn(unsafe_code)]
-#![warn(missing_docs)]
-#![warn(unused_crate_dependencies)]
-// #![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(
+    dead_code,
+    missing_debug_implementations,
+    missing_docs,
+    rust_2018_idioms,
+    rustdoc::all,
+    rustdoc::missing_crate_level_docs,
+    unreachable_pub,
+    unused_imports,
+    unused_variables,
+    unused_crate_dependencies
+)]
 
 // ======================== Modules ======================== //
 

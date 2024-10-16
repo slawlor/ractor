@@ -6,6 +6,7 @@
 //! Factory worker properties
 
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::concurrency::{Duration, Instant, JoinHandle};
@@ -21,6 +22,7 @@ use super::WorkerId;
 use super::{DiscardHandler, DiscardReason, JobOptions};
 
 /// The configuration for the dead-man's switch functionality
+#[derive(Debug)]
 pub struct DeadMansSwitchConfiguration {
     /// Duration before determining worker is stuck
     pub detection_timeout: Duration,
@@ -61,6 +63,7 @@ pub trait WorkerCapacityController: 'static + Send + Sync {
 }
 
 /// Message to a worker
+#[derive(Debug)]
 pub enum WorkerMessage<TKey, TMsg>
 where
     TKey: JobKey,
@@ -86,6 +89,7 @@ where
 }
 
 /// Startup context data (`Arguments`) which are passed to a worker on start
+#[derive(Debug)]
 pub struct WorkerStartContext<TKey, TMsg, TCustomStart>
 where
     TKey: JobKey,
@@ -146,6 +150,22 @@ where
 
     /// Flag indicating if this worker is currently "draining" work due to resizing
     pub(crate) is_draining: bool,
+}
+
+impl<TKey, TMsg> Debug for WorkerProperties<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkerProperties")
+            .field("wid", &self.wid)
+            .field("actor", &self.actor)
+            .field("factory_name", &self.factory_name)
+            .field("discard_settings", &self.discard_settings)
+            .field("is_draining", &self.is_draining)
+            .finish()
+    }
 }
 
 impl<TKey, TMsg> WorkerProperties<TKey, TMsg>

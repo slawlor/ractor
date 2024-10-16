@@ -25,6 +25,7 @@ where
 }
 
 /// The possible results from a routing operation.
+#[derive(Debug)]
 pub enum RouteResult<TKey, TMsg>
 where
     TKey: JobKey,
@@ -92,6 +93,7 @@ where
 macro_rules! impl_routing_mode {
     ($routing_mode: ident, $doc:expr) => {
         #[doc = $doc]
+        #[derive(Debug)]
         pub struct $routing_mode<TKey, TMsg>
         where
             TKey: JobKey,
@@ -256,6 +258,7 @@ where
 /// Factory will dispatch to the next worker in order.
 ///
 /// Workers will have jobs placed into their incoming message queue's
+#[derive(Debug)]
 pub struct RoundRobinRouting<TKey, TMsg>
 where
     TKey: JobKey,
@@ -324,6 +327,7 @@ where
 ///
 /// The factory maintains no queue in this scenario, and jobs are pushed
 /// to worker's queues.
+#[derive(Debug)]
 pub struct CustomRouting<TKey, TMsg, THasher>
 where
     TKey: JobKey,

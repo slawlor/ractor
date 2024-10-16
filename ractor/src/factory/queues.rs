@@ -6,6 +6,7 @@
 //! Queue implementations for Factories
 
 use std::collections::VecDeque;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -148,6 +149,16 @@ where
     q: VecDeque<Job<TKey, TMsg>>,
 }
 
+impl<TKey, TMsg> Debug for DefaultQueue<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "DefaultQueue({} items)", self.q.len())
+    }
+}
+
 impl<TKey, TMsg> Default for DefaultQueue<TKey, TMsg>
 where
     TKey: JobKey,
@@ -227,6 +238,19 @@ where
     queues: [VecDeque<Job<TKey, TMsg>>; NUM_PRIORITIES],
     priority_manager: TPriorityManager,
     _p: PhantomData<fn() -> TPriority>,
+}
+
+impl<TKey, TMsg, TPriority, TPriorityManager, const NUM_PRIORITIES: usize> Debug
+    for PriorityQueue<TKey, TMsg, TPriority, TPriorityManager, NUM_PRIORITIES>
+where
+    TKey: JobKey,
+    TMsg: Message,
+    TPriority: Priority,
+    TPriorityManager: PriorityManager<TKey, TPriority>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PriorityQueue({} items)", self.len())
+    }
 }
 
 impl<TKey, TMsg, TPriority, TPriorityManager, const NUM_PRIORITIES: usize>

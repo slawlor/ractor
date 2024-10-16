@@ -6,13 +6,17 @@
 //! Specification for a [Job] sent to a factory
 
 use std::fmt::Debug;
+use std::panic::RefUnwindSafe;
+use std::sync::Arc;
 use std::{hash::Hash, time::SystemTime};
 
-use crate::RpcReplyPort;
 use crate::{concurrency::Duration, Message};
+use crate::{ActorRef, RpcReplyPort};
 
 #[cfg(feature = "cluster")]
 use crate::{message::BoxedDowncastErr, BytesConvertable};
+
+use super::FactoryMessage;
 
 /// Represents a key to a job. Needs to be hashable for routing properties. Additionally needs
 /// to be serializable for remote factories
@@ -127,6 +131,18 @@ where
     /// [Some(`Job`)] if it was rejected & loadshed, and then the
     /// job may be retried by the caller at a later time (if desired).
     pub accepted: Option<RpcReplyPort<Option<Self>>>,
+}
+
+impl<TKey, TMsg> Debug for Job<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Job")
+            .field("options", &self.options)
+            .finish()
+    }
 }
 
 #[cfg(feature = "cluster")]
@@ -283,6 +299,231 @@ where
         if let Some(port) = self.accepted.take() {
             let _ = port.send(Some(self));
         }
+    }
+}
+
+/// The retry strategy for a [RetriableMessage].
+#[derive(Debug)]
+pub enum MessageRetryStrategy {
+    /// Retry the message forever, without limit.
+    ///
+    /// IMPORTANT: This requires that some other mode is provided
+    /// to mark messages as eventually being `completed()`, be it
+    /// discarding or it being successfully handled. Otherwise the
+    /// message may spin-lock in your factory, never succeeding, and
+    /// constantly being retried
+    RetryForever,
+    /// Retry up to the provided number of times
+    Count(usize),
+    /// No retries (or used to track if retries have been used internally)
+    NoRetry,
+}
+
+impl MessageRetryStrategy {
+    fn has_retries(&self) -> bool {
+        match self {
+            Self::RetryForever => true,
+            Self::Count(n) if *n > 0 => true,
+            _ => false,
+        }
+    }
+
+    fn decrement(&self) -> Self {
+        match self {
+            Self::Count(n) if *n > 1 => Self::Count(*n - 1),
+            Self::RetryForever => Self::RetryForever,
+            _ => Self::NoRetry,
+        }
+    }
+}
+
+/// A retriable message is a job message which will automatically be resubmitted to the factory in the
+/// event of a factory worker dropping the message due to failure (panic or unhandled error). This wraps
+/// the inner message in a struct which captures the drop, and if there's still some retries left,
+/// will reschedule the work to the factory with captured state information.
+///
+/// IMPORTANT CAVEATS:
+///
+/// 1. Regular loadshed events will cause this message to be retried if there is still retries left
+///    and the job isn't expired unless you explicitely call `completed()` in the discard handler.
+/// 2. Consumable types are not well supported here without some wrapping in Option types, which is
+///    because the value is handled everywhere as `&mut ref`` due to the drop implementation requiring that
+///    it be so. This means that RPCs using [crate::concurrency::oneshot]s likely won't work without
+///    some real painful ergonomics.
+/// 3. Upon successful handling of the job, you need to mark it as `completed()` at the end of your
+///    handling or discarding logic to state that it shouldn't be retried on drop.
+pub struct RetriableMessage<TKey: JobKey, TMessage: Message> {
+    /// The key to the retriable job
+    pub key: TKey,
+    /// The message, which will be retried until it's completed.
+    pub message: Option<TMessage>,
+    /// The retry strategy
+    pub strategy: MessageRetryStrategy,
+    /// A function which will be executed upon the job's retry flow being executed
+    /// (helpful for logging, etc)
+    ///
+    /// SAFETY: We utilize [std::panic::catch_unwind] here to best-effort prevent
+    /// a potential user-level panic from causing a process abort. However if the handler
+    /// logic panics, then the retry hook won't be executed, but the job will still be
+    /// retried.
+    #[allow(clippy::type_complexity)]
+    pub retry_hook: Option<Arc<dyn Fn(&TKey) + 'static + Send + Sync + RefUnwindSafe>>,
+
+    state: Option<(JobOptions, ActorRef<FactoryMessage<TKey, Self>>)>,
+}
+
+impl<TKey, TMsg> Debug for RetriableMessage<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RetriableMessage")
+            .field("strategy", &self.strategy)
+            .finish()
+    }
+}
+
+#[cfg(feature = "cluster")]
+impl<TKey: JobKey, TMessage: Message> Message for RetriableMessage<TKey, TMessage> {}
+
+impl<TKey: JobKey, TMessage: Message> Drop for RetriableMessage<TKey, TMessage> {
+    fn drop(&mut self) {
+        if self.strategy.has_retries() || self.message.is_none() {
+            // no more retries left (None or Some(>0) mean there's still retries left)
+            // or the payload has been consumed
+            return;
+        }
+        let Some((options, factory)) = self.state.as_ref() else {
+            // can't do a retry if the factory and options are not available
+            return;
+        };
+        // construct the new retriable message
+        let msg = Self {
+            key: self.key.clone(),
+            message: self.message.take(),
+            strategy: self.strategy.decrement(),
+            state: Some((options.clone(), factory.clone())),
+            retry_hook: self.retry_hook.take(),
+        };
+        let job = Job {
+            accepted: None, // should have been accepted on the first try (if accepted at all)
+            key: self.key.clone(),
+            msg,
+            options: options.clone(),
+        };
+        // Execute the custom retry hook, if provided
+        if let Some(handler) = job.msg.retry_hook.as_ref() {
+            let key = std::panic::AssertUnwindSafe(&job.key);
+            let f = handler.clone();
+            _ = std::panic::catch_unwind(move || (f)(*key));
+        }
+        tracing::trace!(
+            "A retriable job is being resubmitted to the factory. Number of retries left {:?}",
+            self.strategy
+        );
+        // SAFETY: A silent-drop here is OK should the dispatch to the factory fail. This is
+        // because if a worker died, it would be a silent drop anyways so there's no loss
+        // in functionality
+        _ = factory.cast(FactoryMessage::Dispatch(job));
+    }
+}
+
+impl<TKey, TMsg> ActorRef<FactoryMessage<TKey, RetriableMessage<TKey, TMsg>>>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    /// When you're talking to a factory, which accepts "retriable" jobs, this
+    /// convenience function sets up the retriable state for you and converts
+    /// your job to a retriable equivalent.
+    ///
+    /// * `job`: The traditional [Job] which will be auto-converted into a [Job] of [RetriableMessage]
+    ///   for you however the `accepted` field, if set, will be dropped as [RetriableMessage]s do not
+    ///   support `accepted` replies, except on the first iteration
+    /// * `strategy`: The [MessageRetryStrategy] to use for this retriable message
+    ///
+    /// Returns the result from the underlying `cast` operation to the factory's [ActorRef].
+    #[allow(clippy::type_complexity)]
+    pub fn submit_retriable_job(
+        &self,
+        job: Job<TKey, TMsg>,
+        strategy: MessageRetryStrategy,
+    ) -> Result<(), crate::MessagingErr<FactoryMessage<TKey, RetriableMessage<TKey, TMsg>>>> {
+        let job = RetriableMessage::from_job(job, strategy, self.clone());
+        self.cast(FactoryMessage::Dispatch(job))
+    }
+}
+
+impl<TKey: JobKey, TMessage: Message> RetriableMessage<TKey, TMessage> {
+    /// Construct a new retriable message with the provided number of retries. If the
+    /// retries are [None], that means retry forever. [Some(0)] will mean no retries
+    pub fn new(key: TKey, message: TMessage, strategy: MessageRetryStrategy) -> Self {
+        Self {
+            key,
+            message: Some(message),
+            strategy,
+            state: None,
+            retry_hook: None,
+        }
+    }
+
+    /// Attach a handler which will be executed when the job is retried (resubmitted to
+    /// the factory).
+    pub fn set_retry_hook(&mut self, f: impl Fn(&TKey) + 'static + Send + Sync + RefUnwindSafe) {
+        self.retry_hook = Some(Arc::new(f));
+    }
+
+    /// Convert a regular [Job] into a [RetriableMessage] capturing all the necessary state in order
+    /// to perform retries on drop.
+    ///
+    /// * `job`: The [Job] to convert
+    /// * `strategy`: The [MessageRetryStrategy] to use for this retriable message
+    /// * `factory`: The [ActorRef] of the factory which the job will be submitted to.
+    ///
+    /// Returns a [Job] with message payload of [RetriableMessage] which can be retried should it be dropped prior
+    /// to having `job.msg.completed()` called.
+    pub fn from_job(
+        Job {
+            key, msg, options, ..
+        }: Job<TKey, TMessage>,
+        strategy: MessageRetryStrategy,
+        factory: ActorRef<FactoryMessage<TKey, Self>>,
+    ) -> Job<TKey, Self> {
+        let mut retriable = RetriableMessage::new(key.clone(), msg, strategy);
+        retriable.capture_retry_state(&options, factory);
+        Job::<TKey, Self> {
+            accepted: None,
+            key,
+            msg: retriable,
+            options,
+        }
+    }
+
+    /// Capture the necessary state information in order to perform retries automatically
+    ///
+    /// * `options`: The [JobOptions] of the original job
+    /// * `factory`: The [ActorRef] of the factory the job will be submitted to
+    pub fn capture_retry_state(
+        &mut self,
+        options: &JobOptions,
+        factory: ActorRef<FactoryMessage<TKey, Self>>,
+    ) {
+        self.state = Some((options.clone(), factory));
+    }
+
+    /// Mark this message to not be retried upon being dropped, since it
+    /// was handled successfully.
+    ///
+    /// IMPORTANT: This should be called at the end of the handling logic, prior to returning
+    /// from the worker's message handler AND/OR from the discard logic. If you don't provide a custom
+    /// discard handler for jobs, then they will be auto-retried until a potential TTL is hit (or forever)
+    /// and you may risk a spin-lock where an TTL expired job is submitted back to the factory, expire shedded
+    /// again, dropped, and therefore retried forever. This is especially dangerous if you state that jobs
+    /// should be retried forever.
+    pub fn completed(&mut self) {
+        self.strategy = MessageRetryStrategy::NoRetry;
+        self.message = None;
     }
 }
 
