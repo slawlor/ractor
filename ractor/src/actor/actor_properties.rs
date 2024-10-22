@@ -174,6 +174,14 @@ impl ActorProperties {
             .map_err(|_| MessagingErr::SendErr(()))
     }
 
+    /// Start draining, and wait for the actor to exit
+    pub(crate) async fn drain_and_wait(&self) -> Result<(), MessagingErr<()>> {
+        let rx = self.wait_handler.notified();
+        self.drain()?;
+        rx.await;
+        Ok(())
+    }
+
     #[cfg(feature = "cluster")]
     pub(crate) fn send_serialized(
         &self,

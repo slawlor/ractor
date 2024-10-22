@@ -63,6 +63,75 @@ impl SupervisionTree {
         }
     }
 
+    /// Stop all the linked children, but does NOT unlink them (stop flow will do that)
+    pub(crate) fn stop_all_children(&self, reason: Option<String>) {
+        let mut guard = self.children.lock().unwrap();
+        let cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
+        guard.clear();
+        // drop the guard to not deadlock on double-link
+        drop(guard);
+        for cell in cells {
+            cell.stop(reason.clone());
+        }
+    }
+
+    /// Drain all the linked children, but does NOT unlink them
+    pub(crate) fn drain_all_children(&self) {
+        let mut guard = self.children.lock().unwrap();
+        let cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
+        guard.clear();
+        // drop the guard to not deadlock on double-link
+        drop(guard);
+        for cell in cells {
+            _ = cell.drain();
+        }
+    }
+
+    /// Stop all the linked children, but does NOT unlink them (stop flow will do that),
+    /// and wait for them to exit (concurrently)
+    pub(crate) async fn stop_all_children_and_wait(
+        &self,
+        reason: Option<String>,
+        timeout: Option<crate::concurrency::Duration>,
+    ) {
+        let cells;
+        {
+            let mut guard = self.children.lock().unwrap();
+            cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
+            guard.clear();
+            // drop the guard to not deadlock on double-link
+            drop(guard);
+        }
+        let mut js = crate::concurrency::JoinSet::new();
+        for cell in cells {
+            let lreason = reason.clone();
+            let ltimeout = timeout;
+            js.spawn(async move { cell.stop_and_wait(lreason, ltimeout).await });
+        }
+        _ = js.join_all().await;
+    }
+
+    /// Drain all the linked children, but does NOT unlink them
+    pub(crate) async fn drain_all_children_and_wait(
+        &self,
+        timeout: Option<crate::concurrency::Duration>,
+    ) {
+        let cells;
+        {
+            let mut guard = self.children.lock().unwrap();
+            cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
+            guard.clear();
+            // drop the guard to not deadlock on double-link
+            drop(guard);
+        }
+        let mut js = crate::concurrency::JoinSet::new();
+        for cell in cells {
+            let ltimeout = timeout;
+            js.spawn(async move { cell.drain_and_wait(ltimeout).await });
+        }
+        _ = js.join_all().await;
+    }
+
     /// Determine if the specified actor is a parent of this actor
     pub(crate) fn is_child_of(&self, id: ActorId) -> bool {
         if let Some(parent) = &*(self.supervisor.lock().unwrap()) {
@@ -70,6 +139,15 @@ impl SupervisionTree {
         } else {
             false
         }
+    }
+
+    pub(crate) fn get_children(&self) -> Vec<ActorCell> {
+        let mut guard = self.children.lock().unwrap();
+        let cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
+        guard.clear();
+        // drop the guard to not deadlock on double-link
+        drop(guard);
+        cells
     }
 
     /// Send a notification to the supervisor.

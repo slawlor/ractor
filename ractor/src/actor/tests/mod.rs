@@ -1121,3 +1121,36 @@ async fn actor_drain_messages() {
 
     assert_eq!(1000, signal.load(Ordering::SeqCst));
 }
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn runtime_message_typing() {
+    struct TestActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = EmptyMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to start test actor");
+    // lose the strong typing info
+    let actor: ActorCell = actor.into();
+    assert_eq!(Some(true), actor.is_message_type_of::<EmptyMessage>());
+    assert_eq!(Some(false), actor.is_message_type_of::<i64>());
+
+    // cleanup
+    actor.stop(None);
+    handle.await.unwrap();
+}
