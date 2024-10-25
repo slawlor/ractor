@@ -104,7 +104,7 @@ struct FastTestWorkerBuilder {
 }
 
 impl WorkerBuilder<TestWorker, ()> for FastTestWorkerBuilder {
-    fn build(&self, wid: usize) -> (TestWorker, ()) {
+    fn build(&mut self, wid: usize) -> (TestWorker, ()) {
         (
             TestWorker {
                 counter: self.counters[wid].clone(),
@@ -120,7 +120,7 @@ struct SlowTestWorkerBuilder {
 }
 
 impl WorkerBuilder<TestWorker, ()> for SlowTestWorkerBuilder {
-    fn build(&self, wid: usize) -> (TestWorker, ()) {
+    fn build(&mut self, wid: usize) -> (TestWorker, ()) {
         (
             TestWorker {
                 counter: self.counters[wid].clone(),
@@ -136,7 +136,7 @@ struct InsanelySlowWorkerBuilder {
 }
 
 impl WorkerBuilder<TestWorker, ()> for InsanelySlowWorkerBuilder {
-    fn build(&self, wid: usize) -> (TestWorker, ()) {
+    fn build(&mut self, wid: usize) -> (TestWorker, ()) {
         (
             TestWorker {
                 counter: self.counters[wid].clone(),
@@ -682,7 +682,7 @@ async fn test_stuck_workers() {
     }
 
     impl WorkerBuilder<TestWorker, ()> for StuckWorkerBuilder {
-        fn build(&self, wid: usize) -> (TestWorker, ()) {
+        fn build(&mut self, wid: usize) -> (TestWorker, ()) {
             (
                 TestWorker {
                     counter: self.counters[wid].clone(),
@@ -704,36 +704,37 @@ async fn test_stuck_workers() {
         routing::RoundRobinRouting<TestKey, TestMessage>,
         DefaultQueue,
     >::default();
-    let (factory, factory_handle) = Actor::spawn(
-        None,
-        factory_definition,
-        FactoryArguments {
-            num_initial_workers: NUM_TEST_WORKERS,
-            queue: DefaultQueue::default(),
-            router: Default::default(),
-            capacity_controller: None,
-            dead_mans_switch: Some(DeadMansSwitchConfiguration {
-                detection_timeout: Duration::from_millis(50),
-                kill_worker: true,
-            }),
-            discard_handler: None,
-            discard_settings: DiscardSettings::None,
-            lifecycle_hooks: None,
-            worker_builder: Box::new(worker_builder),
-            stats: None,
-        },
-    )
-    .await
-    .expect("Failed to spawn factory");
+    let dms = DeadMansSwitchConfiguration::builder()
+        .detection_timeout(Duration::from_millis(50))
+        .kill_worker(true)
+        .build();
+    tracing::debug!("DMS settings: {dms:?}");
+    let args = FactoryArguments::builder()
+        .num_initial_workers(NUM_TEST_WORKERS)
+        .queue(Default::default())
+        .router(Default::default())
+        .worker_builder(Box::new(worker_builder))
+        .dead_mans_switch(dms)
+        .build();
+    tracing::debug!("Factory args {args:?}");
+    let (factory, factory_handle) = Actor::spawn(None, factory_definition, args)
+        .await
+        .expect("Failed to spawn factory");
+
+    tracing::debug!(
+        "Actor node {}, pid {}",
+        factory.get_id().node(),
+        factory.get_id().pid()
+    );
 
     for _ in 0..9 {
         factory
-            .cast(FactoryMessage::Dispatch(Job {
-                key: TestKey { id: 1 },
-                msg: TestMessage::Ok,
-                options: JobOptions::default(),
-                accepted: None,
-            }))
+            .cast(FactoryMessage::Dispatch(
+                Job::builder()
+                    .key(TestKey { id: 1 })
+                    .msg(TestMessage::Ok)
+                    .build(),
+            ))
             .expect("Failed to send to factory");
     }
 

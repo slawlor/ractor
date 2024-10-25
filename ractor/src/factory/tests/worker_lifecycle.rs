@@ -87,7 +87,7 @@ struct MyWorkerBuilder {
 }
 
 impl WorkerBuilder<MyWorker, ()> for MyWorkerBuilder {
-    fn build(&self, _wid: crate::factory::WorkerId) -> (MyWorker, ()) {
+    fn build(&mut self, _wid: crate::factory::WorkerId) -> (MyWorker, ()) {
         (
             MyWorker {
                 counter: self.counter.clone(),

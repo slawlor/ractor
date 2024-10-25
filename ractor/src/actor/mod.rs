@@ -102,7 +102,7 @@ pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> ActorProcess
 /// * `post_stop`
 /// * `handle`
 /// * `handle_serialized` (Available with `cluster` feature only)
-/// * `handle_supervision_evt`
+/// * `handle_supervisor_evt`
 ///
 /// return a [Result<_, ActorProcessingError>] where the error type is an
 /// alias of [Box<dyn std::error::Error + Send + Sync + 'static>]. This is treated
@@ -481,11 +481,10 @@ where
 
 impl<TActor: Actor> Debug for ActorRuntime<TActor> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(name) = self.name.as_ref() {
-            write!(f, "ActorRuntime('{}' - {})", name, self.id)
-        } else {
-            write!(f, "ActorRuntime({})", self.id)
-        }
+        f.debug_struct("ActorRuntime")
+            .field("name", &self.name)
+            .field("id", &self.id)
+            .finish()
     }
 }
 

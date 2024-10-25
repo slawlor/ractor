@@ -104,7 +104,7 @@ struct TestWorkerBuilder {
 }
 
 impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
-    fn build(&self, _wid: usize) -> (TestWorker, ()) {
+    fn build(&mut self, _wid: usize) -> (TestWorker, ()) {
         (
             TestWorker {
                 counters: self.counters.clone(),
@@ -143,27 +143,17 @@ async fn test_basic_priority_queueing() {
             { StandardPriority::size() },
         >,
     >::default();
-    let (factory, factory_handle) = Actor::spawn(
-        None,
-        factory_definition,
-        FactoryArguments {
-            num_initial_workers: 1,
-            queue: queues::PriorityQueue::new(TestPriorityManager),
-            router: Default::default(),
-            capacity_controller: None,
-            dead_mans_switch: None,
-            discard_handler: None,
-            discard_settings: DiscardSettings::None,
-            lifecycle_hooks: None,
-            worker_builder: Box::new(TestWorkerBuilder {
-                counters: counters.clone(),
-                signal: signal.clone(),
-            }),
-            stats: None,
-        },
-    )
-    .await
-    .expect("Failed to spawn factory");
+    let args = FactoryArguments::builder()
+        .queue(queues::PriorityQueue::new(TestPriorityManager))
+        .router(Default::default())
+        .worker_builder(Box::new(TestWorkerBuilder {
+            counters: counters.clone(),
+            signal: signal.clone(),
+        }))
+        .build();
+    let (factory, factory_handle) = Actor::spawn(None, factory_definition, args)
+        .await
+        .expect("Failed to spawn factory");
 
     // Act
     // Send 5 high pri and 5 low pri messages to the factory. Only the high pri should

@@ -9,6 +9,8 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use bon::Builder;
+
 use crate::concurrency::{Duration, Instant, JoinHandle};
 use crate::{Actor, ActorId, ActorProcessingErr};
 use crate::{ActorRef, Message, MessagingErr};
@@ -22,12 +24,15 @@ use super::WorkerId;
 use super::{DiscardHandler, DiscardReason, JobOptions};
 
 /// The configuration for the dead-man's switch functionality
-#[derive(Debug)]
+#[derive(Builder, Debug)]
 pub struct DeadMansSwitchConfiguration {
     /// Duration before determining worker is stuck
     pub detection_timeout: Duration,
     /// Flag denoting if the stuck worker should be killed
     /// and restarted
+    ///
+    /// Default = [true]
+    #[builder(default = true)]
     pub kill_worker: bool,
 }
 
@@ -46,7 +51,7 @@ where
     ///
     /// Returns a tuple of the worker and a custom startup definition giving the worker
     /// owned control of some structs that it may need to work.
-    fn build(&self, wid: WorkerId) -> (TWorker, TWorkerStart);
+    fn build(&mut self, wid: WorkerId) -> (TWorker, TWorkerStart);
 }
 
 /// Controls the size of the worker pool by dynamically growing/shrinking the pool

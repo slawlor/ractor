@@ -956,6 +956,8 @@ fn returns_actor_references() {
     ];
 
     for (want, event) in tests {
+        // Cloned cells are "equal" since they point to the same actor id
+        assert_eq!(event.actor_cell(), event.actor_cell().clone());
         assert_eq!(event.actor_cell().is_some(), want);
         assert_eq!(event.actor_id().is_some(), want);
     }

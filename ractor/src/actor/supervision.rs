@@ -52,11 +52,7 @@ impl SupervisionTree {
     /// from the supervision tree since the supervisor is shutting down
     /// and can't deal with superivison events anyways
     pub(crate) fn terminate_all_children(&self) {
-        let mut guard = self.children.lock().unwrap();
-        let cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
-        guard.clear();
-        // drop the guard to not deadlock on double-link
-        drop(guard);
+        let cells = self.get_children();
         for cell in cells {
             cell.terminate();
             cell.clear_supervisor();
@@ -65,11 +61,7 @@ impl SupervisionTree {
 
     /// Stop all the linked children, but does NOT unlink them (stop flow will do that)
     pub(crate) fn stop_all_children(&self, reason: Option<String>) {
-        let mut guard = self.children.lock().unwrap();
-        let cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
-        guard.clear();
-        // drop the guard to not deadlock on double-link
-        drop(guard);
+        let cells = self.get_children();
         for cell in cells {
             cell.stop(reason.clone());
         }
@@ -77,11 +69,7 @@ impl SupervisionTree {
 
     /// Drain all the linked children, but does NOT unlink them
     pub(crate) fn drain_all_children(&self) {
-        let mut guard = self.children.lock().unwrap();
-        let cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
-        guard.clear();
-        // drop the guard to not deadlock on double-link
-        drop(guard);
+        let cells = self.get_children();
         for cell in cells {
             _ = cell.drain();
         }
@@ -94,14 +82,7 @@ impl SupervisionTree {
         reason: Option<String>,
         timeout: Option<crate::concurrency::Duration>,
     ) {
-        let cells;
-        {
-            let mut guard = self.children.lock().unwrap();
-            cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
-            guard.clear();
-            // drop the guard to not deadlock on double-link
-            drop(guard);
-        }
+        let cells = self.get_children();
         let mut js = crate::concurrency::JoinSet::new();
         for cell in cells {
             let lreason = reason.clone();
@@ -116,14 +97,7 @@ impl SupervisionTree {
         &self,
         timeout: Option<crate::concurrency::Duration>,
     ) {
-        let cells;
-        {
-            let mut guard = self.children.lock().unwrap();
-            cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
-            guard.clear();
-            // drop the guard to not deadlock on double-link
-            drop(guard);
-        }
+        let cells = self.get_children();
         let mut js = crate::concurrency::JoinSet::new();
         for cell in cells {
             let ltimeout = timeout;

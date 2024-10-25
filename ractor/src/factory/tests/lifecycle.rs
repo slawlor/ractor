@@ -141,7 +141,7 @@ impl Actor for TestWorker {
 struct TestWorkerBuilder;
 
 impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
-    fn build(&self, _wid: crate::factory::WorkerId) -> (TestWorker, ()) {
+    fn build(&mut self, _wid: crate::factory::WorkerId) -> (TestWorker, ()) {
         (TestWorker, ())
     }
 }

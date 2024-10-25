@@ -94,7 +94,7 @@ struct SlowWorkerBuilder {
 }
 
 impl WorkerBuilder<TestWorker, ()> for SlowWorkerBuilder {
-    fn build(&self, _wid: usize) -> (TestWorker, ()) {
+    fn build(&mut self, _wid: usize) -> (TestWorker, ()) {
         (
             TestWorker {
                 counter: self.counter.clone(),
@@ -120,24 +120,15 @@ async fn test_request_draining() {
         routing::QueuerRouting<TestKey, TestMessage>,
         queues::DefaultQueue<TestKey, TestMessage>,
     >::default();
-    let (factory, factory_handle) = Actor::spawn(
-        None,
-        factory_definition,
-        FactoryArguments {
-            num_initial_workers: 2,
-            queue: queues::DefaultQueue::default(),
-            router: Default::default(),
-            capacity_controller: None,
-            dead_mans_switch: None,
-            discard_handler: None,
-            discard_settings: DiscardSettings::None,
-            lifecycle_hooks: None,
-            worker_builder: Box::new(worker_builder),
-            stats: None,
-        },
-    )
-    .await
-    .expect("Failed to spawn factory");
+    let args = FactoryArguments::builder()
+        .num_initial_workers(2)
+        .queue(Default::default())
+        .router(Default::default())
+        .worker_builder(Box::new(worker_builder))
+        .build();
+    let (factory, factory_handle) = Actor::spawn(None, factory_definition, args)
+        .await
+        .expect("Failed to spawn factory");
 
     for id in 0..999 {
         factory

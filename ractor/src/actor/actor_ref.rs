@@ -5,7 +5,6 @@
 
 //! [ActorRef] is a strongly-typed wrapper over an [ActorCell]
 
-use std::any::TypeId;
 use std::marker::PhantomData;
 
 use crate::{ActorName, Message, MessagingErr, SupervisionEvent};
@@ -57,7 +56,7 @@ impl<TActor> From<ActorRef<TActor>> for ActorCell {
 
 impl<TMessage> std::fmt::Debug for ActorRef<TMessage> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.inner)
+        self.inner.fmt(f)
     }
 }
 
@@ -101,13 +100,11 @@ where
     pub fn where_is(name: ActorName) -> Option<crate::actor::ActorRef<TMessage>> {
         if let Some(actor) = crate::registry::where_is(name) {
             // check the type id when pulling from the registry
-            if actor.get_type_id() == TypeId::of::<TMessage>() {
-                Some(actor.into())
-            } else {
-                None
+            let check = actor.is_message_type_of::<TMessage>();
+            if check.is_none() || matches!(check, Some(true)) {
+                return Some(actor.into());
             }
-        } else {
-            None
         }
+        None
     }
 }

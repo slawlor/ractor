@@ -93,7 +93,7 @@ struct TestWorkerBuilder {
 }
 
 impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
-    fn build(&self, _wid: usize) -> (TestWorker, ()) {
+    fn build(&mut self, _wid: usize) -> (TestWorker, ()) {
         (
             TestWorker {
                 id_map: self.id_map.clone(),

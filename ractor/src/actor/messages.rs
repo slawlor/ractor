@@ -26,7 +26,7 @@ pub struct BoxedState {
 
 impl Debug for BoxedState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BoxedState")
+        f.debug_struct("BoxedState").finish()
     }
 }
 
@@ -61,17 +61,12 @@ impl BoxedState {
 }
 
 /// Messages to stop an actor
+#[derive(Debug)]
 pub enum StopMessage {
     /// Normal stop
     Stop,
     /// Stop with a reason
     Reason(String),
-}
-
-impl Debug for StopMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Stop message: {self}")
-    }
 }
 
 impl std::fmt::Display for StopMessage {
@@ -172,16 +167,10 @@ impl std::fmt::Display for SupervisionEvent {
 }
 
 /// A signal message which takes priority above all else
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Signal {
     /// Terminate the agent, cancelling all async work immediately
     Kill,
-}
-
-impl Debug for Signal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Signal: {self}")
-    }
 }
 
 impl std::fmt::Display for Signal {
