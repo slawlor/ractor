@@ -118,7 +118,7 @@
 //! /// Used by the factory to build new [ExampleWorker]s.
 //! struct ExampleWorkerBuilder;
 //! impl WorkerBuilder<ExampleWorker, ()> for ExampleWorkerBuilder {
-//!     fn build(&self, _wid: usize) -> (ExampleWorker, ()) {
+//!     fn build(&mut self, _wid: usize) -> (ExampleWorker, ()) {
 //!         (ExampleWorker, ())
 //!     }
 //! }
@@ -132,8 +132,11 @@
 //!         routing::QueuerRouting<(), ExampleMessage>,
 //!         queues::DefaultQueue<(), ExampleMessage>
 //!     >::default();
-//!     let factory_args = FactoryArgumentsBuilder::new(ExampleWorkerBuilder, Default::default(), Default::default())
-//!         .with_number_of_initial_workers(5)
+//!     let factory_args = FactoryArguments::builder()
+//!         .worker_builder(Box::new(ExampleWorkerBuilder))
+//!         .queue(Default::default())
+//!         .router(Default::default())
+//!         .num_initial_workers(5)
 //!         .build();
 //!     
 //!     let (factory, handle) = Actor::spawn(None, factory_def, factory_args)

@@ -11,6 +11,8 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use bon::Builder;
+
 use self::routing::RouteResult;
 use crate::concurrency::Duration;
 use crate::concurrency::Instant;
@@ -97,6 +99,8 @@ where
 }
 
 /// Arguments for configuring and starting a [Factory] actor instance.
+#[derive(Builder)]
+#[builder(on(String, into))]
 pub struct FactoryArguments<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
 where
     TKey: JobKey,
@@ -115,6 +119,9 @@ where
     /// construct new workers when needed.
     pub worker_builder: Box<dyn WorkerBuilder<TWorker, TWorkerStart>>,
     /// Number of (initial) workers in the factory
+    ///
+    /// Default = `1` worker
+    #[builder(default = 1)]
     pub num_initial_workers: usize,
     /// Message routing handler
     pub router: TRouter,
@@ -128,25 +135,36 @@ where
     /// will cause a job at the head or tail of the queue to be dropped (which is
     /// controlled by `discard_mode`).
     ///
-    /// * For factories using [routing::QueuerRouting], [routing::StickyQueuerRouting] routing, these
-    ///   are applied to the factory's internal queue.
-    /// * For all other routing protocols, this applies to the worker's message queue
+    /// * For factories using routing protocols like [routing::QueuerRouting],
+    ///   [routing::StickyQueuerRouting] routing, these are applied to the factory's internal queue.
+    /// * For all other routing non-factory-queueing protocols,
+    ///   this applies to the worker's message queue
     ///
     /// Default is [DiscardSettings::None]
+    #[builder(default = DiscardSettings::None)]
     pub discard_settings: DiscardSettings,
     /// Controls the "dead man's" switching logic on the factory. Periodically
     /// the factory will scan for stuck workers. If detected, the worker information
     /// will be logged along with the current job key information. Optionally the worker
     /// can be killed and replaced by the factory
+    ///
+    /// Default is [None]
     pub dead_mans_switch: Option<DeadMansSwitchConfiguration>,
     /// Controls the parallel capacity of the worker pool by dynamically growing/shrinking the pool
+    ///
+    /// Default is [None]
     pub capacity_controller: Option<Box<dyn WorkerCapacityController>>,
-
-    /// Lifecycle hooks which provide access to points in the factory's lifecycle
-    /// for shutdown/startup/draining
+    /// Lifecycle hooks provide access to points in the factory's lifecycle
+    /// for shutdown/startup/draining where user-defined logic can execute (and
+    /// block factory lifecycle at critical points). For example, this means
+    /// the factory won't start accepting requests until the complete startup routine
+    /// is completed.
+    ///
+    /// Default is [None]
     pub lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
-
     /// Defines the statistics collection layer for the factory. Useful for tracking factory properties.
+    ///
+    /// Default is [None]
     pub stats: Option<Arc<dyn FactoryStatsLayer>>,
 }
 
@@ -170,228 +188,14 @@ where
             .field("queue", &std::any::type_name::<TQueue>())
             .field("discard_settings", &self.discard_settings)
             .field("dead_mans_switch", &self.dead_mans_switch)
+            .field(
+                "has_capacity_controller",
+                &self.capacity_controller.is_some(),
+            )
+            .field("has_lifecycle_hooks", &self.lifecycle_hooks.is_some())
+            .field("has_stats", &self.stats.is_some())
+            .field("has_discard_handler", &self.discard_handler.is_some())
             .finish()
-    }
-}
-
-/// Builder for [FactoryArguments] which can be used to build the
-/// [Factory]'s startup arguments.
-pub struct FactoryArgumentsBuilder<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
-where
-    TKey: JobKey,
-    TMsg: Message,
-    TWorkerStart: Message,
-    TWorker: Actor<
-        Msg = WorkerMessage<TKey, TMsg>,
-        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
-    >,
-    TRouter: Router<TKey, TMsg>,
-    TQueue: Queue<TKey, TMsg>,
-{
-    // Required
-    worker_builder: Box<dyn WorkerBuilder<TWorker, TWorkerStart>>,
-    num_initial_workers: usize,
-    router: TRouter,
-    queue: TQueue,
-    // Optional
-    discard_handler: Option<Arc<dyn DiscardHandler<TKey, TMsg>>>,
-    discard_settings: DiscardSettings,
-    dead_mans_switch: Option<DeadMansSwitchConfiguration>,
-    capacity_controller: Option<Box<dyn WorkerCapacityController>>,
-    lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
-    stats: Option<Arc<dyn FactoryStatsLayer>>,
-}
-
-impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> Debug
-    for FactoryArgumentsBuilder<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
-where
-    TKey: JobKey,
-    TMsg: Message,
-    TWorkerStart: Message,
-    TWorker: Actor<
-        Msg = WorkerMessage<TKey, TMsg>,
-        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
-    >,
-    TRouter: Router<TKey, TMsg>,
-    TQueue: Queue<TKey, TMsg>,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FactoryArgumentsBuilder")
-            .field("num_initial_workers", &self.num_initial_workers)
-            .field("router", &std::any::type_name::<TRouter>())
-            .field("queue", &std::any::type_name::<TQueue>())
-            .field("discard_settings", &self.discard_settings)
-            .field("dead_mans_switch", &self.dead_mans_switch)
-            .finish()
-    }
-}
-
-impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
-    FactoryArgumentsBuilder<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
-where
-    TKey: JobKey,
-    TMsg: Message,
-    TWorkerStart: Message,
-    TWorker: Actor<
-        Msg = WorkerMessage<TKey, TMsg>,
-        Arguments = WorkerStartContext<TKey, TMsg, TWorkerStart>,
-    >,
-    TRouter: Router<TKey, TMsg>,
-    TQueue: Queue<TKey, TMsg>,
-{
-    /// Construct a new [FactoryArguments] with the required arguments
-    ///
-    /// * `worker_builder`: The implementation of the [WorkerBuilder] trait which is
-    ///   used to construct worker instances as needed
-    /// * `router`: The message routing implementation the factory should use. Implements
-    ///   the [Router] trait.
-    /// * `queue`: The message queueing implementation the factory should use. Implements
-    ///   the [Queue] trait.
-    pub fn new<TBuilder: WorkerBuilder<TWorker, TWorkerStart> + 'static>(
-        worker_builder: TBuilder,
-        router: TRouter,
-        queue: TQueue,
-    ) -> Self {
-        Self {
-            worker_builder: Box::new(worker_builder),
-            num_initial_workers: 1,
-            router,
-            queue,
-            discard_handler: None,
-            discard_settings: DiscardSettings::None,
-            dead_mans_switch: None,
-            capacity_controller: None,
-            lifecycle_hooks: None,
-            stats: None,
-        }
-    }
-
-    /// Build the [FactoryArguments] required to start the [Factory]
-    pub fn build(self) -> FactoryArguments<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> {
-        let Self {
-            worker_builder,
-            num_initial_workers,
-            router,
-            queue,
-            discard_handler,
-            discard_settings,
-            dead_mans_switch,
-            capacity_controller,
-            lifecycle_hooks,
-            stats,
-        } = self;
-        FactoryArguments {
-            worker_builder,
-            num_initial_workers,
-            router,
-            queue,
-            discard_handler,
-            discard_settings,
-            dead_mans_switch,
-            capacity_controller,
-            lifecycle_hooks,
-            stats,
-        }
-    }
-
-    /// Sets the the number initial workers in the factory.
-    ///
-    /// This controls the factory's initial parallelism for handling
-    /// concurrent messages.
-    pub fn with_number_of_initial_workers(self, worker_count: usize) -> Self {
-        Self {
-            num_initial_workers: worker_count,
-            ..self
-        }
-    }
-
-    /// Sets the factory's discard handler. This is a callback which
-    /// is used when a job is discarded (e.g. loadshed, timeout, shutdown, etc).
-    ///
-    /// Default is [None]
-    pub fn with_discard_handler<TDiscard: DiscardHandler<TKey, TMsg>>(
-        self,
-        discard_handler: TDiscard,
-    ) -> Self {
-        Self {
-            discard_handler: Some(Arc::new(discard_handler)),
-            ..self
-        }
-    }
-
-    /// Sets the factory's discard settings.
-    ///
-    /// This controls the maximum queue length. Any job arriving when the queue is at
-    /// its max length will cause a job at the head or tail of the queue to be dropped
-    /// (which is controlled by `discard_mode`).
-    ///
-    /// * For factories using [routing::QueuerRouting], [routing::StickyQueuerRouting] routing, these
-    ///   are applied to the factory's internal queue.
-    /// * For all other routing protocols, this applies to the worker's message queue
-    ///
-    /// Default is [DiscardSettings::None]
-    pub fn with_discard_settings(self, discard_settings: DiscardSettings) -> Self {
-        Self {
-            discard_settings,
-            ..self
-        }
-    }
-
-    /// Controls the "dead man's" switching logic on the factory.
-    ///
-    /// Periodically the factory can scan for stuck workers. If detected, the worker information
-    /// will be logged along with the current job key information.
-    ///
-    /// Optionally the worker can be killed and replaced by the factory.
-    ///
-    /// This can be used to detect and kill stuck jobs that will never compelte in a reasonable
-    /// time (e.g. haven't configured internally a job execution timeout or something).
-    pub fn with_dead_mans_switch(self, dmd: DeadMansSwitchConfiguration) -> Self {
-        Self {
-            dead_mans_switch: Some(dmd),
-            ..self
-        }
-    }
-
-    /// Set the factory's dynamic worker capacity controller.
-    ///
-    /// This, at runtime, controls the factory's capacity (i.e. number of
-    /// workers) and can adjust it up and down (bounded in `[1,1_000_000]`).
-    pub fn with_capacity_controller<TCapacity: WorkerCapacityController>(
-        self,
-        capacity_controller: TCapacity,
-    ) -> Self {
-        Self {
-            capacity_controller: Some(Box::new(capacity_controller)),
-            ..self
-        }
-    }
-
-    /// Sets the factory's lifecycle hooks implementation
-    ///
-    /// Lifecycle hooks provide access to points in the factory's lifecycle
-    /// for shutdown/startup/draining where user-defined logic can execute (and
-    /// block factory lifecycle at critical points). This means
-    /// the factory won't start accepting requests until the complete startup routine
-    /// is completed.
-    pub fn with_lifecycle_hooks<TLifecycle: FactoryLifecycleHooks<TKey, TMsg>>(
-        self,
-        lifecycle_hooks: TLifecycle,
-    ) -> Self {
-        Self {
-            lifecycle_hooks: Some(Box::new(lifecycle_hooks)),
-            ..self
-        }
-    }
-
-    /// Sets the factory's statistics collection implementation
-    ///
-    /// This can be used to aggregate various statistics about the factory's processing.
-    pub fn with_stats_collector<TStats: FactoryStatsLayer>(self, stats: TStats) -> Self {
-        Self {
-            stats: Some(Arc::new(stats)),
-            ..self
-        }
     }
 }
 
@@ -445,6 +249,13 @@ where
             .field("discard_settings", &self.discard_settings)
             .field("dead_mans_switch", &self.dead_mans_switch)
             .field("drain_state", &self.drain_state)
+            .field(
+                "has_capacity_controller",
+                &self.capacity_controller.is_some(),
+            )
+            .field("has_lifecycle_hooks", &self.lifecycle_hooks.is_some())
+            .field("has_stats", &self.stats.is_some())
+            .field("has_discard_handler", &self.discard_handler.is_some())
             .finish()
     }
 }
@@ -757,7 +568,7 @@ where
         if let Some(capacity_controller) = &mut self.capacity_controller {
             let new_capacity = capacity_controller.get_pool_size(self.pool_size).await;
             if self.pool_size != new_capacity {
-                tracing::info!("Factory worker count {}", new_capacity);
+                tracing::info!(factory = ?myself, "Factory worker count {}", new_capacity);
                 self.resize_pool(myself, new_capacity).await?;
             }
         }
@@ -893,7 +704,7 @@ where
         &self,
         myself: ActorRef<FactoryMessage<TKey, TMsg>>,
         FactoryArguments {
-            worker_builder,
+            mut worker_builder,
             num_initial_workers,
             router,
             queue,

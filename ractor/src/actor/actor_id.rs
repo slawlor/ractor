@@ -31,17 +31,26 @@ impl ActorId {
     /// Determine if this actor id is a local or remote actor
     ///
     /// Returns [true] if it is a local actor, [false] otherwise
-    pub fn is_local(&self) -> bool {
+    pub const fn is_local(&self) -> bool {
         matches!(self, ActorId::Local(_))
     }
 
     /// Retrieve the actor's PID
     ///
     /// Returns the actor's [u64] instance identifier (process id).
-    pub fn pid(&self) -> u64 {
+    pub const fn pid(&self) -> u64 {
         match self {
             ActorId::Local(pid) => *pid,
             ActorId::Remote { pid, .. } => *pid,
+        }
+    }
+
+    /// Retrieve the node id of this PID. 0 = a local actor, while
+    /// any non-zero value is the ide of the remote node running this actor
+    pub const fn node(&self) -> u64 {
+        match self {
+            ActorId::Local(_) => 0,
+            ActorId::Remote { node_id, .. } => *node_id,
         }
     }
 }

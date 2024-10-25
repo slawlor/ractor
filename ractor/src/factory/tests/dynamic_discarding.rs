@@ -97,7 +97,7 @@ struct SlowTestWorkerBuilder {
 }
 
 impl WorkerBuilder<TestWorker, ()> for SlowTestWorkerBuilder {
-    fn build(&self, wid: usize) -> (TestWorker, ()) {
+    fn build(&mut self, wid: usize) -> (TestWorker, ()) {
         (
             TestWorker {
                 counter: self.counters[wid].clone(),

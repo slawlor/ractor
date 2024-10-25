@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.12.4"
+version = "0.13.0"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -26,6 +26,7 @@ default = ["tokio_runtime", "async-trait"]
 
 [dependencies]
 ## Required dependencies
+bon = "2"
 dashmap = "6"
 futures = "0.3"
 once_cell = "1"

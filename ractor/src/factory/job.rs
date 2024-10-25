@@ -10,6 +10,8 @@ use std::panic::RefUnwindSafe;
 use std::sync::Arc;
 use std::{hash::Hash, time::SystemTime};
 
+use bon::Builder;
+
 use crate::{concurrency::Duration, Message};
 use crate::{ActorRef, RpcReplyPort};
 
@@ -109,6 +111,7 @@ impl BytesConvertable for JobOptions {
 /// Depending on the [super::Factory]'s routing scheme the
 /// [Job]'s `key` is utilized to dispatch the job to specific
 /// workers.
+#[derive(Builder)]
 pub struct Job<TKey, TMsg>
 where
     TKey: JobKey,
@@ -120,6 +123,9 @@ where
     pub msg: TMsg,
     /// The job's options, mainly related to timing
     /// information of the job
+    ///
+    /// Default = [JobOptions::default()]
+    #[builder(default = JobOptions::default())]
     pub options: JobOptions,
     /// If provided, this channel can be used to block pushes
     /// into the factory until the factory can "accept" the message
@@ -130,6 +136,8 @@ where
     /// The reply channel return [None] if the job was accepted, or
     /// [Some(`Job`)] if it was rejected & loadshed, and then the
     /// job may be retried by the caller at a later time (if desired).
+    ///
+    /// Default = [None]
     pub accepted: Option<RpcReplyPort<Option<Self>>>,
 }
 
@@ -141,6 +149,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Job")
             .field("options", &self.options)
+            .field("has_accepted", &self.accepted.is_some())
             .finish()
     }
 }
@@ -268,7 +277,10 @@ where
     TKey: JobKey,
     TMsg: Message,
 {
-    /// Determine if this job is expired
+    /// Determine if this job's TTL is expired
+    ///
+    /// Expiration only takes effect prior to the job being
+    /// started execution on a worker.
     pub fn is_expired(&self) -> bool {
         if let Some(ttl) = self.options.ttl {
             self.options.submit_time.elapsed().unwrap() > ttl
@@ -277,7 +289,7 @@ where
         }
     }
 
-    /// Set the time the factor received the job
+    /// Set the time the factory received the job
     pub(crate) fn set_factory_time(&mut self) {
         self.options.factory_time = SystemTime::now();
     }
@@ -287,14 +299,15 @@ where
         self.options.worker_time = SystemTime::now();
     }
 
-    /// Accept the job (telling the submitter that the job was accepted and enqueued to the factory)
+    /// Accept the job (if needed, telling the submitter that the job
+    /// was accepted and enqueued to the factory)
     pub(crate) fn accept(&mut self) {
         if let Some(port) = self.accepted.take() {
             let _ = port.send(None);
         }
     }
 
-    /// Reject the job. Consumes the job and returns it to the caller under backpressure scenarios.
+    /// Reject the job. Consumes the job and returns it to the caller (if needed).
     pub(crate) fn reject(mut self) {
         if let Some(port) = self.accepted.take() {
             let _ = port.send(Some(self));

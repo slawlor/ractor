@@ -201,11 +201,24 @@ pub struct ActorCell {
 
 impl std::fmt::Debug for ActorCell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(name) = self.get_name() {
-            write!(f, "Actor '{}' (id: {})", name, self.get_id())
-        } else {
-            write!(f, "Actor with id: {}", self.get_id())
-        }
+        f.debug_struct("Actor")
+            .field("name", &self.get_name())
+            .field("id", &self.get_id())
+            .finish()
+    }
+}
+
+impl PartialEq for ActorCell {
+    fn eq(&self, other: &Self) -> bool {
+        other.get_id() == self.get_id()
+    }
+}
+
+impl Eq for ActorCell {}
+
+impl std::hash::Hash for ActorCell {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.get_id().hash(state)
     }
 }
 
