@@ -17,7 +17,6 @@
 //! for binary serialization + deserialization. The "remote" actor will simply encode your message type and send it
 //! over the wire for you
 //!
-//!
 //! (Future) When nodes connect, they identify all of the nodes the remote node is also connected to and additionally connect
 //! to them as well.
 //!
