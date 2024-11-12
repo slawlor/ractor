@@ -9,7 +9,7 @@
 //! so it works more or less like an Erlang `atom()`
 //!
 //! Actors are automatically registered into the global registry, if they
-//! provide a name, upon construction.Actors are also
+//! provide a name, upon construction. Actors are also
 //! automatically unenrolled from the registry upon being dropped, therefore freeing
 //! the name for subsequent registration.
 //!
