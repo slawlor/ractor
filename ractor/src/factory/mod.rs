@@ -7,7 +7,7 @@
 //!
 //! A factory is a manager of a pool of workers on the same node. This
 //! is helpful for job dispatch and load balancing when single-threaded execution
-//! of a since [crate::Actor] may not be sufficient. Factories have a set "Job" syntax
+//! of a single [crate::Actor] may not be sufficient. Factories have a set "Job" syntax
 //! which denotes a key and message payload for each action. Workers are effectively mindless
 //! agents of the factory's will.
 //!
