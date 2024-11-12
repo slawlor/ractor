@@ -300,7 +300,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         Ok(())
     }
 
-    /// Handle the incoming supervision event. Unhandled panicks will captured and
+    /// Handle the incoming supervision event. Unhandled panics will captured and
     /// sent the the supervisor(s). The default supervision behavior is to exit the
     /// supervisor on any child exit. To override this behavior, implement this function.
     ///
@@ -326,7 +326,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
             Ok(())
         }
     }
-    /// Handle the incoming supervision event. Unhandled panicks will captured and
+    /// Handle the incoming supervision event. Unhandled panics will captured and
     /// sent the the supervisor(s). The default supervision behavior is to exit the
     /// supervisor on any child exit. To override this behavior, implement this function.
     ///
