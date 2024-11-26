@@ -89,7 +89,14 @@ impl SupervisionTree {
             let ltimeout = timeout;
             js.spawn(async move { cell.stop_and_wait(lreason, ltimeout).await });
         }
-        _ = js.join_all().await;
+        // drain the tasks
+        while let Some(res) = js.join_next().await {
+            match res {
+                Err(err) if err.is_panic() => std::panic::resume_unwind(err.into_panic()),
+                Err(err) => panic!("{err}"),
+                _ => {}
+            }
+        }
     }
 
     /// Drain all the linked children, but does NOT unlink them
@@ -103,7 +110,14 @@ impl SupervisionTree {
             let ltimeout = timeout;
             js.spawn(async move { cell.drain_and_wait(ltimeout).await });
         }
-        _ = js.join_all().await;
+        // drain the tasks
+        while let Some(res) = js.join_next().await {
+            match res {
+                Err(err) if err.is_panic() => std::panic::resume_unwind(err.into_panic()),
+                Err(err) => panic!("{err}"),
+                _ => {}
+            }
+        }
     }
 
     /// Determine if the specified actor is a parent of this actor
