@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.13.0"
+version = "0.13.1"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -36,7 +36,7 @@ strum = { version = "0.26", features = ["derive"] }
 # Tracing feature requires --cfg=tokio_unstable
 async-std = { version = "1", features = ["attributes"], optional = true }
 async-trait = { version = "0.1", optional = true }
-tokio = { version = "1.40", features = ["sync"] }
+tokio = { version = "1.30", features = ["sync"] }
 tracing = { version = "0.1", features = ["attributes"] }
 
 ## Blanket Serde
@@ -50,7 +50,7 @@ function_name = "0.3"
 paste = "1"
 serial_test = "3.0.0"
 rand = "0.8"
-tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "tracing"] }
+tokio = { version = "1.30", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "tracing"] }
 tracing-glog = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"]}
 tracing-test = "0.2"
