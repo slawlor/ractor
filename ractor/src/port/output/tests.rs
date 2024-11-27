@@ -206,7 +206,7 @@ async fn test_delivery() {
                 .await
                 .expect("Failed to start test actor")
         }))
-            .await;
+        .await;
 
     let mut actor_refs = vec![];
     let mut actor_handles = vec![];
@@ -234,7 +234,6 @@ async fn test_delivery() {
         .expect("Test actor failed in exit")
         .unwrap();
 }
-
 
 #[allow(unused_imports)]
 use output_port_subscriber_tests::*;
