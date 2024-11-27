@@ -100,19 +100,6 @@ where
     }
 }
 
-impl<TMsg> Drop for OutputPort<TMsg>
-where
-    TMsg: OutputMessage,
-{
-    fn drop(&mut self) {
-        let mut subs = self.subscriptions.write().unwrap();
-        for sub in subs.iter_mut() {
-            sub.stop();
-        }
-        subs.clear();
-    }
-}
-
 // ============== Subscription implementation ============== //
 
 /// The output port's subscription handle. It holds a handle to a [JoinHandle]
@@ -126,11 +113,6 @@ impl OutputPortSubscription {
     /// Determine if the subscription is dead
     pub(crate) fn is_dead(&self) -> bool {
         self.handle.is_finished()
-    }
-
-    /// Stop the subscription, by aborting the underlying [JoinHandle]
-    pub(crate) fn stop(&mut self) {
-        self.handle.abort();
     }
 
     /// Create a new subscription
