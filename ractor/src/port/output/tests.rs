@@ -158,6 +158,83 @@ async fn test_50_receivers() {
         .unwrap();
 }
 
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_delivery() {
+    struct TestActor;
+    enum TestActorMessage {
+        Stop,
+    }
+    #[cfg(feature = "cluster")]
+    impl crate::Message for TestActorMessage {}
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = TestActorMessage;
+        type Arguments = ();
+        type State = u8;
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(0u8)
+        }
+
+        async fn handle(
+            &self,
+            myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            println!("Test actor received a message");
+            match message {
+                Self::Msg::Stop => {
+                    if *state > 3 {
+                        myself.stop(None);
+                    }
+                }
+            }
+            *state += 1;
+            Ok(())
+        }
+    }
+
+    let handles: Vec<(ActorRef<TestActorMessage>, JoinHandle<()>)> =
+        join_all((0..50).map(|_| async move {
+            Actor::spawn(None, TestActor, ())
+                .await
+                .expect("Failed to start test actor")
+        }))
+        .await;
+
+    let mut actor_refs = vec![];
+    let mut actor_handles = vec![];
+    for item in handles.into_iter() {
+        let (a, b) = item;
+        actor_refs.push(a);
+        actor_handles.push(b);
+    }
+
+    let output = OutputPort::<()>::default();
+    for actor in actor_refs.into_iter() {
+        output.subscribe(actor, |_| Some(TestActorMessage::Stop));
+    }
+
+    let all_handle = crate::concurrency::spawn(async move { join_all(actor_handles).await });
+
+    // send 4 sends, should exit
+    for _ in 0..5 {
+        output.send(());
+    }
+    drop(output);
+
+    timeout(Duration::from_millis(100), all_handle)
+        .await
+        .expect("Test actor failed in exit")
+        .unwrap();
+}
+
 #[allow(unused_imports)]
 use output_port_subscriber_tests::*;
 
