@@ -6,8 +6,8 @@ main:
   - title: "FAQ"
     url: "/faq/"
 
-  # - title: "Factories"
-  #   url: "/factories/"
+  - title: "Factories"
+    url: "/factories/"
 
   - title: "About"
     url: /about/
