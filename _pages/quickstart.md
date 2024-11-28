@@ -22,7 +22,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies
 
 ```toml
 [dependencies]
-ractor = "0.9"
+ractor = "0.13"
 ```
 
 ## Your first actor
