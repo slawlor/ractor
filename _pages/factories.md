@@ -10,7 +10,7 @@ author_profile: false
 
 A single actor is effectively a single processing loop which can handle 1 message at a time. If it's internal logic takes some time (blocking or not), other messages are not processed and may queue up.
 
-A factory is a collection of actions, with a common supervisor and request router. The actor children are called "workers". The notion of factories (and their higher-order organization, called "industries") were introduced by WhatsApp for Erlang [in this talk](https://www.youtube.com/watch?v=c12cYAUTXXs).
+A factory is a collection of actors ("workers"), with a common supervisor and request routing actor (the "factory"). The notion of factories (and their higher-order organization, called "industries") were introduced by WhatsApp for Erlang OTP [in this talk](https://www.youtube.com/watch?v=c12cYAUTXXs).
 
 You can think of a factory as having the following traits
 
@@ -52,6 +52,33 @@ let factory_args = FactoryArguments::builder()
 The factory itself is an actor, so you just spawn it to start it! The factory will guarantee that all workers are started, and the lifecycle hooks have run any startup requirements prior to dispatching traffic to workers.
 
 A full example is in the docs for ractor available [here](https://docs.rs/ractor/latest/ractor/factory/index.html#example-factory).
+
+### Factory requests
+
+[docs](https://docs.rs/ractor/latest/ractor/factory/enum.FactoryMessage.html)
+
+Requests to a factory have a specific structured, named `FactoryMessage`. It is the API with which to interface with the factory in all respects. Some are internal functions mainly intended for workers to communicate back to the factory, but most of the API is available externally.
+
+```rust
+pub enum FactoryMessage<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    Dispatch(Job<TKey, TMsg>),
+    Finished(WorkerId, TKey),
+    DoPings(Instant),
+    Calculate,
+    WorkerPong(WorkerId, Duration),
+    IdentifyStuckWorkers,
+    GetQueueDepth(RpcReplyPort<usize>),
+    AdjustWorkerPool(usize),
+    GetAvailableCapacity(RpcReplyPort<usize>),
+    GetNumActiveWorkers(RpcReplyPort<usize>),
+    DrainRequests,
+}
+```
+
 
 ## What's provided out of the box?
 
@@ -116,10 +143,52 @@ ractor::factory::lifecycle::FactoryLifecycleHooks
 
 If a worker gets "stuck" you might want to have the factory kill the worker (and the in-flight work), restart it (giving you your capacity back), and handle other jobs. This is possible with a `DeadMansSwitchConfiguration` on the factory. Basically you give an amount of time the worker needs to be "stuck" for and tell the factory if it should kill identified workers, if not kill, then a message is logged.
 
-## Topics to come
+## Worker Setup
 
-The following are possible, but not yet documented. We plan to add more as time allows.
+In order to have a factory, you need to define a worker. A worker is wholely owned by the factory, and isn't exposed externally via the traditional API. This is because their lifecycle is completely managed by the factory, and they can be killed, terminated, restarted at any point for any reason.
 
-1. Worker setup
-2. Writing your own router & queue
-3. Dynamic factories (dynamic worker count, dynamic queue depth, etc). This is so you can scale the factory safely based on system load if you want.
+If a worker fails internally (panic or unhandled error), it will exit, notify its supervisor (the factory) who is responsible for recreating a fresh worker at the same worker id and routing future messages to it.
+
+The factory can only do a single operation at a time, which can either be routing a user message (`FactoryMessage`) or handlinging a `SupervisionEvent`, or logging metrics, etc. This means that it's imposible to have race conditions between message handling and worker management. This is an added safety benefit that even in high-throughput use-cases scales well.
+
+### Worker Definition
+
+A worker is just an actor, with predefined message and startup argument types. Any actor which follows this template can be made into a factory's worker. Each request to a factory is in the form of a `Job` which has a key and a message payload (along with some other fields). The key influences message routing, and the message is never cloned, just moved, so can be of a large payload size.
+
+Each worker must have a message type of
+
+```rust
+pub enum WorkerMessage<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    FactoryPing(Instant),
+    Dispatch(Job<TKey, TMsg>),
+}
+```
+
+where the worker should ASAP reply to the factory's ping with a `FactoryMessage::WorkerPong` and this is used in timing and measurements.
+
+Additionally after processing the job, the worker should reply to the factory with a `FactoryMessage::Finished` along with the job key, which helps the factory manage the processing state of the workers.
+
+[docs](https://docs.rs/ractor/latest/ractor/factory/worker/enum.WorkerMessage.html)
+
+### Worker startup
+
+[docs](https://docs.rs/ractor/latest/ractor/factory/worker/struct.WorkerStartContext.html)
+
+When a worker starts, it will receive a `WorkerStartContext` which contains a
+
+1. Handle to the owning factory (`ActorRef<FactoryMessage<TKey, TJob>>`)
+2. Id of the worker
+3. A custom struct, which can be provided by the user, containing whatever data is necessary to construct the worker.
+
+Workers instances and startup contexts are instantiated by a `WorkerBuidler` [docs](https://docs.rs/ractor/latest/ractor/factory/worker/trait.WorkerBuilder.html) which the factory utilizes to create workers when needed. The factory will assign the worker id and it should emit a worker instance along with the startup arguments needed. The factory will handle spawning the worker actor instance.
+
+## Advanced Topics (WIP)
+
+The following are more advanced topics related to factories. They aren't generally your common use-cases and outline extension points in the factory framework for more flexible usages.
+
+1. Writing your own router & queue
+2. Dynamic factories (dynamic worker count, dynamic queue depth, etc). This is so you can scale the factory safely based on system load if you want.
