@@ -541,6 +541,14 @@ impl ActorCell {
         self.inner.tree.stop_all_children(reason);
     }
 
+    /// Tries to retrieve this actor's supervisor. 
+    /// 
+    /// Returns [None] if this actor has no supervisor at the given instance or 
+    /// [Some(ActorCell)] supervisor if one is configured.
+    pub fn try_get_superivisor(&self) -> Option<ActorCell> {
+        self.inner.tree.try_get_supervisor()
+    }
+
     /// Stop any children of this actor, and wait for their collective exit, optionally
     /// threading the optional reason to all children
     ///

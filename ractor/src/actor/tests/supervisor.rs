@@ -97,6 +97,10 @@ async fn test_supervision_panic_in_post_startup() {
         .await
         .expect("Child panicked on startup");
 
+    let maybe_sup = child_ref.try_get_superivisor();
+    assert!(maybe_sup.is_some());
+    assert_eq!(maybe_sup.map(|a| a.get_id()), Some(supervisor_ref.get_id()));
+
     let (_, _) = tokio::join!(s_handle, c_handle);
 
     assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::Relaxed));

@@ -48,6 +48,11 @@ impl SupervisionTree {
         *(self.supervisor.lock().unwrap()) = None;
     }
 
+    /// Try and retrieve the set supervisor
+    pub(crate) fn try_get_supervisor(&self) -> Option<ActorCell> {
+        self.supervisor.lock().unwrap().clone()
+    }
+
     /// Terminate all your supervised children and unlink them
     /// from the supervision tree since the supervisor is shutting down
     /// and can't deal with superivison events anyways
