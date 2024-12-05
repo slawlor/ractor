@@ -12,6 +12,7 @@ use crate::concurrency::sleep;
 use crate::concurrency::Duration;
 use crate::concurrency::Instant;
 
+/// Periodic check for condition
 pub async fn periodic_check<F>(check: F, timeout: Duration)
 where
     F: Fn() -> bool,
@@ -28,6 +29,7 @@ where
     assert!(check(), "Periodic check failed.\n{:?}", backtrace);
 }
 
+/// Periodic check of Future for condition
 pub async fn periodic_async_check<F, Fut>(check: F, timeout: Duration)
 where
     F: Fn() -> Fut,

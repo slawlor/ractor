@@ -15,7 +15,8 @@ build = "src/build.rs"
 rust-version = "1.64"
 
 [build-dependencies]
-protobuf-src = "2"
+# protobuf-src = "2"
+protoc-bin-vendored = "3"
 prost-build = { version = "0.13" }
 
 [dependencies]

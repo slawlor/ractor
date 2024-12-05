@@ -278,7 +278,6 @@ impl OutputPortSubscription {
 ///     subscriber_actor_handle.await.unwrap();
 /// }
 /// ```
-
 pub type OutputPortSubscriber<InputMessage> = Box<dyn OutputPortSubscriberTrait<InputMessage>>;
 /// A trait for subscribing to an [OutputPort]
 pub trait OutputPortSubscriberTrait<I>: Send
