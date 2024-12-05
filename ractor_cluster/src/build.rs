@@ -12,7 +12,8 @@ const PROTOBUF_BASE_DIRECTORY: &str = "src/protocol";
 const PROTOBUF_FILES: [&str; 4] = ["meta", "node", "auth", "control"];
 
 fn build_protobufs() {
-    std::env::set_var("PROTOC", protobuf_src::protoc());
+    let path = protoc_bin_vendored::protoc_bin_path().expect("Failed to find protoc installation");
+    std::env::set_var("PROTOC", path);
 
     let mut protobuf_files = Vec::with_capacity(PROTOBUF_FILES.len());
 

@@ -1,6 +1,11 @@
-# Encryption Certificates
+# Rustls Test CA
 
-This folder is copied as-is from `rustls`'s public github repository. Full attribution is to their
-codebase and we give no guarantee on these certificates. They're for testing utilization only
+This directory contains various test certificate authorities, intermediates,
+end-entity, and client certificates that are used by Rustls integration tests.
 
-https://github.com/rustls/rustls
+You can regenerate the data in this directory by running the
+`rustls/examples/internal/test_ca.rs` tool:
+
+```bash
+cargo run -p rustls --example test_ca
+```

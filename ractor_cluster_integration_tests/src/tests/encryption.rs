@@ -9,14 +9,14 @@
 
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Args;
 use ractor::concurrency::{sleep, Duration, Instant};
-use ractor::Actor;
-use rustls_pemfile::{certs, rsa_private_keys};
+use ractor::{Actor, ActorProcessingErr};
+use tokio_rustls::rustls::pki_types::pem::PemObject;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, TrustAnchor};
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
@@ -33,35 +33,14 @@ pub struct EncryptionConfig {
     client_host: Option<String>,
 }
 
-fn load_certs(path_str: &'static str) -> io::Result<Vec<CertificateDer>> {
-    let path = PathBuf::from(path_str);
-    let certs: Vec<_> = certs(&mut BufReader::new(File::open(path)?))
-        .filter_map(|cert| if let Ok(c) = cert { Some(c) } else { None })
-        .collect();
-
-    if certs.is_empty() {
-        Err(io::Error::new(io::ErrorKind::InvalidData, "invalid cert"))
-    } else {
-        Ok(certs)
-    }
+#[allow(elided_named_lifetimes)]
+fn load_certs(path_str: &'static str) -> Result<Vec<CertificateDer>, ActorProcessingErr> {
+    Ok(CertificateDer::pem_file_iter(path_str)?.collect::<Result<Vec<_>, _>>()?)
 }
 
-fn load_keys(path_str: &'static str) -> io::Result<Vec<PrivateKeyDer>> {
-    let path = PathBuf::from(path_str);
-    let keys: Vec<PrivateKeyDer> = rsa_private_keys(&mut BufReader::new(File::open(path)?))
-        .filter_map(|key| {
-            if let Ok(k) = key {
-                Some(k.into())
-            } else {
-                None
-            }
-        })
-        .collect();
-    if keys.is_empty() {
-        Err(io::Error::new(io::ErrorKind::InvalidData, "invalid key"))
-    } else {
-        Ok(keys)
-    }
+#[allow(elided_named_lifetimes)]
+fn load_key(path_str: &'static str) -> Result<PrivateKeyDer, ActorProcessingErr> {
+    Ok(PrivateKeyDer::from_pem_file(path_str)?)
 }
 
 pub async fn test(config: EncryptionConfig) -> i32 {
@@ -72,20 +51,20 @@ pub async fn test(config: EncryptionConfig) -> i32 {
     // Example `rustls` command: cargo run --bin tlsserver-mio -- --certs test-ca/rsa/end.fullchain --key test-ca/rsa/end.rsa -p 8443 echo
     //
     // combined with source code: https://github.com/tokio-rs/tls/blob/357bc562483dcf04c1f8d08bd1a831b144bf7d4c/tokio-rustls/examples/server/src/main.rs
-    let cert_path = "test-ca/rsa/end.fullchain";
-    let key_path = "test-ca/rsa/end.rsa";
+    let cert_path = "test-ca/rsa-2048/end.fullchain";
+    let key_path = "test-ca/rsa-2048/end.key";
     let certs = load_certs(cert_path).expect("Failed to load encryption certificates");
-    let mut keys = load_keys(key_path).expect("Failed to load encryption keys");
+    let key = load_key(key_path).expect("Failed to load encryption keys");
 
     let server_config = tokio_rustls::rustls::ServerConfig::builder()
         .with_no_client_auth()
-        .with_single_cert(certs, keys.remove(0))
+        .with_single_cert(certs, key)
         .expect("Failed to build server configuration");
     let acceptor = TlsAcceptor::from(Arc::new(server_config));
 
     // ================== Client TLS Configuration ================== //
 
-    let ca_path = PathBuf::from("test-ca/rsa/ca.cert");
+    let ca_path = PathBuf::from("test-ca/rsa-2048/ca.cert");
     let mut ca_pem = BufReader::new(File::open(ca_path).expect("Failed to load CA certificate"));
     let ca_certs = rustls_pemfile::certs(&mut ca_pem).filter_map(|cert| {
         if let Ok(c) = cert {

@@ -225,6 +225,9 @@ where
     dead_mans_switch: Option<DeadMansSwitchConfiguration>,
     capacity_controller: Option<Box<dyn WorkerCapacityController>>,
     lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
+    // Local counter to avoid having to sum over the worker states for more performant metrics capturing
+    // in large worker-count factories
+    processing_messages: usize,
 }
 
 impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> Debug
@@ -301,6 +304,7 @@ where
         if let Some(worker) = self.pool.get_mut(&worker_hint).filter(|f| f.is_available()) {
             if let Some(mut job) = self.queue.pop_front() {
                 job.accept();
+                self.processing_messages += 1;
                 worker.enqueue_job(job)?;
             }
         } else {
@@ -315,6 +319,7 @@ where
                 .and_then(|wid| self.pool.get_mut(&wid));
             if let (Some(mut job), Some(worker)) = (self.queue.pop_front(), target_worker) {
                 job.accept();
+                self.processing_messages += 1;
                 worker.enqueue_job(job)?;
             }
         }
@@ -505,6 +510,9 @@ where
             {
                 // workers are busy, we need to queue a job
                 self.maybe_enqueue(busy_job);
+            } else {
+                // message was routed
+                self.processing_messages += 1;
             }
         } else {
             tracing::debug!("Factory is draining but a job was received");
@@ -517,6 +525,10 @@ where
     }
 
     fn worker_finished_job(&mut self, who: WorkerId, key: TKey) -> Result<(), ActorProcessingErr> {
+        if self.processing_messages > 0 {
+            self.processing_messages -= 1;
+        }
+
         let (is_worker_draining, should_drop_worker) = if let Some(worker) = self.pool.get_mut(&who)
         {
             if let Some(job_options) = worker.worker_complete(key)? {
@@ -573,12 +585,12 @@ where
             }
         }
 
+        let qlen = self.queue.len();
+        self.stats.record_queue_depth(&self.factory_name, qlen);
         self.stats
-            .record_queue_depth(&self.factory_name, self.queue.len());
-        self.stats.record_processing_messages_count(
-            &self.factory_name,
-            self.pool.values().filter(|f| f.is_working()).count(),
-        );
+            .record_processing_messages_count(&self.factory_name, self.processing_messages);
+        self.stats
+            .record_in_flight_messages_count(&self.factory_name, self.processing_messages + qlen);
         self.stats
             .record_worker_count(&self.factory_name, self.pool_size);
 
@@ -778,6 +790,7 @@ where
             queue,
             router,
             stats,
+            processing_messages: 0,
         })
     }
 

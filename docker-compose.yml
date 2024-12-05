@@ -1,4 +1,4 @@
-version: '3.3'
+
 services:
   node-a:
     container_name: "node-a"

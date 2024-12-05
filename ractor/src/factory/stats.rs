@@ -51,6 +51,12 @@ pub trait FactoryStatsLayer: Send + Sync + 'static {
     /// Fixed-period recording of the factory's number of processed messages
     fn record_processing_messages_count(&self, factory: &str, count: usize);
 
+    /// Fixed-period recording of the factory's in-flight message count (processing + queued)
+    ///
+    /// Default empty implemention for backwards compatibility
+    #[allow(unused_variables)]
+    fn record_in_flight_messages_count(&self, factory: &str, count: usize) {}
+
     /// Fixed-period recording of the factory's number of workers
     fn record_worker_count(&self, factory: &str, count: usize);
 
@@ -126,6 +132,13 @@ impl FactoryStatsLayer for Option<Arc<dyn FactoryStatsLayer>> {
     fn record_processing_messages_count(&self, factory: &str, count: usize) {
         if let Some(s) = self {
             s.record_processing_messages_count(factory, count);
+        }
+    }
+
+    /// Fixed-period recording of the factory's in-flight message count (processing + queued)
+    fn record_in_flight_messages_count(&self, factory: &str, count: usize) {
+        if let Some(s) = self {
+            s.record_in_flight_messages_count(factory, count);
         }
     }
 

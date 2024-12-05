@@ -14,6 +14,7 @@
 #[macro_export]
 macro_rules! derive_serialization_for_prost_type {
     {$ty:ty} => {
+        #[allow(non_local_definitions)]
         impl $crate::BytesConvertable for $ty {
             fn into_bytes(self) -> Vec<u8> {
                 <Self as prost::Message>::encode_length_delimited_to_vec(&self)
