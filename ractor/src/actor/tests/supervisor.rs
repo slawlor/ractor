@@ -97,7 +97,7 @@ async fn test_supervision_panic_in_post_startup() {
         .await
         .expect("Child panicked on startup");
 
-    let maybe_sup = child_ref.try_get_superivisor();
+    let maybe_sup = child_ref.try_get_supervisor();
     assert!(maybe_sup.is_some());
     assert_eq!(maybe_sup.map(|a| a.get_id()), Some(supervisor_ref.get_id()));
 

@@ -545,7 +545,7 @@ impl ActorCell {
     ///
     /// Returns [None] if this actor has no supervisor at the given instance or
     /// [Some(ActorCell)] supervisor if one is configured.
-    pub fn try_get_superivisor(&self) -> Option<ActorCell> {
+    pub fn try_get_supervisor(&self) -> Option<ActorCell> {
         self.inner.tree.try_get_supervisor()
     }
 
