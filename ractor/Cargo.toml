@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.13.4"
+version = "0.13.5"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -19,10 +19,11 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 [features]
 ### Other features
 cluster = []
+message_span_propogation = []
 tokio_runtime = ["tokio/time", "tokio/rt", "tokio/macros", "tokio/tracing"]
 blanket_serde = ["serde", "pot", "cluster"]
 
-default = ["tokio_runtime", "async-trait"]
+default = ["tokio_runtime", "async-trait", "message_span_propogation"]
 
 [dependencies]
 ## Required dependencies

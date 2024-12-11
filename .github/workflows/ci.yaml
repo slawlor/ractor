@@ -17,6 +17,9 @@ jobs:
           - name: Run the default tests
             package: ractor
             # flags: 
+          - name: Test ractor without span propogation
+            package: ractor
+            flags: --no-default-features -F tokio_runtime,async-trait
           - name: Test ractor with the `cluster` feature
             package: ractor
             flags: -F cluster
