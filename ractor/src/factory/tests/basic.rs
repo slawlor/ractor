@@ -55,14 +55,16 @@ struct TestWorker {
 }
 
 #[cfg_attr(feature = "async-trait", crate::async_trait)]
-impl Actor for TestWorker {
-    type Msg = WorkerMessage<TestKey, TestMessage>;
-    type State = Self::Arguments;
-    type Arguments = WorkerStartContext<TestKey, TestMessage, ()>;
+impl Worker for TestWorker {
+    type Key = TestKey;
+    type Message = TestMessage;
+    type State = ();
+    type Arguments = ();
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self::Msg>,
+        _wid: WorkerId,
+        _factory: &ActorRef<FactoryMessage<TestKey, TestMessage>>,
         startup_context: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(startup_context)
@@ -70,32 +72,20 @@ impl Actor for TestWorker {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Self::Msg,
-        state: &mut Self::State,
-    ) -> Result<(), ActorProcessingErr> {
-        match message {
-            WorkerMessage::FactoryPing(time) => {
-                state
-                    .factory
-                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
-            }
-            WorkerMessage::Dispatch(job) => {
-                tracing::debug!("Worker received {:?}", job.msg);
+        _wid: WorkerId,
+        _factory: &ActorRef<FactoryMessage<TestKey, TestMessage>>,
+        Job { msg, key, .. }: Job<Self::Key, Self::Message>,
+        _state: &mut Self::State,
+    ) -> Result<TestKey, ActorProcessingErr> {
+        tracing::debug!("Worker received {:?}", msg);
 
-                self.counter.fetch_add(1, Ordering::Relaxed);
+        self.counter.fetch_add(1, Ordering::Relaxed);
 
-                if let Some(timeout_ms) = self.slow {
-                    crate::concurrency::sleep(Duration::from_millis(timeout_ms)).await;
-                }
-
-                // job finished, on success or err we report back to the factory
-                state
-                    .factory
-                    .cast(FactoryMessage::Finished(state.wid, job.key))?;
-            }
+        if let Some(timeout_ms) = self.slow {
+            crate::concurrency::sleep(Duration::from_millis(timeout_ms)).await;
         }
-        Ok(())
+
+        Ok(key)
     }
 }
 

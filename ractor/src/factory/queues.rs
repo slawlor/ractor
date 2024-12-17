@@ -423,10 +423,7 @@ mod tests {
             key: 99,
             accepted: None,
             msg: (),
-            options: JobOptions {
-                ttl: Some(Duration::from_millis(1)),
-                ..Default::default()
-            },
+            options: JobOptions::new(Some(Duration::from_millis(1))),
         });
 
         let oldest = queue.discard_oldest();
@@ -480,10 +477,7 @@ mod tests {
             key: 99,
             accepted: None,
             msg: (),
-            options: JobOptions {
-                ttl: Some(Duration::from_millis(1)),
-                ..Default::default()
-            },
+            options: JobOptions::new(Some(Duration::from_millis(1))),
         });
 
         // should discard lowest pri first

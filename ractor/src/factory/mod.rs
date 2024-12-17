@@ -66,53 +66,38 @@
 //! /// the business logic for each message that will be done in parallel.
 //! struct ExampleWorker;
 //! #[cfg_attr(feature = "async-trait", ractor::async_trait)]
-//! impl Actor for ExampleWorker {
-//!     type Msg = WorkerMessage<(), ExampleMessage>;
-//!     type State = WorkerStartContext<(), ExampleMessage, ()>;
-//!     type Arguments = WorkerStartContext<(), ExampleMessage, ()>;
+//! impl Worker for ExampleWorker {
+//!     type Key = ();
+//!     type Message = ExampleMessage;
+//!     type State = ();
+//!     type Arguments = ();
 //!     async fn pre_start(
 //!         &self,
-//!         _myself: ActorRef<Self::Msg>,
+//!         wid: WorkerId,
+//!         factory: &ActorRef<FactoryMessage<(), ExampleMessage>>,
 //!         startup_context: Self::Arguments,
 //!     ) -> Result<Self::State, ActorProcessingErr> {
 //!         Ok(startup_context)
 //!     }
 //!     async fn handle(
 //!         &self,
-//!         _myself: ActorRef<Self::Msg>,
-//!         message: Self::Msg,
-//!         state: &mut Self::State,
+//!         wid: WorkerId,
+//!         factory: &ActorRef<FactoryMessage<(), ExampleMessage>>,
+//!         Job {msg, key, ..}: Job<(), ExampleMessage>,
+//!         _state: &mut Self::State,
 //!     ) -> Result<(), ActorProcessingErr> {
-//!         match message {
-//!             WorkerMessage::FactoryPing(time) => {
-//!                 // This is a message which all factory workers **must**
-//!                 // adhere to. It is a background processing message from the
-//!                 // factory which is used for (a) metrics and (b) detecting
-//!                 // stuck workers, i.e. workers which aren't making progress
-//!                 // processing their messages
-//!                 state
-//!                     .factory
-//!                     .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
+//!         // Actual business logic that we want to parallelize
+//!         tracing::trace!("Worker {} received {:?}", wid, msg);
+//!         match msg {
+//!             ExampleMessage::PrintValue(value) => {
+//!                 tracing::info!("Worker {} printing value {value}", wid);
 //!             }
-//!             WorkerMessage::Dispatch(job) => {
-//!                 // Actual business logic that we want to parallelize
-//!                 tracing::trace!("Worker {} received {:?}", state.wid, job.msg);
-//!                 match job.msg {
-//!                     ExampleMessage::PrintValue(value) => {
-//!                         tracing::info!("Worker {} printing value {value}", state.wid);
-//!                     }
-//!                     ExampleMessage::EchoValue(value, reply) => {
-//!                         tracing::info!("Worker {} echoing value {value}", state.wid);
-//!                         let _ = reply.send(value);
-//!                     }
-//!                 }
-//!                 // job finished, on success or err we report back to the factory
-//!                 state
-//!                     .factory
-//!                     .cast(FactoryMessage::Finished(state.wid, job.key))?;
+//!             ExampleMessage::EchoValue(value, reply) => {
+//!                 tracing::info!("Worker {} echoing value {value}", wid);
+//!                 let _ = reply.send(value);
 //!             }
 //!         }
-//!         Ok(())
+//!         Ok(key)
 //!     }
 //! }
 //! /// Used by the factory to build new [ExampleWorker]s.
@@ -200,7 +185,7 @@ pub use factoryimpl::{Factory, FactoryArguments, FactoryArgumentsBuilder};
 pub use job::{Job, JobKey, JobOptions, MessageRetryStrategy, RetriableMessage};
 pub use lifecycle::FactoryLifecycleHooks;
 pub use worker::{
-    DeadMansSwitchConfiguration, WorkerBuilder, WorkerCapacityController, WorkerMessage,
+    DeadMansSwitchConfiguration, Worker, WorkerBuilder, WorkerCapacityController, WorkerMessage,
     WorkerProperties, WorkerStartContext,
 };
 

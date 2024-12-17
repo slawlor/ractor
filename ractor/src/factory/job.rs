@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::{hash::Hash, time::SystemTime};
 
 use bon::Builder;
+use tracing::Span;
 
 use crate::{concurrency::Duration, Message};
 use crate::{ActorRef, RpcReplyPort};
@@ -40,26 +41,90 @@ pub trait JobKey: Debug + Hash + Send + Sync + Clone + Eq + PartialEq + 'static 
 impl<T: Debug + Hash + Send + Sync + Clone + Eq + PartialEq + 'static> JobKey for T {}
 
 /// Represents options for the specified job
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct JobOptions {
     /// Time job was submitted from the client
-    pub submit_time: SystemTime,
+    submit_time: SystemTime,
     /// Time job was processed by the factory
-    pub factory_time: SystemTime,
+    factory_time: SystemTime,
     /// Time job was sent to a worker
-    pub worker_time: SystemTime,
+    worker_time: SystemTime,
     /// Time-to-live for the job
-    pub ttl: Option<Duration>,
+    ttl: Option<Duration>,
+    /// The parent span we want to propagate to the worker.
+    /// Spans don't propagate over the wire in networks
+    span: Option<Span>,
 }
 
-impl Default for JobOptions {
-    fn default() -> Self {
+impl JobOptions {
+    /// Create a new [JobOptions] instance, optionally supplying the ttl for the job
+    ///
+    /// * `ttl` - The Time-to-live specification for this job, which is the maximum amount
+    ///   of time the job can remain in the factory's (or worker's) queue before being expired
+    ///   and discarded
+    ///
+    /// Returns a new [JobOptions] instance.
+    pub fn new(ttl: Option<Duration>) -> Self {
+        let span = {
+            #[cfg(feature = "message_span_propogation")]
+            {
+                Some(Span::current())
+            }
+            #[cfg(not(feature = "message_span_propogation"))]
+            {
+                None
+            }
+        };
         Self {
             submit_time: SystemTime::now(),
             factory_time: SystemTime::now(),
             worker_time: SystemTime::now(),
-            ttl: None,
+            ttl,
+            span,
         }
+    }
+
+    /// Retrieve the TTL for this job
+    pub fn ttl(&self) -> Option<Duration> {
+        self.ttl
+    }
+
+    /// Set the TTL for this job
+    pub fn set_ttl(&mut self, ttl: Option<Duration>) {
+        self.ttl = ttl;
+    }
+
+    /// Time the job was submitted to the factory
+    /// (i.e. the time `cast` was called)
+    pub fn submit_time(&self) -> SystemTime {
+        self.submit_time
+    }
+
+    /// Time the job was dispatched to a worker
+    pub fn worker_time(&self) -> SystemTime {
+        self.worker_time
+    }
+
+    /// Time the job was received by the factory and first either dispatched
+    /// or enqueued to the factory's queue
+    pub fn factory_time(&self) -> SystemTime {
+        self.factory_time
+    }
+
+    /// Clone the [Span] and return it which is attached
+    /// to this [JobOptions] instance.
+    pub fn span(&self) -> Option<Span> {
+        self.span.clone()
+    }
+
+    pub(crate) fn take_span(&mut self) -> Option<Span> {
+        self.span.take()
+    }
+}
+
+impl Default for JobOptions {
+    fn default() -> Self {
+        Self::new(None)
     }
 }
 
@@ -86,7 +151,10 @@ impl BytesConvertable for JobOptions {
 
     fn from_bytes(mut data: Vec<u8>) -> Self {
         if data.len() != 16 {
-            Self::default()
+            Self {
+                span: None,
+                ..Default::default()
+            }
         } else {
             let ttl_bytes = data.split_off(8);
 
@@ -100,6 +168,7 @@ impl BytesConvertable for JobOptions {
                 } else {
                     None
                 },
+                span: None,
                 ..Default::default()
             }
         }

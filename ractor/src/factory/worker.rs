@@ -10,10 +10,11 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use bon::Builder;
+use tracing::Instrument;
 
 use crate::concurrency::{Duration, Instant, JoinHandle};
 use crate::{Actor, ActorId, ActorProcessingErr};
-use crate::{ActorRef, Message, MessagingErr};
+use crate::{ActorCell, ActorRef, Message, MessagingErr, SupervisionEvent};
 
 use super::discard::{DiscardMode, WorkerDiscardSettings};
 use super::stats::FactoryStatsLayer;
@@ -34,6 +35,459 @@ pub struct DeadMansSwitchConfiguration {
     /// Default = [true]
     #[builder(default = true)]
     pub kill_worker: bool,
+}
+
+/// A factory worker trait, which is a basic wrapper around
+/// actor logic, with predefined type information specific to workers
+///
+/// IMPORTANT: Workers are actors at their core principal, but with
+/// somewhat customized logic. This logic assists in tracking worker health,
+/// processing messages in a load-balanced manner, and managing necessary
+/// start automatically without copying the code repeatedly.
+///
+/// This trait implements as much of the custom wrapping logic as possible
+/// without breaking the factory <-> worker API requirement. If you so wish
+/// you can fully specify the actor properties instead of using this
+/// assistance trait.
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
+pub trait Worker: Send + Sync + 'static {
+    /// The worker's job-key type
+    type Key: JobKey;
+    /// The worker's message type
+    type Message: Message;
+    /// The optional startup arguments for the worker (use `()` to ignore)
+    type Arguments: Message;
+    /// The worker's internal state
+    type State: crate::State;
+
+    /// Invoked when a worker is being started by the system.
+    ///
+    /// Any initialization inherent to the actor's role should be
+    /// performed here hence why it returns the initial state.
+    ///
+    /// Panics in `pre_start` do not invoke the
+    /// supervision strategy and the actor won't be started. The `spawn`
+    /// will return an error to the caller
+    ///
+    /// * `wid` - The id of this worker in the factory
+    /// * `factory` - The handle to the factory that owns and manages this worker
+    /// * `args` - Arguments that are passed in the spawning of the worker which are
+    /// necessary to construct the initial state
+    ///
+    /// Returns an initial [Worker::State] to bootstrap the actor
+    #[cfg(not(feature = "async-trait"))]
+    fn pre_start(
+        &self,
+        wid: WorkerId,
+        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        args: Self::Arguments,
+    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send;
+
+    /// Invoked when a worker is being started by the system.
+    ///
+    /// Any initialization inherent to the actor's role should be
+    /// performed here hence why it returns the initial state.
+    ///
+    /// Panics in `pre_start` do not invoke the
+    /// supervision strategy and the actor won't be started. The `spawn`
+    /// will return an error to the caller
+    ///
+    /// * `wid` - The id of this worker in the factory
+    /// * `factory` - The handle to the factory that owns and manages this worker
+    /// * `args` - Arguments that are passed in the spawning of the worker which are
+    /// necessary to construct the initial state
+    ///
+    /// Returns an initial [Worker::State] to bootstrap the actor
+    #[cfg(feature = "async-trait")]
+    async fn pre_start(
+        &self,
+        wid: WorkerId,
+        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        args: Self::Arguments,
+    ) -> Result<Self::State, ActorProcessingErr>;
+
+    /// Invoked after an actor has started.
+    ///
+    /// Any post initialization can be performed here, such as writing
+    /// to a log file, emitting metrics.
+    ///
+    /// * `wid` - The id of this worker in the factory
+    /// * `factory` - The handle to the factory that owns and manages this worker
+    /// * `state` - The worker's internal state, which is mutable and owned by the worker
+    ///
+    /// Panics in `post_start` follow the supervision strategy.
+    #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    fn post_start(
+        &self,
+        wid: WorkerId,
+        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async { Ok(()) }
+    }
+    /// Invoked after an actor has started.
+    ///
+    /// Any post initialization can be performed here, such as writing
+    /// to a log file, emitting metrics.
+    ///
+    /// * `wid` - The id of this worker in the factory
+    /// * `factory` - The handle to the factory that owns and manages this worker
+    /// * `state` - The worker's internal state, which is mutable and owned by the worker
+    ///
+    /// Panics in `post_start` follow the supervision strategy.
+    #[allow(unused_variables)]
+    #[cfg(feature = "async-trait")]
+    async fn post_start(
+        &self,
+        wid: WorkerId,
+        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        Ok(())
+    }
+
+    /// Invoked after an actor has been stopped to perform final cleanup. In the
+    /// event the actor is terminated with killed or has self-panicked,
+    /// `post_stop` won't be called.
+    ///
+    /// * `wid` - The id of this worker in the factory
+    /// * `factory` - The handle to the factory that owns and manages this worker
+    /// * `state` - The worker's internal state, which is mutable and owned by the worker
+    ///
+    /// Panics in `post_stop` follow the supervision strategy.
+    #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    fn post_stop(
+        &self,
+        wid: WorkerId,
+        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async { Ok(()) }
+    }
+    /// Invoked after an actor has been stopped to perform final cleanup. In the
+    /// event the actor is terminated with killed or has self-panicked,
+    /// `post_stop` won't be called.
+    ///
+    /// * `wid` - The id of this worker in the factory
+    /// * `factory` - The handle to the factory that owns and manages this worker
+    /// * `state` - The worker's internal state, which is mutable and owned by the worker
+    ///
+    /// Panics in `post_stop` follow the supervision strategy.
+    #[allow(unused_variables)]
+    #[cfg(feature = "async-trait")]
+    async fn post_stop(
+        &self,
+        wid: WorkerId,
+        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        Ok(())
+    }
+
+    /// Handle the incoming message from the event processing loop. Unhandled panickes will be
+    /// captured and sent to the supervisor(s)
+    ///
+    /// * `wid` - The id of this worker in the factory
+    /// * `factory` - The handle to the factory that owns and manages this worker
+    /// * `job` - The [Job] which this worker should process
+    /// * `state` - The worker's internal state, which is mutable and owned by the worker
+    ///
+    /// Returns the [Job::key] upon success or the error on failure
+    #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    fn handle(
+        &self,
+        wid: WorkerId,
+        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        job: Job<Self::Key, Self::Message>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<Self::Key, ActorProcessingErr>> + Send {
+        async { Ok(job.key) }
+    }
+
+    /// Handle the incoming message from the event processing loop. Unhandled panickes will be
+    /// captured and sent to the supervisor(s)
+    ///
+    /// * `wid` - The id of this worker in the factory
+    /// * `factory` - The handle to the factory that owns and manages this worker
+    /// * `job` - The [Job] which this worker should process
+    /// * `state` - The worker's internal state, which is mutable and owned by the worker
+    ///
+    /// Returns the [Job::key] upon success or the error on failure
+    #[allow(unused_variables)]
+    #[cfg(feature = "async-trait")]
+    async fn handle(
+        &self,
+        wid: WorkerId,
+        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        job: Job<Self::Key, Self::Message>,
+        state: &mut Self::State,
+    ) -> Result<Self::Key, ActorProcessingErr> {
+        Ok(job.key)
+    }
+
+    /// Handle the incoming supervision event. Unhandled panics will be captured and
+    /// sent the the supervisor(s). The default supervision behavior is to exit the
+    /// supervisor on any child exit. To override this behavior, implement this function.
+    ///
+    /// * `myself` - A reference to this actor's ActorCell
+    /// * `message` - The message to process
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    fn handle_supervisor_evt(
+        &self,
+        myself: ActorCell,
+        message: SupervisionEvent,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async move {
+            match message {
+                SupervisionEvent::ActorTerminated(who, _, _)
+                | SupervisionEvent::ActorFailed(who, _) => {
+                    myself.stop(None);
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+    }
+    /// Handle the incoming supervision event. Unhandled panics will be captured and
+    /// sent the the supervisor(s). The default supervision behavior is to exit the
+    /// supervisor on any child exit. To override this behavior, implement this function.
+    ///
+    /// * `myself` - A reference to this actor's ActorCell
+    /// * `message` - The message to process
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(feature = "async-trait")]
+    async fn handle_supervisor_evt(
+        &self,
+        myself: ActorCell,
+        message: SupervisionEvent,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        match message {
+            SupervisionEvent::ActorTerminated(who, _, _)
+            | SupervisionEvent::ActorFailed(who, _) => {
+                myself.stop(None);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+/// The inner state of the wrapped [Worker] but held privately in trust
+/// for the [Worker] implementation
+#[doc(hidden)]
+pub struct WorkerState<TWorker: Worker> {
+    factory: ActorRef<FactoryMessage<TWorker::Key, TWorker::Message>>,
+    wid: WorkerId,
+    state: TWorker::State,
+}
+
+impl<TWorker: Worker> std::fmt::Debug for WorkerState<TWorker> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WorkerState")
+    }
+}
+
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
+impl<T> Actor for T
+where
+    T: Worker,
+{
+    type Msg = WorkerMessage<<Self as Worker>::Key, <Self as Worker>::Message>;
+    type Arguments = WorkerStartContext<
+        <Self as Worker>::Key,
+        <Self as Worker>::Message,
+        <Self as Worker>::Arguments,
+    >;
+    type State = WorkerState<Self>;
+
+    #[cfg(feature = "async-trait")]
+    async fn pre_start(
+        &self,
+        _: ActorRef<Self::Msg>,
+        WorkerStartContext {
+            wid,
+            factory,
+            custom_start,
+        }: Self::Arguments,
+    ) -> Result<Self::State, ActorProcessingErr> {
+        let inner_state = <Self as Worker>::pre_start(self, wid, &factory, custom_start).await?;
+        Ok(Self::State {
+            wid,
+            factory,
+            state: inner_state,
+        })
+    }
+
+    #[cfg(not(feature = "async-trait"))]
+    fn pre_start(
+        &self,
+        _: ActorRef<Self::Msg>,
+        WorkerStartContext {
+            wid,
+            factory,
+            custom_start,
+        }: Self::Arguments,
+    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send {
+        let inner_state = <Self as Worker>::pre_start(&self, wid, &factory, custom_start).await?;
+        async {
+            Ok(Self::State {
+                wid,
+                factory,
+                state: inner_state,
+            })
+        }
+    }
+
+    #[cfg(not(feature = "async-trait"))]
+    fn post_start(
+        &self,
+        _: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async {
+            <Self as Worker>::post_start(&self, state.wid, &state.factory, &mut state.state).await
+        }
+    }
+
+    #[cfg(feature = "async-trait")]
+    async fn post_start(
+        &self,
+        _: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        <Self as Worker>::post_start(self, state.wid, &state.factory, &mut state.state).await
+    }
+
+    #[cfg(not(feature = "async-trait"))]
+    fn post_stop(
+        &self,
+        _: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async {
+            <Self as Worker>::post_stop(&self, state.wid, &state.factory, &mut state.state).await
+        }
+    }
+
+    #[cfg(feature = "async-trait")]
+    async fn post_stop(
+        &self,
+        _: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        <Self as Worker>::post_stop(self, state.wid, &state.factory, &mut state.state).await
+    }
+
+    #[cfg(not(feature = "async-trait"))]
+    fn handle(
+        &self,
+        _: ActorRef<Self::Msg>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async {
+            match message {
+                WorkerMessage::FactoryPing(time) => {
+                    tracing::trace!("Worker {} - ping", state.wid);
+
+                    state
+                        .factory
+                        .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
+                }
+                WorkerMessage::Dispatch(mut job) => {
+                    let key = if let Some(span) = job.options.span.take() {
+                        <Self as Worker>::handle(
+                            &self,
+                            state.wid,
+                            &state.factory,
+                            job,
+                            &mut state.state,
+                        )
+                        .instrument(span)
+                        .await
+                    } else {
+                        <Self as Worker>::handle(
+                            &self,
+                            state.wid,
+                            &state.factory,
+                            job,
+                            &mut state.state,
+                        )
+                        .await
+                    }?;
+                    state
+                        .factory
+                        .cast(FactoryMessage::Finished(state.wid, key))?;
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "async-trait")]
+    async fn handle(
+        &self,
+        _: ActorRef<Self::Msg>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        match message {
+            WorkerMessage::FactoryPing(time) => {
+                tracing::trace!("Worker {} - ping", state.wid);
+
+                state
+                    .factory
+                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
+                Ok(())
+            }
+            WorkerMessage::Dispatch(mut job) => {
+                let key = if let Some(span) = job.options.take_span() {
+                    <Self as Worker>::handle(self, state.wid, &state.factory, job, &mut state.state)
+                        .instrument(span)
+                        .await
+                } else {
+                    <Self as Worker>::handle(self, state.wid, &state.factory, job, &mut state.state)
+                        .await
+                }?;
+                state
+                    .factory
+                    .cast(FactoryMessage::Finished(state.wid, key))?;
+                Ok(())
+            }
+        }
+    }
+
+    #[cfg(not(feature = "async-trait"))]
+    fn handle_supervisor_evt(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        message: SupervisionEvent,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+        async move {
+            <Self as Worker>::handle_supervisor_evt(&self, myself.into(), message, &mut state.state)
+                .await
+        }
+    }
+
+    #[cfg(feature = "async-trait")]
+    async fn handle_supervisor_evt(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        message: SupervisionEvent,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        <Self as Worker>::handle_supervisor_evt(self, myself.into(), message, &mut state.state)
+            .await
+    }
 }
 
 /// The [super::Factory] is responsible for spawning workers
