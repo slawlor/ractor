@@ -1,7 +1,7 @@
 [package]
 name = "ractor_cluster_derive"
-version = "0.13.5"
-authors = ["Sean Lawlor <seanlawlor@fb.com>"]
+version = "0.14.0"
+authors = ["Sean Lawlor <slawlor>"]
 description = "Derives for ractor_cluster"
 license = "MIT"
 edition = "2021"

@@ -48,14 +48,16 @@ struct TestWorker {
 impl crate::Message for TestMessage {}
 
 #[cfg_attr(feature = "async-trait", crate::async_trait)]
-impl Actor for TestWorker {
-    type Msg = WorkerMessage<TestKey, TestMessage>;
+impl Worker for TestWorker {
+    type Key = TestKey;
+    type Message = TestMessage;
     type State = Self::Arguments;
-    type Arguments = WorkerStartContext<TestKey, TestMessage, ()>;
+    type Arguments = ();
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self::Msg>,
+        _wid: WorkerId,
+        _factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         startup_context: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(startup_context)
@@ -63,28 +65,15 @@ impl Actor for TestWorker {
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Self::Msg,
-        state: &mut Self::State,
-    ) -> Result<(), ActorProcessingErr> {
-        match message {
-            WorkerMessage::FactoryPing(time) => {
-                state
-                    .factory
-                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
-            }
-            WorkerMessage::Dispatch(job) => {
-                tracing::debug!("Worker received {:?}", job.msg);
+        wid: WorkerId,
+        _factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        Job { msg, key, .. }: Job<Self::Key, Self::Message>,
+        _state: &mut Self::State,
+    ) -> Result<Self::Key, ActorProcessingErr> {
+        tracing::debug!("Worker received {:?}", msg);
 
-                self.id_map.insert(state.wid);
-
-                // job finished, on success or err we report back to the factory
-                state
-                    .factory
-                    .cast(FactoryMessage::Finished(state.wid, job.key))?;
-            }
-        }
-        Ok(())
+        self.id_map.insert(wid);
+        Ok(key)
     }
 }
 
