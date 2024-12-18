@@ -7,6 +7,8 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
+#[cfg(not(feature = "async-trait"))]
+use std::future::Future;
 use std::sync::Arc;
 
 use bon::Builder;
@@ -336,8 +338,9 @@ where
             custom_start,
         }: Self::Arguments,
     ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send {
-        let inner_state = <Self as Worker>::pre_start(&self, wid, &factory, custom_start).await?;
-        async {
+        async move {
+            let inner_state =
+                <Self as Worker>::pre_start(&self, wid, &factory, custom_start).await?;
             Ok(Self::State {
                 wid,
                 factory,
@@ -352,7 +355,7 @@ where
         _: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
-        async {
+        async move {
             <Self as Worker>::post_start(&self, state.wid, &state.factory, &mut state.state).await
         }
     }
@@ -372,7 +375,7 @@ where
         _: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
-        async {
+        async move {
             <Self as Worker>::post_stop(&self, state.wid, &state.factory, &mut state.state).await
         }
     }
@@ -393,7 +396,7 @@ where
         message: Self::Msg,
         state: &mut Self::State,
     ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
-        async {
+        async move {
             match message {
                 WorkerMessage::FactoryPing(time) => {
                     tracing::trace!("Worker {} - ping", state.wid);
@@ -403,7 +406,7 @@ where
                         .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
                 }
                 WorkerMessage::Dispatch(mut job) => {
-                    let key = if let Some(span) = job.options.span.take() {
+                    let key = if let Some(span) = job.options.take_span() {
                         <Self as Worker>::handle(
                             &self,
                             state.wid,
@@ -426,9 +429,9 @@ where
                     state
                         .factory
                         .cast(FactoryMessage::Finished(state.wid, key))?;
-                    Ok(())
                 }
             }
+            Ok(())
         }
     }
 
