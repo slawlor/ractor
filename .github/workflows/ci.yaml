@@ -17,6 +17,9 @@ jobs:
           - name: Run the default tests
             package: ractor
             # flags: 
+          - name: Test ractor without async-trait
+            package: ractor
+            flags: --no-default-features -F tokio_runtime,message_span_propogation
           - name: Test ractor without span propogation
             package: ractor
             flags: --no-default-features -F tokio_runtime,async-trait
