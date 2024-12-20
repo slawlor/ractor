@@ -1156,3 +1156,44 @@ async fn runtime_message_typing() {
     actor.stop(None);
     handle.await.unwrap();
 }
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn wait_for_death() {
+    struct TestActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = EmptyMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn post_stop(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            crate::concurrency::sleep(Duration::from_millis(10)).await;
+            Ok(())
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to start test actor");
+
+    actor.stop(None);
+    assert!(actor.wait(Some(Duration::from_millis(100))).await.is_ok());
+
+    // cleanup
+    actor.stop(None);
+    handle.await.unwrap();
+}

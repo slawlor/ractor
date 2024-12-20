@@ -225,6 +225,12 @@ impl ActorProperties {
         Ok(())
     }
 
+    /// Wait for the actor to exit
+    pub(crate) async fn wait(&self) {
+        let rx = self.wait_handler.notified();
+        rx.await;
+    }
+
     /// Send the kill signal, threading in a OneShot sender which notifies when the shutdown is completed
     pub(crate) async fn send_signal_and_wait(
         &self,
@@ -239,5 +245,9 @@ impl ActorProperties {
 
     pub(crate) fn notify_stop_listener(&self) {
         self.wait_handler.notify_waiters();
+        // make sure that any future caller immediately returns by pre-storing
+        // a notify permit (i.e. the actor stops, but you are only start waiting
+        // after the actor has already notified it's dead.)
+        self.wait_handler.notify_one();
     }
 }
