@@ -451,6 +451,25 @@ impl ActorCell {
         }
     }
 
+    /// Wait for the actor to exit, optionally within a timeout
+    ///
+    /// * `timeout`: If supplied, the amount of time to wait before
+    ///   returning an error and cancelling the wait future.
+    ///
+    /// IMPORTANT: If the timeout is hit, the actor is still running.
+    /// You should wait again for its exit.
+    pub async fn wait(
+        &self,
+        timeout: Option<crate::concurrency::Duration>,
+    ) -> Result<(), crate::concurrency::Timeout> {
+        if let Some(to) = timeout {
+            crate::concurrency::timeout(to, self.inner.wait()).await
+        } else {
+            self.inner.wait().await;
+            Ok(())
+        }
+    }
+
     /// Send a supervisor event to the supervisory port
     ///
     /// * `message` - The [SupervisionEvent] to send to the supervisory port
