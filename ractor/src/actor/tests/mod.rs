@@ -11,6 +11,7 @@ use std::sync::{
 };
 
 use crate::{
+    actor::from_actor_ref::FromActorRef,
     common_test::periodic_check,
     concurrency::{sleep, Duration},
     MessagingErr, RactorErr,
@@ -1192,6 +1193,83 @@ async fn wait_for_death() {
 
     actor.stop(None);
     assert!(actor.wait(Some(Duration::from_millis(100))).await.is_ok());
+
+    // cleanup
+    actor.stop(None);
+    handle.await.unwrap();
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn from_actor_ref() {
+    let result_counter = Arc::new(AtomicU32::new(0));
+
+    struct TestActor {
+        counter: Arc<AtomicU32>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = u32;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            self.counter.fetch_add(message, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(
+        None,
+        TestActor {
+            counter: result_counter.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Actor failed to start");
+
+    let mut sum: u32 = 0;
+
+    let from_u8: FromActorRef<u8> = actor.clone().from_ref();
+    let u8_message: u8 = 1;
+    sum += u8_message as u32;
+    from_u8
+        .send_message(u8_message)
+        .expect("Failed to send message to actor");
+
+    periodic_check(
+        || result_counter.load(Ordering::Relaxed) == sum,
+        Duration::from_millis(500),
+    )
+    .await;
+
+    let from_u16: FromActorRef<u16> = actor.clone().from_ref();
+    let u16_message: u16 = 2;
+    sum += u16_message as u32;
+    from_u16
+        .send_message(u16_message)
+        .expect("Failed to send message to actor");
+
+    periodic_check(
+        || result_counter.load(Ordering::Relaxed) == sum,
+        Duration::from_millis(500),
+    )
+    .await;
 
     // cleanup
     actor.stop(None);
