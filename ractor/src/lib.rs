@@ -199,6 +199,7 @@ use tracing_subscriber as _;
 pub use actor::actor_cell::{ActorCell, ActorStatus, ACTIVE_STATES};
 pub use actor::actor_id::ActorId;
 pub use actor::actor_ref::ActorRef;
+pub use actor::derived_actor::DerivedActorRef;
 pub use actor::messages::{Signal, SupervisionEvent};
 pub use actor::{Actor, ActorRuntime};
 #[cfg(feature = "async-trait")]

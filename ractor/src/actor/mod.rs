@@ -69,7 +69,7 @@ pub mod actor_cell;
 pub mod actor_id;
 pub(crate) mod actor_properties;
 pub mod actor_ref;
-pub mod from_actor_ref;
+pub mod derived_actor;
 mod supervision;
 
 #[cfg(test)]
