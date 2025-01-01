@@ -1201,7 +1201,7 @@ async fn wait_for_death() {
 
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
-async fn from_actor_ref() {
+async fn derived_actor_ref() {
     let result_counter = Arc::new(AtomicU32::new(0));
 
     struct TestActor {
@@ -1261,8 +1261,7 @@ async fn from_actor_ref() {
     let from_u16: DerivedActorRef<u16> = actor.get_derived();
     let u16_message: u16 = 2;
     sum += u16_message as u32;
-    from_u16
-        .send_message(u16_message)
+    from_u16.send_message(u16_message)
         .expect("Failed to send message to actor");
 
     actor
@@ -1272,4 +1271,14 @@ async fn from_actor_ref() {
     handle.await.unwrap();
 
     assert_eq!(result_counter.load(Ordering::Relaxed), sum);
+
+    // trying to send the message to a dead actor to verify reverse conversion in SendError handling
+    let message: u16 = 3;
+    let res = from_u16.send_message(message);
+    assert!(res.is_err());
+    if let Err(MessagingErr::SendErr(failed_message)) = res {
+        assert_eq!(failed_message, message);
+    } else {
+        panic!("Invalid error type");
+    }
 }
