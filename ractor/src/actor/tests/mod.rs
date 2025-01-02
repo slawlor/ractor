@@ -1261,7 +1261,8 @@ async fn derived_actor_ref() {
     let from_u16: DerivedActorRef<u16> = actor.get_derived();
     let u16_message: u16 = 2;
     sum += u16_message as u32;
-    from_u16.send_message(u16_message)
+    from_u16
+        .send_message(u16_message)
         .expect("Failed to send message to actor");
 
     actor

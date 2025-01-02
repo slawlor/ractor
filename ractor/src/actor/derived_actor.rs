@@ -16,15 +16,15 @@ use std::sync::Arc;
 ///
 /// ## Example
 /// ```
-/// // In this example the actor is a ghost kitchen which can accept orders of different types, 
-/// // representing multiple virtual restaurants at once. More specifically, it can accept 
+/// // In this example the actor is a ghost kitchen which can accept orders of different types,
+/// // representing multiple virtual restaurants at once. More specifically, it can accept
 /// // pizza or sushi orders.
 /// //
 /// // Derived actor allows to hide the order message accepted by the kitchen actor, therefore
-/// // we can pass the ref to other components without creating a direct dependency on the 
-/// // kitchen actor. We can easily replace or split the kitchen actor without affecting 
+/// // we can pass the ref to other components without creating a direct dependency on the
+/// // kitchen actor. We can easily replace or split the kitchen actor without affecting
 /// // other components communicating with it.
-/// use ractor::{Actor, ActorProcessingErr, ActorRef, DerivedActorRef};
+/// use ractor::{Actor, ActorProcessingErr, ActorRef, DerivedActorRef, Message};
 ///
 /// // First we define order types
 /// struct PizzaOrder {
@@ -36,7 +36,7 @@ use std::sync::Arc;
 ///     quantity: usize,
 /// }
 ///
-/// // The order message which is actually sent to the kitchen actor can be either pizza or sushi 
+/// // The order message which is actually sent to the kitchen actor can be either pizza or sushi
 /// enum Order {
 ///     Pizza(PizzaOrder),
 ///     Sushi(SushiOrder),
@@ -129,7 +129,7 @@ use std::sync::Arc;
 ///     pizza_restaurant.send_message(PizzaOrder {
 ///         topping: String::from("pepperoni"),
 ///     }).expect("Failed to order pizza");
-/// 
+///
 ///     // same way, we can also get a derived actor ref which can only accept sushi orders
 ///     let sushi_restaurant: DerivedActorRef<SushiOrder> = kitchen_actor_ref.get_derived();
 ///     sushi_restaurant.send_message(SushiOrder {
