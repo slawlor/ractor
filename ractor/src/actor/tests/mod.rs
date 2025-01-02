@@ -11,6 +11,7 @@ use std::sync::{
 };
 
 use crate::{
+    actor::derived_actor::DerivedActorRef,
     common_test::periodic_check,
     concurrency::{sleep, Duration},
     MessagingErr, RactorErr,
@@ -1196,4 +1197,89 @@ async fn wait_for_death() {
     // cleanup
     actor.stop(None);
     handle.await.unwrap();
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn derived_actor_ref() {
+    let result_counter = Arc::new(AtomicU32::new(0));
+
+    struct TestActor {
+        counter: Arc<AtomicU32>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = u32;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            self.counter.fetch_add(message, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(
+        None,
+        TestActor {
+            counter: result_counter.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Actor failed to start");
+
+    let mut sum: u32 = 0;
+
+    let from_u8: DerivedActorRef<u8> = actor.clone().get_derived();
+    let u8_message: u8 = 1;
+    sum += u8_message as u32;
+    from_u8
+        .send_message(u8_message)
+        .expect("Failed to send message to actor");
+
+    periodic_check(
+        || result_counter.load(Ordering::Relaxed) == sum,
+        Duration::from_millis(500),
+    )
+    .await;
+
+    let from_u16: DerivedActorRef<u16> = actor.get_derived();
+    let u16_message: u16 = 2;
+    sum += u16_message as u32;
+    from_u16
+        .send_message(u16_message)
+        .expect("Failed to send message to actor");
+
+    actor
+        .drain_and_wait(None)
+        .await
+        .expect("Failed to drain actor");
+    handle.await.unwrap();
+
+    assert_eq!(result_counter.load(Ordering::Relaxed), sum);
+
+    // trying to send the message to a dead actor to verify reverse conversion in SendError handling
+    let message: u16 = 3;
+    let res = from_u16.send_message(message);
+    assert!(res.is_err());
+    if let Err(MessagingErr::SendErr(failed_message)) = res {
+        assert_eq!(failed_message, message);
+    } else {
+        panic!("Invalid error type");
+    }
 }
