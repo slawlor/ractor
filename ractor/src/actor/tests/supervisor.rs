@@ -1557,6 +1557,9 @@ async fn draining_children_will_shutdown_parent_too() {
     // notify the parent (supervisor) and take that down too
     supervisor_ref.drain_children();
 
+    // children were not unlinked by draining them (fixed from #310)
+    assert!(!supervisor_ref.get_children().is_empty());
+
     // Wait for exit
     s_handle.await.unwrap();
     c_handle.await.unwrap();
