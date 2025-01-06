@@ -32,7 +32,6 @@ impl Message {
     }
 }
 
-#[ractor::async_trait]
 impl Actor for PingPong {
     type Msg = Message;
     type Arguments = ();

@@ -1036,7 +1036,7 @@ async fn actor_post_stop_executed_before_stop_and_wait_returns() {
             _: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             sleep(Duration::from_millis(1000)).await;
-            let _ = self.signal.store(1, Ordering::SeqCst);
+            self.signal.store(1, Ordering::SeqCst);
             Ok(())
         }
     }

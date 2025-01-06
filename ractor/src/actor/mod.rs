@@ -133,7 +133,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     ///
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `args` - Arguments that are passed in the spawning of the actor which might
-    /// be necessary to construct the initial state
+    ///   be necessary to construct the initial state
     ///
     /// Returns an initial [Actor::State] to bootstrap the actor
     #[cfg(not(feature = "async-trait"))]
@@ -357,7 +357,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
+    ///   initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -375,7 +375,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
+    ///   initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -394,7 +394,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    /// initial state creation
+    ///   initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference

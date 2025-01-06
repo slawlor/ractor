@@ -76,7 +76,6 @@ enum PingPongActorMessage {
     Rpc(String, RpcReplyPort<String>),
 }
 
-#[ractor::async_trait]
 impl Actor for PingPongActor {
     type Msg = PingPongActorMessage;
     type State = ();

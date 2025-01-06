@@ -107,7 +107,7 @@ pub struct SessionState {
     reader: ActorRef<SessionReaderMessage>,
 }
 
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for Session {
     type Msg = SessionMessage;
     type Arguments = super::NetworkStream;
@@ -296,7 +296,7 @@ enum SessionWriterMessage {
     WriteObject(crate::protocol::NetworkMessage),
 }
 
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for SessionWriter {
     type Msg = SessionWriterMessage;
     type Arguments = ActorWriteHalf;
@@ -385,7 +385,7 @@ struct SessionReaderState {
     reader: Option<ActorReadHalf>,
 }
 
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for SessionReader {
     type Msg = SessionReaderMessage;
     type Arguments = ActorReadHalf;

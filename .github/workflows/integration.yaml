@@ -12,15 +12,14 @@ on:
 
 jobs:
   test:
-    name: Test ractor_cluster with Docker based networked images
-    runs-on: ${{matrix.os}}-latest
+    name: Test networked cluster
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [stable]
-        os: [ubuntu]
-        features: [blanket_serde, cluster]
-
+        features:
+          - 'blanket_serde,cluster'
+          - 'blanket_serde,cluster,async-trait'
     steps:
       - uses: actions/checkout@main
 

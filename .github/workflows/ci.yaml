@@ -29,9 +29,12 @@ jobs:
           - name: Test ractor with the `blanket_serde` feature
             package: ractor
             flags: -F blanket_serde
-          - name: Test ractor_cluster
+          - name: Test ractor_cluster with native async traits
             package: ractor_cluster
             # flags: 
+          - name: Test ractor_cluster with async_trait
+            package: ractor_cluster
+            flags: -F async-trait
             
     steps:
       - uses: actions/checkout@main

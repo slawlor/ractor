@@ -22,8 +22,9 @@ cluster = []
 message_span_propogation = []
 tokio_runtime = ["tokio/time", "tokio/rt", "tokio/macros", "tokio/tracing"]
 blanket_serde = ["serde", "pot", "cluster"]
+async-trait = ["dep:async-trait"]
 
-default = ["tokio_runtime", "async-trait", "message_span_propogation"]
+default = ["tokio_runtime", "message_span_propogation"]
 
 [dependencies]
 ## Required dependencies
