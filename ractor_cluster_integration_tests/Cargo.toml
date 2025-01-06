@@ -13,12 +13,15 @@ publish = false
 [features]
 blanket_serde = ["ractor/blanket_serde"]
 cluster = []
+async-trait = ["ractor_cluster/async-trait"]
+
+default = []
 
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
-ractor = { path = "../ractor" }
+ractor = { default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster"], path = "../ractor" }
 ractor_cluster = { path = "../ractor_cluster" }
 rand = "0.8"
 tokio-rustls = { version = "0.26" }

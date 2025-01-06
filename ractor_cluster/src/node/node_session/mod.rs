@@ -827,7 +827,7 @@ impl NodeSessionState {
     }
 }
 
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for NodeSession {
     type Msg = super::NodeSessionMessage;
     type Arguments = crate::net::NetworkStream;

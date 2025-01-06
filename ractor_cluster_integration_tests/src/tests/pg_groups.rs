@@ -37,7 +37,7 @@ struct HelloActorState {
     done: bool,
 }
 
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for HelloActor {
     type Msg = HelloActorMessage;
     type State = HelloActorState;

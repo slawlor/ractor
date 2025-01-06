@@ -78,7 +78,7 @@ impl RemoteActorState {
 #[derive(RactorMessage)]
 pub(crate) struct RemoteActorMessage;
 
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for RemoteActor {
     type Msg = RemoteActorMessage;
     type State = RemoteActorState;

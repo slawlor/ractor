@@ -18,7 +18,7 @@ use crate::NodeSessionMessage;
 use super::*;
 
 struct DummyNodeServer;
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for DummyNodeServer {
     type Msg = crate::node::NodeServerMessage;
     type State = ();
@@ -57,7 +57,7 @@ impl Actor for DummyNodeServer {
 }
 
 struct DummyNodeSession;
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for DummyNodeSession {
     type Msg = crate::node::NodeSessionMessage;
     type State = ();
@@ -540,7 +540,7 @@ async fn node_session_handle_node_msg() {
         call_replies: Arc<AtomicU8>,
     }
 
-    #[ractor::async_trait]
+    #[cfg_attr(feature = "async-trait", ractor::async_trait)]
     impl Actor for DummyRemoteActor {
         type Msg = crate::remote_actor::RemoteActorMessage;
         type State = ();

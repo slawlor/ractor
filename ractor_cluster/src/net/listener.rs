@@ -46,7 +46,7 @@ pub struct ListenerState {
 #[derive(crate::RactorMessage)]
 pub struct ListenerMessage;
 
-#[ractor::async_trait]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for Listener {
     type Msg = ListenerMessage;
     type Arguments = ();

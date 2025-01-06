@@ -60,6 +60,10 @@ pub mod node;
 /// Node's are representing by an integer id
 pub type NodeId = u64;
 
+// Satisfy dependencies transitively imported
+#[cfg(feature = "async-trait")]
+use async_trait as _;
+
 // ============== Re-exports ============== //
 pub use net::{IncomingEncryptionMode, NetworkStream};
 pub use node::client::connect as client_connect;

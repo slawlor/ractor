@@ -74,7 +74,7 @@ pub trait Worker: Send + Sync + 'static {
     /// * `wid` - The id of this worker in the factory
     /// * `factory` - The handle to the factory that owns and manages this worker
     /// * `args` - Arguments that are passed in the spawning of the worker which are
-    /// necessary to construct the initial state
+    ///   necessary to construct the initial state
     ///
     /// Returns an initial [Worker::State] to bootstrap the actor
     #[cfg(not(feature = "async-trait"))]
@@ -310,7 +310,6 @@ where
     >;
     type State = WorkerState<Self>;
 
-    #[cfg(feature = "async-trait")]
     async fn pre_start(
         &self,
         _: ActorRef<Self::Msg>,
@@ -328,39 +327,6 @@ where
         })
     }
 
-    #[cfg(not(feature = "async-trait"))]
-    fn pre_start(
-        &self,
-        _: ActorRef<Self::Msg>,
-        WorkerStartContext {
-            wid,
-            factory,
-            custom_start,
-        }: Self::Arguments,
-    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send {
-        async move {
-            let inner_state =
-                <Self as Worker>::pre_start(&self, wid, &factory, custom_start).await?;
-            Ok(Self::State {
-                wid,
-                factory,
-                state: inner_state,
-            })
-        }
-    }
-
-    #[cfg(not(feature = "async-trait"))]
-    fn post_start(
-        &self,
-        _: ActorRef<Self::Msg>,
-        state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
-        async move {
-            <Self as Worker>::post_start(&self, state.wid, &state.factory, &mut state.state).await
-        }
-    }
-
-    #[cfg(feature = "async-trait")]
     async fn post_start(
         &self,
         _: ActorRef<Self::Msg>,
@@ -369,18 +335,6 @@ where
         <Self as Worker>::post_start(self, state.wid, &state.factory, &mut state.state).await
     }
 
-    #[cfg(not(feature = "async-trait"))]
-    fn post_stop(
-        &self,
-        _: ActorRef<Self::Msg>,
-        state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
-        async move {
-            <Self as Worker>::post_stop(&self, state.wid, &state.factory, &mut state.state).await
-        }
-    }
-
-    #[cfg(feature = "async-trait")]
     async fn post_stop(
         &self,
         _: ActorRef<Self::Msg>,
@@ -389,53 +343,6 @@ where
         <Self as Worker>::post_stop(self, state.wid, &state.factory, &mut state.state).await
     }
 
-    #[cfg(not(feature = "async-trait"))]
-    fn handle(
-        &self,
-        _: ActorRef<Self::Msg>,
-        message: Self::Msg,
-        state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
-        async move {
-            match message {
-                WorkerMessage::FactoryPing(time) => {
-                    tracing::trace!("Worker {} - ping", state.wid);
-
-                    state
-                        .factory
-                        .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
-                }
-                WorkerMessage::Dispatch(mut job) => {
-                    let key = if let Some(span) = job.options.take_span() {
-                        <Self as Worker>::handle(
-                            &self,
-                            state.wid,
-                            &state.factory,
-                            job,
-                            &mut state.state,
-                        )
-                        .instrument(span)
-                        .await
-                    } else {
-                        <Self as Worker>::handle(
-                            &self,
-                            state.wid,
-                            &state.factory,
-                            job,
-                            &mut state.state,
-                        )
-                        .await
-                    }?;
-                    state
-                        .factory
-                        .cast(FactoryMessage::Finished(state.wid, key))?;
-                }
-            }
-            Ok(())
-        }
-    }
-
-    #[cfg(feature = "async-trait")]
     async fn handle(
         &self,
         _: ActorRef<Self::Msg>,
@@ -468,20 +375,6 @@ where
         }
     }
 
-    #[cfg(not(feature = "async-trait"))]
-    fn handle_supervisor_evt(
-        &self,
-        myself: ActorRef<Self::Msg>,
-        message: SupervisionEvent,
-        state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
-        async move {
-            <Self as Worker>::handle_supervisor_evt(&self, myself.into(), message, &mut state.state)
-                .await
-        }
-    }
-
-    #[cfg(feature = "async-trait")]
     async fn handle_supervisor_evt(
         &self,
         myself: ActorRef<Self::Msg>,

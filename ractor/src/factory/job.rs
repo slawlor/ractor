@@ -429,7 +429,7 @@ impl MessageRetryStrategy {
 /// 1. Regular loadshed events will cause this message to be retried if there is still retries left
 ///    and the job isn't expired unless you explicitely call `completed()` in the discard handler.
 /// 2. Consumable types are not well supported here without some wrapping in Option types, which is
-///    because the value is handled everywhere as `&mut ref`` due to the drop implementation requiring that
+///    because the value is handled everywhere as `&mut ref` due to the drop implementation requiring that
 ///    it be so. This means that RPCs using [crate::concurrency::oneshot]s likely won't work without
 ///    some real painful ergonomics.
 /// 3. Upon successful handling of the job, you need to mark it as `completed()` at the end of your
