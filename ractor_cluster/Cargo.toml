@@ -1,6 +1,6 @@
 [package]
 name = "ractor_cluster"
-version = "0.14.2"
+version = "0.14.3"
 authors = ["Sean Lawlor <slawlor>"]
 description = "Distributed cluster environment of Ractor actors"
 documentation = "https://docs.rs/ractor"
@@ -20,7 +20,6 @@ async-trait = ["dep:async-trait", "ractor/async-trait"]
 default = []
 
 [build-dependencies]
-# protobuf-src = "2"
 protoc-bin-vendored = "3"
 prost-build = { version = "0.13" }
 
