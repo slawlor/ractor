@@ -22,6 +22,7 @@ prost-build = { version = "0.13" }
 [dependencies]
 ## Required dependencies
 bytes = { version = "1" }
+hmac = "0.12"
 prost = { version = "0.13" }
 prost-types = { version = "0.13" }
 ractor = { version = "0.14.0", features = ["cluster"], path = "../ractor" }

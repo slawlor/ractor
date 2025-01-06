@@ -10,18 +10,16 @@ pub(crate) type Digest = [u8; DIGEST_BYTES];
 
 /// Compute a challenge digest
 pub(crate) fn challenge_digest(secret: &'_ str, challenge: u32) -> Digest {
-    use sha2::Digest;
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
 
     let secret_bytes = secret.as_bytes();
-    let mut data = vec![0u8; secret_bytes.len() + 4];
-
     let challenge_bytes = challenge.to_be_bytes();
-    data[0..4].copy_from_slice(&challenge_bytes);
-    data[4..].copy_from_slice(secret_bytes);
+    let mut mac = HmacSha256::new_from_slice(secret_bytes).expect("HMAC can take key of any size");
+    mac.update(&challenge_bytes);
 
-    let hash = sha2::Sha256::digest(&data);
-
-    hash.into()
+    mac.finalize().into_bytes().into()
 }
 
 #[cfg(test)]
@@ -39,8 +37,8 @@ mod tests {
         assert_eq!(
             digest,
             [
-                20, 62, 0, 217, 211, 179, 29, 157, 36, 69, 47, 133, 172, 4, 68, 137, 83, 8, 26, 2,
-                237, 2, 39, 46, 89, 44, 91, 19, 205, 66, 46, 247
+                22, 118, 211, 15, 245, 52, 29, 205, 92, 234, 12, 239, 207, 66, 244, 233, 70, 84,
+                143, 62, 208, 108, 237, 90, 80, 150, 141, 172, 35, 18, 3, 190
             ]
         );
     }
