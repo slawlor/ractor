@@ -57,7 +57,11 @@ impl SupervisionTree {
     /// from the supervision tree since the supervisor is shutting down
     /// and can't deal with superivison events anyways
     pub(crate) fn terminate_all_children(&self) {
-        let cells = self.get_children();
+        let mut guard = self.children.lock().unwrap();
+        let cells = guard.values().cloned().collect::<Vec<_>>();
+        guard.clear();
+        // drop the guard to not deadlock on double-link
+        drop(guard);
         for cell in cells {
             cell.terminate();
             cell.clear_supervisor();
@@ -134,13 +138,10 @@ impl SupervisionTree {
         }
     }
 
+    /// Return all linked children
     pub(crate) fn get_children(&self) -> Vec<ActorCell> {
-        let mut guard = self.children.lock().unwrap();
-        let cells = guard.iter().map(|(_, a)| a.clone()).collect::<Vec<_>>();
-        guard.clear();
-        // drop the guard to not deadlock on double-link
-        drop(guard);
-        cells
+        let guard = self.children.lock().unwrap();
+        guard.values().cloned().collect()
     }
 
     /// Send a notification to the supervisor.
