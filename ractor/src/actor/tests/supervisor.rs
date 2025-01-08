@@ -1567,3 +1567,110 @@ async fn draining_children_will_shutdown_parent_too() {
     // Child's post-stop should have been called.
     assert_eq!(1, flag.load(Ordering::Relaxed));
 }
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+#[cfg(feature = "monitors")]
+async fn test_simple_monitor() {
+    struct Peer;
+    struct Monitor {
+        counter: Arc<AtomicU8>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for Peer {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            myself: ActorRef<Self::Msg>,
+            _: Self::Msg,
+            _: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            myself.stop(Some("oh no!".to_string()));
+            Ok(())
+        }
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for Monitor {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle_supervisor_evt(
+            &self,
+            _: ActorRef<Self::Msg>,
+            evt: SupervisionEvent,
+            _: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            if let SupervisionEvent::ActorTerminated(_who, _state, Some(msg)) = evt {
+                if msg.as_str() == "oh no!" {
+                    self.counter.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let count = Arc::new(AtomicU8::new(0));
+
+    let (p, ph) = Actor::spawn(None, Peer, ())
+        .await
+        .expect("Failed to start peer");
+    let (m, mh) = Actor::spawn(
+        None,
+        Monitor {
+            counter: count.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Faield to start monitor");
+
+    m.monitor(p.get_cell());
+
+    // stopping the peer should notify the monitor, who can capture the state
+    p.cast(()).expect("Failed to contact peer");
+    periodic_check(
+        || count.load(Ordering::Relaxed) == 1,
+        Duration::from_secs(1),
+    )
+    .await;
+    ph.await.unwrap();
+
+    let (p, ph) = Actor::spawn(None, Peer, ())
+        .await
+        .expect("Failed to start peer");
+    m.monitor(p.get_cell());
+    m.unmonitor(p.get_cell());
+
+    p.cast(()).expect("Failed to contact peer");
+    ph.await.unwrap();
+
+    // The count doesn't increment when the peer exits (we give some time
+    // to schedule the supervision evt)
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
+    assert_eq!(1, count.load(Ordering::Relaxed));
+
+    m.stop(None);
+    mh.await.unwrap();
+}

@@ -35,6 +35,9 @@ jobs:
           - name: Test ractor_cluster with async_trait
             package: ractor_cluster
             flags: -F async-trait
+          - name: Test ractor with the monitor API
+            package: ractor
+            flags: -F monitors
             
     steps:
       - uses: actions/checkout@main

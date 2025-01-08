@@ -66,7 +66,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies.
 
 ```toml
 [dependencies]
-ractor = "0.13"
+ractor = "0.14"
 ```
 
 The minimum supported Rust version (MSRV) of `ractor` is `1.64`. However to utilize the native `async fn` support in traits and not rely on the `async-trait` crate's desugaring functionliaty, you need to be on Rust version `>= 1.75`. The stabilization of `async fn` in traits [was recently added](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html).
@@ -77,6 +77,8 @@ The minimum supported Rust version (MSRV) of `ractor` is `1.64`. However to util
 
 1. `cluster`, which exposes various functionality required for `ractor_cluster` to set up and manage a cluster of actors over a network link. This is work-in-progress and is being tracked in [#16](https://github.com/slawlor/ractor/issues/16).
 2. `async-std`, which enables usage of `async-std`'s asynchronous runtime instead of the `tokio` runtime. **However** `tokio` with the `sync` feature remains a dependency because we utilize the messaging synchronization primatives from `tokio` regardless of runtime as they are not specific to the `tokio` runtime. This work is tracked in [#173](https://github.com/slawlor/ractor/pull/173). You can remove default features to "minimize" the tokio dependencies to just the synchronization primatives.
+3. `monitors`, Adds support for an erlang-style monitoring api which is an alternative to direct linkage. Akin to [Process Monitors](https://www.erlang.org/doc/system/ref_man_processes.html#monitors)
+4. `message_span_propogation`, Propagates the span through the message between actors to keep tracing context.
 
 ## Working with Actors
 

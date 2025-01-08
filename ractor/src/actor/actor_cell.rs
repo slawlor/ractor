@@ -388,6 +388,25 @@ impl ActorCell {
         self.inner.tree.clear_supervisor();
     }
 
+    /// Monitor the provided [super::Actor] for supervision events. An actor in `ractor` can
+    /// only have a single supervisor, denoted by the `link` function, however they
+    /// may have multiple `monitors`. Monitor's receive copies of the [SupervisionEvent]s,
+    /// with non-cloneable information removed.
+    ///
+    /// * `who`: The actor to monitor
+    #[cfg(feature = "monitors")]
+    pub fn monitor(&self, who: ActorCell) {
+        who.inner.tree.set_monitor(self.clone());
+    }
+
+    /// Stop monitoring the provided [super::Actor] for supervision events.
+    ///
+    /// * `who`: The actor to stop monitoring
+    #[cfg(feature = "monitors")]
+    pub fn unmonitor(&self, who: ActorCell) {
+        who.inner.tree.remove_monitor(self.get_id());
+    }
+
     /// Kill this [super::Actor] forcefully (terminates async work)
     pub fn kill(&self) {
         let _ = self.inner.send_signal(Signal::Kill);
