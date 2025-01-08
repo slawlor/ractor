@@ -132,6 +132,7 @@ impl SupervisionEvent {
     /// to a string and copied as well as the state upon termination being not
     /// propogated. If the state were cloneable, we could propogate it, however
     /// that restriction is overly restrictive, so we've avoided it.
+    #[cfg(feature = "monitors")]
     pub(crate) fn clone_no_data(&self) -> Self {
         match self {
             Self::ActorStarted(who) => Self::ActorStarted(who.clone()),

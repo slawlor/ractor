@@ -12,7 +12,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ractor = "0.13"
+//! ractor = "0.14"
 //! ```
 //!
 //! The minimum supported Rust version (MSRV) is 1.64. However if you disable the `async-trait` feature, then you need Rust >= 1.75 due to the native
@@ -128,6 +128,9 @@
 //! NOTE: panic's in `pre_start` of an actor will cause failures to spawn, rather than supervision notified failures as the actor hasn't "linked"
 //! to its supervisor yet. However failures in `post_start`, `handle`, `handle_supervisor_evt`, `post_stop` will notify the supervisor should a failure
 //! occur. See [crate::Actor] documentation for more information
+//!
+//! There is additionally a "monitor" API which gives non-direct-supervision logic style monitoring akin to Erlang's [process monitors](https://www.erlang.org/doc/system/ref_man_processes.html#monitors).
+//! This functionality is opt-in via feature `monitors` on the `ractor` crate.
 //!
 //! ## Messaging actors
 //!

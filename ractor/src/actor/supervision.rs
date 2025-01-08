@@ -10,9 +10,6 @@
 //! when a child actor starts, stops, or panics (when possible). The supervisor can then decide
 //! how to handle the event. Should it restart the actor, leave it dead, potentially die itself
 //! notifying the supervisor's supervisor? That's up to the implementation of the [super::Actor]
-//!
-//! This is currently an initial implementation of [Erlang supervisors](https://www.erlang.org/doc/man/supervisor.html)
-//! which will be expanded upon as the library develops.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -25,8 +22,8 @@ use crate::ActorId;
 pub(crate) struct SupervisionTree {
     children: Mutex<Option<HashMap<ActorId, ActorCell>>>,
     supervisor: Mutex<Option<ActorCell>>,
+    #[cfg(feature = "monitors")]
     monitors: Mutex<Option<HashMap<ActorId, ActorCell>>>,
-    monitored: Mutex<Option<HashMap<ActorId, ActorCell>>>,
 }
 
 impl SupervisionTree {
@@ -64,6 +61,7 @@ impl SupervisionTree {
     }
 
     /// Set a monitor of this supervision tree
+    #[cfg(feature = "monitors")]
     pub(crate) fn set_monitor(&self, who: ActorCell) {
         let mut guard = self.monitors.lock().unwrap();
         if let Some(map) = &mut *guard {
@@ -73,28 +71,8 @@ impl SupervisionTree {
         }
     }
 
-    /// Mark that this actor is monitoring some other actors
-    pub(crate) fn mark_monitored(&self, who: ActorCell) {
-        let mut guard = self.monitored.lock().unwrap();
-        if let Some(map) = &mut *guard {
-            map.insert(who.get_id(), who);
-        } else {
-            *guard = Some(HashMap::from_iter([(who.get_id(), who)]))
-        }
-    }
-
-    /// Mark that this actor is no longer monitoring some other actors
-    pub(crate) fn unmark_monitored(&self, who: ActorId) {
-        let mut guard = self.monitored.lock().unwrap();
-        if let Some(map) = &mut *guard {
-            map.remove(&who);
-            if map.is_empty() {
-                *guard = None;
-            }
-        }
-    }
-
     /// Remove a specific monitor from the supervision tree
+    #[cfg(feature = "monitors")]
     pub(crate) fn remove_monitor(&self, who: ActorId) {
         let mut guard = self.monitors.lock().unwrap();
         if let Some(map) = &mut *guard {
@@ -103,20 +81,6 @@ impl SupervisionTree {
                 *guard = None;
             }
         }
-    }
-
-    /// Get the [ActorCell]s of the monitored actors this actor monitors
-    pub(crate) fn monitored_actors(&self) -> Vec<ActorCell> {
-        let guard = self.monitored.lock().unwrap();
-        let set = {
-            if let Some(monitors) = &*(guard) {
-                monitors.values().cloned().collect()
-            } else {
-                vec![]
-            }
-        };
-        drop(guard);
-        set
     }
 
     /// Terminate all your supervised children and unlink them
@@ -223,10 +187,11 @@ impl SupervisionTree {
     /// CAVEAT: Monitors get notified first, in order to save an unnecessary
     /// clone if there are no monitors.
     pub(crate) fn notify_supervisor(&self, evt: SupervisionEvent) {
-        if let Some(monitors) = &*(self.monitors.lock().unwrap()) {
-            for monitor in monitors.values() {
-                _ = monitor.send_supervisor_evt(evt.clone_no_data());
-            }
+        #[cfg(feature = "monitors")]
+        if let Some(monitors) = &mut *(self.monitors.lock().unwrap()) {
+            // We notify the monitors on a best-effort basis, and if we fail to send the event, we remove
+            // the monitor
+            monitors.retain(|_, v| v.send_supervisor_evt(evt.clone_no_data()).is_ok());
         }
 
         if let Some(parent) = &*(self.supervisor.lock().unwrap()) {

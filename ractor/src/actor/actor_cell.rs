@@ -394,24 +394,17 @@ impl ActorCell {
     /// with non-cloneable information removed.
     ///
     /// * `who`: The actor to monitor
+    #[cfg(feature = "monitors")]
     pub fn monitor(&self, who: ActorCell) {
         who.inner.tree.set_monitor(self.clone());
-        self.inner.tree.mark_monitored(who);
     }
 
     /// Stop monitoring the provided [super::Actor] for supervision events.
     ///
     /// * `who`: The actor to stop monitoring
+    #[cfg(feature = "monitors")]
     pub fn unmonitor(&self, who: ActorCell) {
-        self.inner.tree.unmark_monitored(who.get_id());
         who.inner.tree.remove_monitor(self.get_id());
-    }
-
-    /// Clear all the [self::Actor]s which are monitored by this [self::Actor]
-    pub fn clear_monitors(&self) {
-        for id in self.inner.tree.monitored_actors() {
-            self.unmonitor(id);
-        }
     }
 
     /// Kill this [super::Actor] forcefully (terminates async work)

@@ -1,6 +1,6 @@
 [package]
 name = "ractor_cluster"
-version = "0.14.3"
+version = "0.14.4"
 authors = ["Sean Lawlor <slawlor>"]
 description = "Distributed cluster environment of Ractor actors"
 documentation = "https://docs.rs/ractor"
@@ -15,6 +15,8 @@ build = "src/build.rs"
 rust-version = "1.64"
 
 [features]
+monitors = ["ractor/monitors"]
+message_span_propogation = ["ractor/message_span_propogation"]
 async-trait = ["dep:async-trait", "ractor/async-trait"]
 
 default = []

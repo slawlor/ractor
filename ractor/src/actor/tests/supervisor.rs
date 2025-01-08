@@ -1570,6 +1570,7 @@ async fn draining_children_will_shutdown_parent_too() {
 
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
+#[cfg(feature = "monitors")]
 async fn test_simple_monitor() {
     struct Peer;
     struct Monitor {

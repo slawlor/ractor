@@ -772,9 +772,6 @@ where
             // notify supervisors of the actor's death
             myself.notify_supervisor_and_monitors(evt);
 
-            // clear any monitor actors
-            myself.clear_monitors();
-
             // unlink superisors
             if let Some(sup) = supervisor {
                 myself.unlink(sup);
