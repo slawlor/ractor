@@ -9,6 +9,7 @@ use std::sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
 };
+use std::time::Instant;
 
 use ractor::concurrency::sleep;
 
@@ -113,6 +114,7 @@ async fn node_sesison_client_auth_success() {
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
+        epoch: Instant::now(),
     };
 
     // Client sends their name, Server responds with Ok
@@ -257,6 +259,7 @@ async fn node_session_client_auth_session_state_failures() {
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
+        epoch: Instant::now(),
     };
 
     // Client sends their name, Server responds with Ok
@@ -386,6 +389,7 @@ async fn node_session_server_auth_success() {
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
+        epoch: Instant::now(),
     };
 
     // Client sends their name
@@ -479,6 +483,7 @@ async fn node_session_server_auth_session_state_failures() {
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
+        epoch: Instant::now(),
     };
 
     // Other session continues, this one dies
@@ -627,6 +632,7 @@ async fn node_session_handle_node_msg() {
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
+        epoch: Instant::now(),
     };
     // add the "remote" actor
     state
@@ -723,6 +729,7 @@ async fn node_session_handle_control() {
         name: None,
         remote_actors: HashMap::new(),
         tcp: None,
+        epoch: Instant::now(),
     };
 
     // check spawn creates a remote actor

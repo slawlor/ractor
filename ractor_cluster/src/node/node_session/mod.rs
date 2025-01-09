@@ -10,6 +10,7 @@
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::net::SocketAddr;
+use std::time::{Instant, SystemTime};
 
 use ractor::message::SerializedMessage;
 use ractor::pg::{get_scoped_local_members, which_scopes_and_groups, GroupChangeMessage};
@@ -500,10 +501,10 @@ impl NodeSession {
                         .expect("Timestamp missing in Pong")
                         .try_into()
                         .expect("Failed to convert Pong(Timestamp) to SystemTime");
-                    let delta_ms = std::time::SystemTime::now()
-                        .duration_since(ts)
-                        .expect("Time went backwards")
-                        .as_millis();
+                    let inst = ts
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    let delta_ms = (state.epoch.elapsed() - inst).as_millis();
                     tracing::debug!("Ping -> Pong took {delta_ms}ms");
                     if delta_ms > 50 {
                         tracing::warn!(
@@ -755,6 +756,7 @@ pub struct NodeSessionState {
     tcp: Option<ActorRef<crate::net::session::SessionMessage>>,
     peer_addr: SocketAddr,
     local_addr: SocketAddr,
+    epoch: Instant,
     name: Option<auth_protocol::NameMessage>,
     auth: AuthenticationState,
     remote_actors: HashMap<u64, ActorRef<RemoteActorMessage>>,
@@ -798,14 +800,15 @@ impl NodeSessionState {
     }
 
     fn schedule_tcp_ping(&self) {
+        let epoch = self.epoch;
         if let Some(tcp) = &self.tcp {
             #[allow(clippy::let_underscore_future)]
-            let _ = tcp.send_after(Self::get_send_delay(), || {
+            let _ = tcp.send_after(Self::get_send_delay(), move || {
                 let ping = control_protocol::ControlMessage {
                     msg: Some(control_protocol::control_message::Msg::Ping(
                         control_protocol::Ping {
                             timestamp: Some(prost_types::Timestamp::from(
-                                std::time::SystemTime::now(),
+                                SystemTime::UNIX_EPOCH + epoch.elapsed(),
                             )),
                         },
                     )),
@@ -861,6 +864,7 @@ impl Actor for NodeSession {
             remote_actors: HashMap::new(),
             peer_addr,
             local_addr,
+            epoch: Instant::now(),
         };
 
         // If a client-connection, startup the handshake
