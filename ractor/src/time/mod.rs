@@ -216,3 +216,39 @@ where
         kill_after(period, self.get_cell())
     }
 }
+
+/// Add the timing functionality on top of the [crate::ActorRef]
+impl<TMessage> crate::DerivedActorRef<TMessage>
+where
+    TMessage: crate::Message,
+{
+    /// Alias of [send_interval]
+    pub fn send_interval<F>(&self, period: Duration, msg: F) -> JoinHandle<()>
+    where
+        F: Fn() -> TMessage + Send + 'static,
+    {
+        send_interval::<TMessage, F>(period, self.get_cell(), msg)
+    }
+
+    /// Alias of [send_after]
+    pub fn send_after<F>(
+        &self,
+        period: Duration,
+        msg: F,
+    ) -> JoinHandle<Result<(), MessagingErr<TMessage>>>
+    where
+        F: FnOnce() -> TMessage + Send + 'static,
+    {
+        send_after::<TMessage, F>(period, self.get_cell(), msg)
+    }
+
+    /// Alias of [exit_after]
+    pub fn exit_after(&self, period: Duration) -> JoinHandle<()> {
+        exit_after(period, self.get_cell())
+    }
+
+    /// Alias of [kill_after]
+    pub fn kill_after(&self, period: Duration) -> JoinHandle<()> {
+        kill_after(period, self.get_cell())
+    }
+}
