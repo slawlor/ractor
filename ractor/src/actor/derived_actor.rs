@@ -140,10 +140,18 @@ use std::sync::Arc;
 ///     kitchen_actor_handle.await.unwrap();
 /// }
 /// ```
-#[derive(Clone)]
 pub struct DerivedActorRef<TFrom> {
-    converter: Arc<dyn Fn(TFrom) -> Result<(), MessagingErr<TFrom>>>,
-    inner: ActorCell,
+    converter: Arc<dyn Fn(TFrom) -> Result<(), MessagingErr<TFrom>> + Send + Sync + 'static>,
+    pub(crate) inner: ActorCell,
+}
+
+impl<TFrom> Clone for DerivedActorRef<TFrom> {
+    fn clone(&self) -> Self {
+        Self {
+            converter: self.converter.clone(),
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl<TFrom> std::fmt::Debug for DerivedActorRef<TFrom> {

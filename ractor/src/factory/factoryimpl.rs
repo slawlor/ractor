@@ -11,8 +11,6 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use bon::Builder;
-
 use self::routing::RouteResult;
 use crate::concurrency::Duration;
 use crate::concurrency::Instant;
@@ -99,7 +97,7 @@ where
 }
 
 /// Arguments for configuring and starting a [Factory] actor instance.
-#[derive(Builder)]
+#[derive(bon::Builder)]
 #[builder(on(String, into))]
 pub struct FactoryArguments<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
 where

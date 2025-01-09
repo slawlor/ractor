@@ -89,12 +89,52 @@
 
 use crate::concurrency::{self, Duration, JoinHandle};
 
-use crate::{ActorCell, ActorRef, Message, MessagingErr, RpcReplyPort};
+use crate::{ActorCell, ActorRef, DerivedActorRef, Message, MessagingErr, RpcReplyPort};
 
 pub mod call_result;
 pub use call_result::CallResult;
 #[cfg(test)]
 mod tests;
+
+fn internal_cast<F, TMessage>(sender: F, msg: TMessage) -> Result<(), MessagingErr<TMessage>>
+where
+    F: Fn(TMessage) -> Result<(), MessagingErr<TMessage>>,
+    TMessage: Message,
+{
+    sender(msg)
+}
+
+async fn internal_call<F, TMessage, TReply, TMsgBuilder>(
+    sender: F,
+    msg_builder: TMsgBuilder,
+    timeout_option: Option<Duration>,
+) -> Result<CallResult<TReply>, MessagingErr<TMessage>>
+where
+    F: Fn(TMessage) -> Result<(), MessagingErr<TMessage>>,
+    TMessage: Message,
+    TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
+{
+    let (tx, rx) = concurrency::oneshot();
+    let port: RpcReplyPort<TReply> = match timeout_option {
+        Some(duration) => (tx, duration).into(),
+        None => tx.into(),
+    };
+    sender(msg_builder(port))?;
+
+    // wait for the reply
+    Ok(if let Some(duration) = timeout_option {
+        match crate::concurrency::timeout(duration, rx).await {
+            Ok(Ok(result)) => CallResult::Success(result),
+            Ok(Err(_send_err)) => CallResult::SenderError,
+            Err(_timeout_err) => CallResult::Timeout,
+        }
+    } else {
+        match rx.await {
+            Ok(result) => CallResult::Success(result),
+            Err(_send_err) => CallResult::SenderError,
+        }
+    })
+}
 
 /// Sends an asynchronous request to the specified actor, ignoring if the
 /// actor is alive or healthy and simply returns immediately
@@ -107,7 +147,7 @@ pub fn cast<TMessage>(actor: &ActorCell, msg: TMessage) -> Result<(), MessagingE
 where
     TMessage: Message,
 {
-    actor.send_message::<TMessage>(msg)
+    internal_cast(|m| actor.send_message::<TMessage>(m), msg)
 }
 
 /// Sends an asynchronous request to the specified actor, building a one-time
@@ -129,26 +169,7 @@ where
     TMessage: Message,
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
 {
-    let (tx, rx) = concurrency::oneshot();
-    let port: RpcReplyPort<TReply> = match timeout_option {
-        Some(duration) => (tx, duration).into(),
-        None => tx.into(),
-    };
-    actor.send_message::<TMessage>(msg_builder(port))?;
-
-    // wait for the reply
-    Ok(if let Some(duration) = timeout_option {
-        match crate::concurrency::timeout(duration, rx).await {
-            Ok(Ok(result)) => CallResult::Success(result),
-            Ok(Err(_send_err)) => CallResult::SenderError,
-            Err(_timeout_err) => CallResult::Timeout,
-        }
-    } else {
-        match rx.await {
-            Ok(result) => CallResult::Success(result),
-            Err(_send_err) => CallResult::SenderError,
-        }
-    })
+    internal_call(|m| actor.send_message(m), msg_builder, timeout_option).await
 }
 
 /// Sends an asynchronous request to the specified actors, building a one-time
@@ -325,5 +346,27 @@ where
             forward_mapping,
             timeout_option,
         )
+    }
+}
+
+impl<TMessage> DerivedActorRef<TMessage>
+where
+    TMessage: Message,
+{
+    /// Alias of [cast]
+    pub fn cast(&self, msg: TMessage) -> Result<(), MessagingErr<TMessage>> {
+        internal_cast(|m| self.send_message(m), msg)
+    }
+
+    /// Alias of [call]
+    pub async fn call<TReply, TMsgBuilder>(
+        &self,
+        msg_builder: TMsgBuilder,
+        timeout_option: Option<Duration>,
+    ) -> Result<CallResult<TReply>, MessagingErr<TMessage>>
+    where
+        TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
+    {
+        internal_call(|m| self.send_message(m), msg_builder, timeout_option).await
     }
 }
