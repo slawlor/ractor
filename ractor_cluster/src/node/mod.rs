@@ -104,6 +104,9 @@ pub enum NodeServerMessage {
     /// This specific node session has authenticated
     ConnectionAuthenticated(ActorId),
 
+    /// This specific node session has finished all state exchange after authentication
+    ConnectionReady(ActorId),
+
     /// A request to check if a session is currently open, and if it is is the ordering such that we should
     /// reject the incoming request
     ///
@@ -151,6 +154,9 @@ pub enum NodeSessionMessage {
 
     /// Retrieve whether the session is authenticated or not
     GetAuthenticationState(RpcReplyPort<bool>),
+
+    /// Retrieve whether the session has finished initial state exchange after authentication
+    GetReadyState(RpcReplyPort<bool>),
 }
 
 /// Node connection mode from the [Erlang](https://www.erlang.org/doc/reference_manual/distributed.html#node-connections)
@@ -273,6 +279,13 @@ pub trait NodeEventSubscription: Send + 'static {
     /// * `ses`: The [NodeServerSessionInformation] representing the current state
     ///   of the node session
     fn node_session_authenicated(&self, ses: NodeServerSessionInformation);
+
+    /// A node session is ready
+    ///
+    /// * `ses`: The [NodeServerSessionInformation] representing the current state
+    ///   of the node session
+    #[allow(unused_variables)]
+    fn node_session_ready(&self, ses: NodeServerSessionInformation) {}
 }
 
 /// The state of the node server
@@ -395,6 +408,13 @@ impl Actor for NodeServer {
                 if let Some(entry) = state.node_sessions.get(&actor_id) {
                     for (_, sub) in state.subscriptions.iter() {
                         sub.node_session_authenicated(entry.clone());
+                    }
+                }
+            }
+            Self::Msg::ConnectionReady(actor_id) => {
+                if let Some(entry) = state.node_sessions.get(&actor_id) {
+                    for (_, sub) in state.subscriptions.iter() {
+                        sub.node_session_ready(entry.clone());
                     }
                 }
             }
