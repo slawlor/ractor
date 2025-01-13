@@ -76,6 +76,10 @@ message NodeSessions {
     repeated auth.NameMessage sessions = 1;
 }
 
+// All state for initial sync has been pushed
+message Ready {
+}
+
 // Control messages between authenticated `node()`s which are dist-connected
 message ControlMessage {
     // The message payload
@@ -96,5 +100,7 @@ message ControlMessage {
         auth.NameMessage enumerate_node_sessions = 7;
         // The list of node sessions on the remote host for transitive connections
         NodeSessions node_sessions = 8;
+        // All state for initial sync has been pushed
+        Ready ready = 9;
     }
 }

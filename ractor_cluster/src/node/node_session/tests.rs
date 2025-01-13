@@ -109,6 +109,7 @@ async fn node_sesison_client_auth_success() {
 
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsClient(auth::ClientAuthenticationProcess::init()),
+        ready: ReadyState::Open,
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
@@ -254,6 +255,7 @@ async fn node_session_client_auth_session_state_failures() {
 
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsClient(auth::ClientAuthenticationProcess::init()),
+        ready: ReadyState::Open,
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
@@ -384,6 +386,7 @@ async fn node_session_server_auth_success() {
     // let addr = SocketAddr::
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsServer(auth::ServerAuthenticationProcess::init()),
+        ready: ReadyState::Open,
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
@@ -478,6 +481,7 @@ async fn node_session_server_auth_session_state_failures() {
 
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsServer(auth::ServerAuthenticationProcess::init()),
+        ready: ReadyState::Open,
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
@@ -627,6 +631,7 @@ async fn node_session_handle_node_msg() {
 
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsServer(auth::ServerAuthenticationProcess::Ok([0u8; 32])),
+        ready: ReadyState::Open,
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
@@ -724,6 +729,7 @@ async fn node_session_handle_control() {
 
     let mut state = NodeSessionState {
         auth: AuthenticationState::AsClient(auth::ClientAuthenticationProcess::Ok),
+        ready: ReadyState::Open,
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,

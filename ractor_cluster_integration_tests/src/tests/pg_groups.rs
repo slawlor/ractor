@@ -154,7 +154,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
         {
             let is_authenticated = ractor::call_t!(
                 item.actor,
-                ractor_cluster::NodeSessionMessage::GetAuthenticationState,
+                ractor_cluster::NodeSessionMessage::GetReadyState,
                 200
             );
             match is_authenticated {
@@ -167,7 +167,7 @@ pub(crate) async fn test(config: PgGroupsConfig) -> i32 {
                 }
                 Ok(true) => {
                     err_code = 0;
-                    tracing::info!("Authentication succeeded. Exiting test");
+                    tracing::info!("Authentication and initial sync succeeded.");
                     break;
                 }
             }

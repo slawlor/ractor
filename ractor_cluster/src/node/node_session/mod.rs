@@ -57,6 +57,20 @@ impl AuthenticationState {
     }
 }
 
+#[derive(Debug)]
+enum ReadyState {
+    Open,
+    SyncSent,
+    SyncReceived,
+    Ready,
+}
+
+impl ReadyState {
+    fn is_ok(&self) -> bool {
+        matches!(self, ReadyState::Ready)
+    }
+}
+
 /// Represents a remote connection to a `node()`. The [NodeSession] is the main
 /// handler for all inter-node communication and handles
 ///
@@ -455,6 +469,21 @@ impl NodeSession {
 
         if let Some(msg) = message.msg {
             match msg {
+                control_protocol::control_message::Msg::Ready(_) => match state.ready {
+                    ReadyState::Open => {
+                        state.ready = ReadyState::SyncReceived;
+                    }
+                    ReadyState::SyncSent => {
+                        state.ready = ReadyState::Ready;
+                        ractor::cast!(
+                            self.node_server,
+                            NodeServerMessage::ConnectionReady(myself.get_id())
+                        )?;
+                    }
+                    ReadyState::SyncReceived | ReadyState::Ready => {
+                        tracing::warn!("Received duplicate Ready signal");
+                    }
+                },
                 control_protocol::control_message::Msg::Spawn(spawned_actors) => {
                     for net_actor in spawned_actors.actors {
                         if let Err(spawn_err) = self
@@ -720,6 +749,18 @@ impl NodeSession {
                 state.tcp_send_control(control_message);
             }
         }
+        state.tcp_send_control(control_protocol::ControlMessage {
+            msg: Some(control_protocol::control_message::Msg::Ready(
+                control_protocol::Ready {},
+            )),
+        });
+        match state.ready {
+            ReadyState::Open => state.ready = ReadyState::SyncSent,
+            ReadyState::SyncReceived => state.ready = ReadyState::Ready,
+            ReadyState::SyncSent | ReadyState::Ready => {
+                unreachable!("after_authenticated() executed twice")
+            }
+        }
         // TODO: subscribe to the named registry and synchronize it? What happes on a name clash? How would this be handled
         // if both sessions had a "node_a" for example? Which resolves, local only?
     }
@@ -759,6 +800,7 @@ pub struct NodeSessionState {
     epoch: Instant,
     name: Option<auth_protocol::NameMessage>,
     auth: AuthenticationState,
+    ready: ReadyState,
     remote_actors: HashMap<u64, ActorRef<RemoteActorMessage>>,
 }
 
@@ -861,6 +903,7 @@ impl Actor for NodeSession {
             } else {
                 AuthenticationState::AsClient(auth::ClientAuthenticationProcess::init())
             },
+            ready: ReadyState::Open,
             remote_actors: HashMap::new(),
             peer_addr,
             local_addr,
@@ -927,7 +970,12 @@ impl Actor for NodeSession {
                                 self.node_server.cast(
                                     NodeServerMessage::ConnectionAuthenticated(myself.get_id()),
                                 )?;
-                                self.after_authenticated(myself, state);
+                                self.after_authenticated(myself.clone(), state);
+                                if state.ready.is_ok() {
+                                    self.node_server.cast(NodeServerMessage::ConnectionReady(
+                                        myself.get_id(),
+                                    ))?;
+                                }
                             }
                         }
                         crate::protocol::meta::network_message::Message::Node(node_message) => {
@@ -946,6 +994,9 @@ impl Actor for NodeSession {
             }
             Self::Msg::GetAuthenticationState(reply) => {
                 let _ = reply.send(state.auth.is_ok());
+            }
+            Self::Msg::GetReadyState(reply) => {
+                let _ = reply.send(state.ready.is_ok());
             }
             _ => {
                 // no-op, ignore
