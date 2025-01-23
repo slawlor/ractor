@@ -9,6 +9,7 @@
 //! such as channels (see: https://github.com/tokio-rs/tokio/issues/4232#issuecomment-968329443).
 
 use std::{
+    fmt::Debug,
     future::Future,
     pin::Pin,
     sync::{
@@ -28,6 +29,16 @@ pub struct JoinHandle<T> {
     handle: Option<async_std::task::JoinHandle<T>>,
     is_done: Arc<AtomicBool>,
 }
+
+impl<T> Debug for JoinHandle<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JoinHandle")
+            .field("name", &self.is_done.load(Ordering::Relaxed))
+            .field("handle", &self.handle.is_some())
+            .finish()
+    }
+}
+
 impl<T> JoinHandle<T> {
     /// Determine if the handle is currently finished
     pub fn is_finished(&self) -> bool {
@@ -74,6 +85,7 @@ pub type Instant = std::time::Instant;
 /// An asynchronous interval calculation which waits until
 /// a checkpoint time to tick. This is a replication of the
 /// basic functionality from `tokio`'s `Interval`.
+#[derive(Debug, Clone)]
 pub struct Interval {
     dur: Duration,
     next_tick: Instant,
@@ -108,6 +120,14 @@ pub fn interval(dur: Duration) -> Interval {
 #[derive(Default)]
 pub struct JoinSet<T> {
     set: FuturesUnordered<BoxFuture<'static, T>>,
+}
+
+impl<T> Debug for JoinSet<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JoinSet")
+            .field("size", &self.set.len())
+            .finish()
+    }
 }
 
 impl<T> JoinSet<T> {
