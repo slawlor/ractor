@@ -10,10 +10,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::{
-    common_test::periodic_check, concurrency::Duration, message::BoxedDowncastErr,
-    ActorProcessingErr,
-};
+use crate::{concurrency::Duration, message::BoxedDowncastErr, periodic_check, ActorProcessingErr};
 
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
 
@@ -77,8 +74,7 @@ async fn test_supervision_panic_in_post_startup() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
-                self.flag
-                    .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                 this_actor.stop(None);
             }
             Ok(())
@@ -103,7 +99,7 @@ async fn test_supervision_panic_in_post_startup() {
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
-    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::SeqCst));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_ref.get_num_children());
@@ -169,8 +165,7 @@ async fn test_supervision_error_in_post_startup() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
-                self.flag
-                    .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                 this_actor.stop(None);
             }
             Ok(())
@@ -191,7 +186,7 @@ async fn test_supervision_error_in_post_startup() {
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
-    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::SeqCst));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_ref.get_num_children());
@@ -258,8 +253,7 @@ async fn test_supervision_panic_in_handle() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
-                self.flag
-                    .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                 this_actor.stop(None);
             }
             Ok(())
@@ -288,7 +282,7 @@ async fn test_supervision_panic_in_handle() {
     let _ = s_handle.await;
     let _ = c_handle.await;
 
-    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::SeqCst));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_ref.get_num_children());
@@ -355,8 +349,7 @@ async fn test_supervision_error_in_handle() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
-                self.flag
-                    .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                 this_actor.stop(None);
             }
             Ok(())
@@ -385,7 +378,7 @@ async fn test_supervision_error_in_handle() {
     let _ = s_handle.await;
     let _ = c_handle.await;
 
-    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::SeqCst));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_ref.get_num_children());
@@ -444,8 +437,7 @@ async fn test_supervision_panic_in_post_stop() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
-                self.flag
-                    .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                 this_actor.stop(None);
             }
 
@@ -466,7 +458,7 @@ async fn test_supervision_panic_in_post_stop() {
     let _ = s_handle.await;
     let _ = c_handle.await;
 
-    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::SeqCst));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_ref.get_num_children());
@@ -525,8 +517,7 @@ async fn test_supervision_error_in_post_stop() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
-                self.flag
-                    .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                 this_actor.stop(None);
             }
 
@@ -547,7 +538,7 @@ async fn test_supervision_error_in_post_stop() {
     let _ = s_handle.await;
     let _ = c_handle.await;
 
-    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::SeqCst));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_ref.get_num_children());
@@ -642,8 +633,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
-                self.flag
-                    .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                 this_actor.stop(None);
             }
             Ok(())
@@ -688,7 +678,7 @@ async fn test_supervision_panic_in_supervisor_handle() {
     // check that we got the midpoint's ref id
     assert_eq!(
         midpoint_ref_clone.get_id().pid(),
-        flag.load(Ordering::Relaxed)
+        flag.load(Ordering::SeqCst)
     );
 
     // supervisor relationship cleaned up correctly
@@ -784,8 +774,7 @@ async fn test_supervision_error_in_supervisor_handle() {
 
             // check that the panic was captured
             if let SupervisionEvent::ActorFailed(dead_actor, _panic_msg) = message {
-                self.flag
-                    .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                 this_actor.stop(None);
             }
             Ok(())
@@ -830,7 +819,7 @@ async fn test_supervision_error_in_supervisor_handle() {
     // check that we got the midpoint's ref id
     assert_eq!(
         midpoint_ref_clone.get_id().pid(),
-        flag.load(Ordering::Relaxed)
+        flag.load(Ordering::SeqCst)
     );
 
     // supervisor relationship cleaned up correctly
@@ -928,9 +917,12 @@ async fn instant_supervised_spawns() {
         async fn handle_supervisor_evt(
             &self,
             _: ActorRef<Self::Msg>,
-            _: SupervisionEvent,
+            evt: SupervisionEvent,
             _: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
+            if let SupervisionEvent::ActorStarted(_) = evt {
+                return Ok(());
+            }
             Err(From::from(
                 "Supervision event received when it shouldn't have been!",
             ))
@@ -949,7 +941,7 @@ async fn instant_supervised_spawns() {
             counter: Arc<AtomicU8>,
         ) -> Result<Self::State, ActorProcessingErr> {
             // delay startup by some amount
-            crate::concurrency::sleep(Duration::from_millis(200)).await;
+            crate::concurrency::sleep(Duration::from_millis(100)).await;
             Ok(counter)
         }
 
@@ -959,7 +951,7 @@ async fn instant_supervised_spawns() {
             _message: String,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            state.fetch_add(1, Ordering::Relaxed);
+            state.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
@@ -982,20 +974,25 @@ async fn instant_supervised_spawns() {
     }
 
     // actor is still starting up
-    assert_eq!(0, counter.load(Ordering::Relaxed));
+    assert_eq!(0, counter.load(Ordering::SeqCst));
 
     // wait for everything processed
     periodic_check(
-        || counter.load(Ordering::Relaxed) >= 10,
+        || actor.get_status() == ActorStatus::Running,
         Duration::from_secs(5),
     )
     .await;
+    actor
+        .drain_and_wait(None)
+        .await
+        .expect("Failed to drain actor");
+    assert_eq!(counter.load(Ordering::SeqCst), 10);
 
     // Cleanup
     supervisor.stop(None);
     shandle.await.unwrap();
 
-    actor.stop(None);
+    // actor.stop(None);
     handles
         .await
         .unwrap()
@@ -1071,8 +1068,7 @@ async fn test_supervisor_captures_dead_childs_state() {
             ) = message
             {
                 if let Ok(1) = boxed_state.take::<u64>() {
-                    self.flag
-                        .store(dead_actor.get_id().pid(), Ordering::Relaxed);
+                    self.flag.store(dead_actor.get_id().pid(), Ordering::SeqCst);
                     this_actor.stop(None);
                 }
             }
@@ -1100,7 +1096,7 @@ async fn test_supervisor_captures_dead_childs_state() {
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
-    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::Relaxed));
+    assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::SeqCst));
 
     // supervisor relationship cleaned up correctly
     assert_eq!(0, supervisor_ref.get_num_children());
@@ -1176,7 +1172,7 @@ async fn test_supervisor_exit_doesnt_call_child_post_stop() {
             _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            self.post_stop_calls.fetch_add(1, Ordering::Relaxed);
+            self.post_stop_calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
@@ -1232,7 +1228,7 @@ async fn test_supervisor_exit_doesnt_call_child_post_stop() {
     c_handle.await.unwrap();
 
     // Child's post-stop should NOT have been called.
-    assert_eq!(0, flag.load(Ordering::Relaxed));
+    assert_eq!(0, flag.load(Ordering::SeqCst));
 }
 
 #[crate::concurrency::test]
@@ -1260,7 +1256,7 @@ async fn stopping_children_and_wait_during_parent_shutdown() {
             _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            self.post_stop_calls.fetch_add(1, Ordering::Relaxed);
+            self.post_stop_calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
@@ -1314,7 +1310,7 @@ async fn stopping_children_and_wait_during_parent_shutdown() {
     c_handle.await.unwrap();
 
     // Child's post-stop should have been called.
-    assert_eq!(1, flag.load(Ordering::Relaxed));
+    assert_eq!(1, flag.load(Ordering::SeqCst));
 }
 
 #[crate::concurrency::test]
@@ -1342,7 +1338,7 @@ async fn stopping_children_will_shutdown_parent_too() {
             _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            self.post_stop_calls.fetch_add(1, Ordering::Relaxed);
+            self.post_stop_calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
@@ -1397,7 +1393,7 @@ async fn stopping_children_will_shutdown_parent_too() {
     c_handle.await.unwrap();
 
     // Child's post-stop should have been called.
-    assert_eq!(1, flag.load(Ordering::Relaxed));
+    assert_eq!(1, flag.load(Ordering::SeqCst));
 }
 
 #[crate::concurrency::test]
@@ -1425,7 +1421,7 @@ async fn draining_children_and_wait_during_parent_shutdown() {
             _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            self.post_stop_calls.fetch_add(1, Ordering::Relaxed);
+            self.post_stop_calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
@@ -1479,7 +1475,7 @@ async fn draining_children_and_wait_during_parent_shutdown() {
     c_handle.await.unwrap();
 
     // Child's post-stop should have been called.
-    assert_eq!(1, flag.load(Ordering::Relaxed));
+    assert_eq!(1, flag.load(Ordering::SeqCst));
 }
 
 #[crate::concurrency::test]
@@ -1507,7 +1503,7 @@ async fn draining_children_will_shutdown_parent_too() {
             _this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            self.post_stop_calls.fetch_add(1, Ordering::Relaxed);
+            self.post_stop_calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
@@ -1565,7 +1561,7 @@ async fn draining_children_will_shutdown_parent_too() {
     c_handle.await.unwrap();
 
     // Child's post-stop should have been called.
-    assert_eq!(1, flag.load(Ordering::Relaxed));
+    assert_eq!(1, flag.load(Ordering::SeqCst));
 }
 
 #[crate::concurrency::test]
@@ -1624,7 +1620,7 @@ async fn test_simple_monitor() {
         ) -> Result<(), ActorProcessingErr> {
             if let SupervisionEvent::ActorTerminated(_who, _state, Some(msg)) = evt {
                 if msg.as_str() == "oh no!" {
-                    self.counter.fetch_add(1, Ordering::Relaxed);
+                    self.counter.fetch_add(1, Ordering::SeqCst);
                 }
             }
             Ok(())
@@ -1650,11 +1646,7 @@ async fn test_simple_monitor() {
 
     // stopping the peer should notify the monitor, who can capture the state
     p.cast(()).expect("Failed to contact peer");
-    periodic_check(
-        || count.load(Ordering::Relaxed) == 1,
-        Duration::from_secs(1),
-    )
-    .await;
+    periodic_check(|| count.load(Ordering::SeqCst) == 1, Duration::from_secs(1)).await;
     ph.await.unwrap();
 
     let (p, ph) = Actor::spawn(None, Peer, ())
@@ -1669,7 +1661,7 @@ async fn test_simple_monitor() {
     // The count doesn't increment when the peer exits (we give some time
     // to schedule the supervision evt)
     crate::concurrency::sleep(Duration::from_millis(100)).await;
-    assert_eq!(1, count.load(Ordering::Relaxed));
+    assert_eq!(1, count.load(Ordering::SeqCst));
 
     m.stop(None);
     mh.await.unwrap();
