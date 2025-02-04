@@ -12,6 +12,7 @@ use crate::{Actor, ActorProcessingErr, SpawnErr};
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
 async fn test_basic_registation() {
+    #[derive(Default)]
     struct EmptyActor;
 
     #[cfg_attr(feature = "async-trait", crate::async_trait)]
@@ -29,7 +30,7 @@ async fn test_basic_registation() {
         }
     }
 
-    let (actor, handle) = Actor::spawn(Some("my_actor".to_string()), EmptyActor, ())
+    let (actor, _) = crate::spawn_named::<EmptyActor>("my_actor".to_string(), ())
         .await
         .expect("Actor failed to start");
 
@@ -38,8 +39,10 @@ async fn test_basic_registation() {
     // Coverage for Issue #70
     assert!(crate::ActorRef::<()>::where_is("my_actor".to_string()).is_some());
 
-    actor.stop(None);
-    handle.await.expect("Failed to clean stop the actor");
+    actor
+        .stop_and_wait(None, None)
+        .await
+        .expect("Failed to wait for stop");
 }
 
 #[crate::concurrency::test]
