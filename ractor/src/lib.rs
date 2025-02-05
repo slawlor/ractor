@@ -179,6 +179,7 @@ pub mod rpc;
 pub mod serialization;
 pub mod time;
 
+use concurrency::JoinHandle;
 #[cfg(not(feature = "async-trait"))]
 use strum as _;
 
@@ -228,3 +229,33 @@ pub type ScopeName = String;
 /// to send between threads (same bounds as a [Message])
 pub trait State: std::any::Any + Send + 'static {}
 impl<T: std::any::Any + Send + 'static> State for T {}
+
+// ======================== Helper Functionality ======================== //
+
+/// Perform a background-spawn of an actor. This is a utility wrapper over [Actor::spawn] which drops
+/// the [crate::concurrency::JoinHandle] for convenience and assumes the actor implementation implements
+/// [Default].
+///
+/// * `args` - The arguments to start the actor
+///
+/// Returns [Ok((ActorRef, JoinHandle<()>))] upon successful actor startup, [Err(SpawnErr)] otherwise
+pub async fn spawn<T: Actor + Default>(
+    args: T::Arguments,
+) -> Result<(ActorRef<T::Msg>, JoinHandle<()>), SpawnErr> {
+    T::spawn(None, T::default(), args).await
+}
+
+/// Perform a background-spawn of an actor with the provided name. This is a utility wrapper
+/// over [Actor::spawn] which drops the [crate::concurrency::JoinHandle] for convenience and
+/// assumes the actor implementation implements [Default].
+///
+/// * `name` - The name for the actor to spawn
+/// * `args` - The arguments to start the actor
+///
+/// Returns [Ok((ActorRef, JoinHandle<()>))] upon successful actor startup, [Err(SpawnErr)] otherwise
+pub async fn spawn_named<T: Actor + Default>(
+    name: crate::ActorName,
+    args: T::Arguments,
+) -> Result<(ActorRef<T::Msg>, JoinHandle<()>), SpawnErr> {
+    T::spawn(Some(name), T::default(), args).await
+}

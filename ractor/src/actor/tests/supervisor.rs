@@ -87,9 +87,8 @@ async fn test_supervision_panic_in_post_startup() {
         .await
         .expect("Supervisor panicked on startup");
 
-    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
-
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_cell)
+    let (child_ref, c_handle) = supervisor_ref
+        .spawn_linked(None, Child, ())
         .await
         .expect("Child panicked on startup");
 
@@ -1088,9 +1087,8 @@ async fn test_supervisor_captures_dead_childs_state() {
         .await
         .expect("Supervisor panicked on startup");
 
-    let supervisor_cell: ActorCell = supervisor_ref.clone().into();
-
-    let (child_ref, c_handle) = Actor::spawn_linked(None, Child, (), supervisor_cell)
+    let (child_ref, c_handle) = supervisor_ref
+        .spawn_linked(None, Child, ())
         .await
         .expect("Child panicked on startup");
 

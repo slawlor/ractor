@@ -30,6 +30,7 @@ impl crate::Message for EmptyMessage {}
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
 async fn test_panic_on_start_captured() {
+    #[derive(Default)]
     struct TestActor;
 
     #[cfg_attr(feature = "async-trait", crate::async_trait)]
@@ -47,7 +48,7 @@ async fn test_panic_on_start_captured() {
         }
     }
 
-    let actor_output = Actor::spawn(None, TestActor, ()).await;
+    let actor_output = crate::spawn::<TestActor>(()).await;
     assert!(matches!(actor_output, Err(SpawnErr::StartupFailed(_))));
 }
 
@@ -364,6 +365,7 @@ async fn test_sending_message_to_invalid_actor_type() {
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
 async fn test_sending_message_to_dead_actor() {
+    #[derive(Default)]
     struct TestActor;
 
     #[cfg_attr(feature = "async-trait", crate::async_trait)]
@@ -381,13 +383,15 @@ async fn test_sending_message_to_dead_actor() {
         }
     }
 
-    let (actor, handle) = Actor::spawn(None, TestActor, ())
+    let (actor, _) = crate::spawn::<TestActor>(())
         .await
         .expect("Actor failed to start");
 
     // Stop the actor and wait for it to die
-    actor.stop(None);
-    handle.await.unwrap();
+    actor
+        .stop_and_wait(None, None)
+        .await
+        .expect("Failed to stop");
 
     // assert that if we send a message, it doesn't transmit since
     // the receiver is dropped
@@ -968,6 +972,7 @@ fn returns_actor_references() {
 #[crate::concurrency::test]
 #[tracing_test::traced_test]
 async fn actor_failing_in_spawn_err_doesnt_poison_registries() {
+    #[derive(Default)]
     struct Test;
 
     #[cfg_attr(feature = "async-trait", crate::async_trait)]
@@ -981,6 +986,7 @@ async fn actor_failing_in_spawn_err_doesnt_poison_registries() {
         }
     }
 
+    #[derive(Default)]
     struct Test2;
 
     #[cfg_attr(feature = "async-trait", crate::async_trait)]
@@ -994,7 +1000,7 @@ async fn actor_failing_in_spawn_err_doesnt_poison_registries() {
         }
     }
 
-    let a = Actor::spawn(Some("test".to_owned()), Test, ()).await;
+    let a = crate::spawn_named::<Test>("test".to_owned(), ()).await;
     assert!(a.is_err());
     drop(a);
 

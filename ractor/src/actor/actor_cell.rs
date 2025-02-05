@@ -19,13 +19,13 @@ use super::actor_properties::MuxedMessage;
 use super::messages::{Signal, StopMessage};
 use super::SupervisionEvent;
 use crate::actor::actor_properties::ActorProperties;
-use crate::concurrency::{MpscUnboundedReceiver as InputPortReceiver, OneshotReceiver};
+use crate::concurrency::{JoinHandle, MpscUnboundedReceiver as InputPortReceiver, OneshotReceiver};
 use crate::errors::MessagingErr;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
-use crate::RactorErr;
 use crate::{Actor, ActorName, SpawnErr};
 use crate::{ActorId, Message};
+use crate::{ActorRef, RactorErr};
 
 /// [ActorStatus] represents the status of an actor's lifecycle
 #[derive(Debug, Clone, Eq, PartialEq, Copy, PartialOrd, Ord)]
@@ -653,6 +653,26 @@ impl ActorCell {
         } else {
             None
         }
+    }
+
+    /// Spawn an actor of the given type as a child of this actor, automatically starting the actor.
+    /// This [ActorCell] becomes the supervisor of the child actor.
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The implementation of Self
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
+    ///   initial state creation
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    pub async fn spawn_linked<T: Actor>(
+        &self,
+        name: Option<String>,
+        handler: T,
+        startup_args: T::Arguments,
+    ) -> Result<(ActorRef<T::Msg>, JoinHandle<()>), SpawnErr> {
+        crate::actor::ActorRuntime::spawn_linked(name, handler, startup_args, self.clone()).await
     }
 
     // ================== Test Utilities ================== //
