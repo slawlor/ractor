@@ -57,7 +57,7 @@ impl Actor for Listener {
         myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
-        let addr = format!("0.0.0.0:{}", self.port);
+        let addr = format!("[::]:{}", self.port);
         let listener = match TcpListener::bind(&addr).await {
             Ok(l) => l,
             Err(err) => {
