@@ -5,12 +5,12 @@
 
 //! Rate limiting tests for factories
 
-use std::collections::HashMap;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::factory::routing::{RouteResult, Router};
+use crate::concurrency::{sleep, Duration};
+use crate::factory::routing::*;
 use crate::factory::*;
 use crate::*;
 
@@ -41,6 +41,7 @@ impl Worker for TestWorker {
         _state: &mut Self::State,
     ) -> Result<Self::Key, ActorProcessingErr> {
         tracing::debug!("Worker received dispatch");
+        sleep(Duration::from_millis(10)).await;
         Ok(())
     }
 }
@@ -53,59 +54,22 @@ impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
     }
 }
 
-#[derive(Debug)]
-struct BasicRateLimitWrapper<TRouter: State> {
-    router: TRouter,
+struct BasicRateLimiter {
     hard_cap: usize,
     count: usize,
 }
 
-impl<TKey, TMsg, TRouter> Router<TKey, TMsg> for BasicRateLimitWrapper<TRouter>
-where
-    TKey: JobKey,
-    TMsg: Message,
-    TRouter: Router<TKey, TMsg>,
-{
-    fn route_message(
-        &mut self,
-        job: Job<TKey, TMsg>,
-        pool_size: usize,
-        worker_hint: Option<WorkerId>,
-        worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
-    ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr> {
-        tracing::info!("Rate limit state: {}/{}", self.count, self.hard_cap);
-        if self.count >= self.hard_cap {
-            Ok(RouteResult::RateLimited(job))
-        } else {
-            let result = self
-                .router
-                .route_message(job, pool_size, worker_hint, worker_pool);
-            if matches!(result, Ok(RouteResult::Handled)) {
-                self.count += 1;
-            }
-            result
-        }
+impl RateLimiter for BasicRateLimiter {
+    fn bump(&mut self) {
+        self.count += 1;
     }
 
-    fn choose_target_worker(
-        &mut self,
-        job: &Job<TKey, TMsg>,
-        pool_size: usize,
-        worker_hint: Option<WorkerId>,
-        worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
-    ) -> Option<WorkerId> {
-        self.router
-            .choose_target_worker(job, pool_size, worker_hint, worker_pool)
-    }
-
-    fn is_factory_queueing(&self) -> bool {
-        self.router.is_factory_queueing()
+    fn check(&mut self) -> bool {
+        self.count < self.hard_cap
     }
 }
 
-#[crate::concurrency::test]
-#[tracing_test::traced_test]
-async fn test_factory_rate_limited() {
+async fn test_factory_rate_limiting_common<TRouter: Router<(), ()>>(router: TRouter) {
     // Setup
     let discard_counter = Arc::new(AtomicU16::new(0));
 
@@ -114,7 +78,7 @@ async fn test_factory_rate_limited() {
     }
     impl DiscardHandler<(), ()> for TestDiscarder {
         fn discard(&self, reason: DiscardReason, _job: &mut Job<(), ()>) {
-            tracing::debug!("Discarding message, reason {reason:?}");
+            tracing::debug!("Discarding job, reason {reason:?}");
             if reason == DiscardReason::RateLimited {
                 let _ = self.counter.fetch_add(1, Ordering::SeqCst);
             }
@@ -125,11 +89,17 @@ async fn test_factory_rate_limited() {
     let arguments = FactoryArguments::builder()
         .num_initial_workers(1)
         .queue(Default::default())
-        .router(BasicRateLimitWrapper {
-            count: 0,
-            hard_cap: 5,
-            router: routing::QueuerRouting::<(), ()>::default(),
-        })
+        .router(
+            // create a rate-limited message router which routes up to a hard cap, then
+            // "rate limits" everything else
+            RateLimitedRouter::builder()
+                .router(router)
+                .rate_limiter(BasicRateLimiter {
+                    count: 0,
+                    hard_cap: 5,
+                })
+                .build(),
+        )
         .worker_builder(Box::new(worker_builder))
         .discard_handler(Arc::new(TestDiscarder {
             counter: discard_counter.clone(),
@@ -141,7 +111,7 @@ async fn test_factory_rate_limited() {
         (),
         (),
         TestWorker,
-        BasicRateLimitWrapper<routing::QueuerRouting<(), ()>>,
+        RateLimitedRouter<TRouter, BasicRateLimiter>,
         queues::DefaultQueue<(), ()>,
     >::default();
     let (factory, factory_handle) = Actor::spawn(None, factory_definition, arguments)
@@ -149,7 +119,7 @@ async fn test_factory_rate_limited() {
         .expect("Failed to spawn factory");
 
     // Test
-    for _ in 0..10 {
+    for _ in 0..9 {
         factory
             .cast(FactoryMessage::Dispatch(Job {
                 accepted: None,
@@ -159,6 +129,20 @@ async fn test_factory_rate_limited() {
             }))
             .expect("Failed to send message to factory");
     }
+
+    // sleep a little to let the worker be in the "ratelim" state
+    // as it'll have routed the max allowable number of requests
+    sleep(Duration::from_millis(100)).await;
+    // send an additional request, which should be marked ratelimiting before
+    // even being queued
+    factory
+        .cast(FactoryMessage::Dispatch(Job {
+            accepted: None,
+            key: (),
+            msg: (),
+            options: JobOptions::default(),
+        }))
+        .expect("Failed to send message to factory");
 
     // Drain factory
     factory
@@ -173,4 +157,138 @@ async fn test_factory_rate_limited() {
 
     // Check that we rate-limited 5 messages, but allowed 5 through
     assert_eq!(5, discard_counter.load(Ordering::SeqCst));
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_factory_rate_limiting_queuer() {
+    test_factory_rate_limiting_common::<QueuerRouting<(), ()>>(Default::default()).await
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_factory_rate_limiting_sticky_queuer() {
+    test_factory_rate_limiting_common::<StickyQueuerRouting<(), ()>>(Default::default()).await
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_factory_rate_limiting_key_persistent() {
+    test_factory_rate_limiting_common::<KeyPersistentRouting<(), ()>>(Default::default()).await
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_factory_rate_limiting_round_robin() {
+    test_factory_rate_limiting_common::<RoundRobinRouting<(), ()>>(Default::default()).await
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_factory_rate_limiting_custom_hash() {
+    struct MyHasher;
+
+    impl CustomHashFunction<()> for MyHasher {
+        fn hash(&self, _key: &(), _worker_count: usize) -> usize {
+            0
+        }
+    }
+
+    let router = CustomRouting::new(MyHasher);
+
+    test_factory_rate_limiting_common(router).await
+}
+
+#[crate::concurrency::test]
+#[tracing_test::traced_test]
+async fn test_leaky_bucket_rate_limiting() {
+    // Setup
+
+    use crate::concurrency::sleep;
+    let discard_counter = Arc::new(AtomicU16::new(0));
+
+    struct TestDiscarder {
+        counter: Arc<AtomicU16>,
+    }
+    impl DiscardHandler<(), ()> for TestDiscarder {
+        fn discard(&self, reason: DiscardReason, _job: &mut Job<(), ()>) {
+            tracing::debug!("Discarding job, reason {reason:?}");
+            if reason == DiscardReason::RateLimited {
+                let _ = self.counter.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+
+    let worker_builder = TestWorkerBuilder;
+
+    // Setup rate limited router
+    let limiter = LeakyBucketRateLimiter::builder()
+        .max(5)
+        .initial(5)
+        .refill(1)
+        .interval(Duration::from_millis(100))
+        .build();
+
+    let router = RateLimitedRouter::builder()
+        .router(routing::QueuerRouting::<(), ()>::default())
+        .rate_limiter(limiter)
+        .build();
+    let arguments = FactoryArguments::builder()
+        .num_initial_workers(1)
+        .queue(Default::default())
+        .router(router)
+        .worker_builder(Box::new(worker_builder))
+        .discard_handler(Arc::new(TestDiscarder {
+            counter: discard_counter.clone(),
+        }))
+        .build();
+
+    let factory_definition = Factory::<
+        (),
+        (),
+        (),
+        TestWorker,
+        RateLimitedRouter<routing::QueuerRouting<(), ()>, _>,
+        queues::DefaultQueue<(), ()>,
+    >::default();
+    let (factory, factory_handle) = Actor::spawn(None, factory_definition, arguments)
+        .await
+        .expect("Failed to spawn factory");
+
+    // Test
+    for _ in 0..6 {
+        factory
+            .cast(FactoryMessage::Dispatch(Job {
+                accepted: None,
+                key: (),
+                msg: (),
+                options: JobOptions::default(),
+            }))
+            .expect("Failed to send message to factory");
+    }
+
+    // sleep >100ms and we should be able to push another job
+    sleep(crate::concurrency::Duration::from_millis(200)).await;
+    factory
+        .cast(FactoryMessage::Dispatch(Job {
+            accepted: None,
+            key: (),
+            msg: (),
+            options: JobOptions::default(),
+        }))
+        .expect("Failed to send message to factory");
+
+    // Drain factory
+    factory
+        .cast(FactoryMessage::DrainRequests)
+        .expect("Failed to message factory");
+
+    // once the factory is stopped, the shutdown handler should have been called
+    crate::concurrency::timeout(Duration::from_secs(1), factory_handle)
+        .await
+        .expect("Failed to drain requests in 1s")
+        .expect("Failed to join factory handle");
+
+    // Check that we rate-limited only 1 message, from the first batch
+    assert_eq!(1, discard_counter.load(Ordering::SeqCst));
 }

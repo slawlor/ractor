@@ -185,6 +185,7 @@ pub use discard::{
 pub use factoryimpl::{Factory, FactoryArguments, FactoryArgumentsBuilder};
 pub use job::{Job, JobKey, JobOptions, MessageRetryStrategy, RetriableMessage};
 pub use lifecycle::FactoryLifecycleHooks;
+pub use ratelim::{LeakyBucketRateLimiter, RateLimitedRouter, RateLimiter};
 pub use worker::{
     DeadMansSwitchConfiguration, Worker, WorkerBuilder, WorkerCapacityController, WorkerMessage,
     WorkerProperties, WorkerStartContext,

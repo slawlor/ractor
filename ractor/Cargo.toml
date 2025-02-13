@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.14.7"
+version = "0.15.0"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -25,7 +25,7 @@ tokio_runtime = ["tokio/time", "tokio/rt", "tokio/macros", "tokio/tracing"]
 blanket_serde = ["serde", "pot", "cluster"]
 async-trait = ["dep:async-trait"]
 
-default = ["tokio_runtime", "message_span_propogation", "leaky-bucket"]
+default = ["tokio_runtime", "message_span_propogation"]
 
 [dependencies]
 ## Required dependencies
@@ -41,7 +41,6 @@ async-std = { version = "1", features = ["attributes"], optional = true }
 async-trait = { version = "0.1", optional = true }
 tokio = { version = "1.30", features = ["sync"] }
 tracing = { version = "0.1", features = ["attributes"] }
-leaky-bucket = { version = "1", features = ["tracing"], optional = true }
 
 ## Blanket Serde
 serde = { version = "1", optional = true }
