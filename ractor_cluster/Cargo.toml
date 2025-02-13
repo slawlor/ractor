@@ -1,6 +1,6 @@
 [package]
 name = "ractor_cluster"
-version = "0.14.7"
+version = "0.15.0"
 authors = ["Sean Lawlor <slawlor>"]
 description = "Distributed cluster environment of Ractor actors"
 documentation = "https://docs.rs/ractor"
@@ -30,8 +30,8 @@ prost-build = { version = "0.13" }
 bytes = { version = "1" }
 prost = { version = "0.13" }
 prost-types = { version = "0.13" }
-ractor = { version = "0.14.0", default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster"], path = "../ractor" }
-ractor_cluster_derive = { version = "0.14.0", path = "../ractor_cluster_derive" }
+ractor = { version = "0.15.0", default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster"], path = "../ractor" }
+ractor_cluster_derive = { version = "0.15.0", path = "../ractor_cluster_derive" }
 rand = "0.8"
 sha2 = "0.10"
 tokio = { version = "1.30", features = ["rt", "time", "sync", "macros", "net", "io-util", "tracing"]}

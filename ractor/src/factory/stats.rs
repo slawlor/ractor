@@ -42,6 +42,9 @@ pub trait FactoryStatsLayer: Send + Sync + 'static {
     /// Called when a job is discarded
     fn job_discarded(&self, factory: &str);
 
+    /// Called when a job is rate limited
+    fn job_rate_limited(&self, factory: &str);
+
     /// Called when jobs TTL timeout in the factory's queue
     fn job_ttl_expired(&self, factory: &str, num_removed: usize);
 
@@ -111,6 +114,13 @@ impl FactoryStatsLayer for Option<Arc<dyn FactoryStatsLayer>> {
     fn job_discarded(&self, factory: &str) {
         if let Some(s) = self {
             s.job_discarded(factory);
+        }
+    }
+
+    /// Called when a job is rate limited
+    fn job_rate_limited(&self, factory: &str) {
+        if let Some(s) = self {
+            s.job_rate_limited(factory);
         }
     }
 

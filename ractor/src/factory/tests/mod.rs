@@ -11,4 +11,5 @@ mod dynamic_discarding;
 mod dynamic_pool;
 mod lifecycle;
 mod priority_queueing;
+mod ratelim;
 mod worker_lifecycle;

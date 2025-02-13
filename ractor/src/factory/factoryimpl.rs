@@ -18,7 +18,6 @@ use crate::Actor;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
 use crate::Message;
-use crate::MessagingErr;
 use crate::SpawnErr;
 use crate::SupervisionEvent;
 
@@ -257,6 +256,7 @@ where
             .field("has_lifecycle_hooks", &self.lifecycle_hooks.is_some())
             .field("has_stats", &self.stats.is_some())
             .field("has_discard_handler", &self.discard_handler.is_some())
+            .field("processing_messages", &self.processing_messages)
             .finish()
     }
 }
@@ -284,7 +284,7 @@ where
     fn try_route_next_active_job(
         &mut self,
         worker_hint: WorkerId,
-    ) -> Result<(), MessagingErr<WorkerMessage<TKey, TMsg>>> {
+    ) -> Result<(), ActorProcessingErr> {
         // cleanup expired messages at the head of the queue
         while let Some(true) = self.queue.peek().map(|m| m.is_expired()) {
             // remove the job from the queue
@@ -299,28 +299,42 @@ where
             }
         }
 
-        if let Some(worker) = self.pool.get_mut(&worker_hint).filter(|f| f.is_available()) {
-            if let Some(mut job) = self.queue.pop_front() {
-                job.accept();
-                self.processing_messages += 1;
-                worker.enqueue_job(job)?;
-            }
-        } else {
-            // target the next available worker
-            let target_worker = self
-                .queue
-                .peek()
-                .and_then(|job| {
-                    self.router
-                        .choose_target_worker(job, self.pool_size, &self.pool)
-                })
-                .and_then(|wid| self.pool.get_mut(&wid));
-            if let (Some(mut job), Some(worker)) = (self.queue.pop_front(), target_worker) {
-                job.accept();
-                self.processing_messages += 1;
-                worker.enqueue_job(job)?;
+        let target_worker = self.queue.peek().and_then(|job| {
+            self.router
+                .choose_target_worker(job, self.pool_size, Some(worker_hint), &self.pool)
+        });
+        if let Some(worker) = target_worker {
+            while let Some(job) = self.queue.pop_front() {
+                match self.router.route_message(
+                    job,
+                    self.pool_size,
+                    Some(worker),
+                    &mut self.pool,
+                )? {
+                    RouteResult::Handled => {
+                        // routed a job, we're done routing.
+                        return Ok(());
+                    }
+                    RouteResult::RateLimited(mut job) => {
+                        // rate limit hit, keep flushing work until we're back under the limit or queue empty.
+                        tracing::trace!("Job rate limited to {worker}");
+                        self.stats.job_rate_limited(&self.factory_name);
+                        if let Some(handler) = &self.discard_handler {
+                            handler.discard(DiscardReason::RateLimited, &mut job);
+                        }
+                        job.reject();
+                    }
+                    RouteResult::Backlog(_) => {
+                        tracing::error!(
+                            "Error routing job to {worker}. Invariant violated with backlog when we have a targeted worker"
+                        );
+
+                        panic!("Received invalid variant of `RouteResult::Backlog` because a worker is unavailable, but we already targeted a worker.");
+                    }
+                }
             }
         }
+
         Ok(())
     }
 
@@ -502,15 +516,25 @@ where
             }
             job.reject();
         } else if self.drain_state == DrainState::NotDraining {
-            if let RouteResult::Backlog(busy_job) =
-                self.router
-                    .route_message(job, self.pool_size, &mut self.pool)?
+            match self
+                .router
+                .route_message(job, self.pool_size, None, &mut self.pool)?
             {
-                // workers are busy, we need to queue a job
-                self.maybe_enqueue(busy_job);
-            } else {
-                // message was routed
-                self.processing_messages += 1;
+                RouteResult::Handled => {
+                    // message was routed
+                    self.processing_messages += 1;
+                }
+                RouteResult::RateLimited(mut job) => {
+                    self.stats.job_rate_limited(&self.factory_name);
+                    if let Some(handler) = &self.discard_handler {
+                        handler.discard(DiscardReason::RateLimited, &mut job);
+                    }
+                    job.reject();
+                }
+                RouteResult::Backlog(busy_job) => {
+                    // workers are busy, we need to queue a job
+                    self.maybe_enqueue(busy_job);
+                }
             }
         } else {
             tracing::debug!("Factory is draining but a job was received");

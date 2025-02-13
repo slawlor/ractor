@@ -164,7 +164,7 @@ pub trait DynamicDiscardController: Send + Sync + 'static {
 }
 
 /// Reason for discarding a job
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum DiscardReason {
     /// The job TTLd
     TtlExpired,
@@ -172,6 +172,8 @@ pub enum DiscardReason {
     Loadshed,
     /// The job was dropped due to factory shutting down
     Shutdown,
+    /// The job was rejected due to rate limits being exceeded
+    RateLimited,
 }
 
 /// Trait defining the discard handler for a factory.

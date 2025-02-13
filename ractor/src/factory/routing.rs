@@ -14,6 +14,7 @@ use crate::factory::JobKey;
 use crate::factory::WorkerId;
 use crate::ActorProcessingErr;
 use crate::Message;
+use crate::State;
 
 /// Custom hashing behavior for factory routing to workers
 pub trait CustomHashFunction<TKey>: Send + Sync
@@ -36,11 +37,18 @@ where
     /// The job needs to be backlogged into the internal factory's queue (if
     /// configured)
     Backlog(Job<TKey, TMsg>),
+    /// The job has exceeded the internal rate limit specification of the router.
+    /// This would be returned as a route operation in the event that the router is
+    /// tracking the jobs-per-unit-time and has decided that routing this next job
+    /// would exceed that limit.
+    ///
+    /// Returns the job that was rejected
+    RateLimited(Job<TKey, TMsg>),
 }
 
 /// A routing mode controls how a request is routed from the factory to a
 /// designated worker
-pub trait Router<TKey, TMsg>: Send + Sync + 'static
+pub trait Router<TKey, TMsg>: State
 where
     TKey: JobKey,
     TMsg: Message,
@@ -49,6 +57,8 @@ where
     ///
     /// * `job` - The job to be routed
     /// * `pool_size` - The size of the ACTIVE worker pool (excluding draining workers)
+    /// * `worker_hint` - If provided, this is a "hint" at which worker should receive the job,
+    ///   if available.
     /// * `worker_pool` - The current worker pool, which may contain draining workers
     ///
     /// Returns [RouteResult::Handled] if the job was routed successfully, otherwise
@@ -58,6 +68,7 @@ where
         &mut self,
         job: Job<TKey, TMsg>,
         pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr>;
 
@@ -73,6 +84,8 @@ where
     ///
     ///  * `job` - A reference to the job to be routed
     /// * `pool_size` - The size of the ACTIVE worker pool (excluding draining workers)
+    /// * `worker_hint` - If provided, this is a "hint" at which worker should receive the job,
+    ///   if available.
     /// * `worker_pool` - The current worker pool, which may contain draining workers
     ///
     /// Returns [None] if no worker can be identified or no worker is avaialble to accept
@@ -81,6 +94,7 @@ where
         &mut self,
         job: &Job<TKey, TMsg>,
         pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId>;
 
@@ -131,10 +145,13 @@ where
         &mut self,
         job: Job<TKey, TMsg>,
         pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr> {
-        let key = crate::factory::hash::hash_with_max(&job.key, pool_size);
-        if let Some(worker) = worker_pool.get_mut(&key) {
+        if let Some(worker) = self
+            .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
+            .and_then(|wid| worker_pool.get_mut(&wid))
+        {
             worker.enqueue_job(job)?;
         }
         Ok(RouteResult::Handled)
@@ -144,9 +161,11 @@ where
         &mut self,
         job: &Job<TKey, TMsg>,
         pool_size: usize,
+        worker_hint: Option<WorkerId>,
         _worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
-        let key = crate::factory::hash::hash_with_max(&job.key, pool_size);
+        let key =
+            worker_hint.unwrap_or_else(|| crate::factory::hash::hash_with_max(&job.key, pool_size));
         Some(key)
     }
 
@@ -168,10 +187,11 @@ where
         &mut self,
         job: Job<TKey, TMsg>,
         pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr> {
         if let Some(worker) = self
-            .choose_target_worker(&job, pool_size, worker_pool)
+            .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
             worker.enqueue_job(job)?;
@@ -185,8 +205,14 @@ where
         &mut self,
         _job: &Job<TKey, TMsg>,
         _pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
+        if let Some(worker) = worker_hint.and_then(|worker| worker_pool.get(&worker)) {
+            if worker.is_available() {
+                return worker_hint;
+            }
+        }
         worker_pool
             .iter()
             .find(|(_, worker)| worker.is_available())
@@ -215,10 +241,11 @@ where
         &mut self,
         job: Job<TKey, TMsg>,
         pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr> {
         if let Some(worker) = self
-            .choose_target_worker(&job, pool_size, worker_pool)
+            .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
             worker.enqueue_job(job)?;
@@ -232,14 +259,29 @@ where
         &mut self,
         job: &Job<TKey, TMsg>,
         _pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
+        // check sticky first
+        if let Some(worker) = worker_hint.and_then(|worker| worker_pool.get(&worker)) {
+            if worker.is_processing_key(&job.key) {
+                return worker_hint;
+            }
+        }
+
         let maybe_worker = worker_pool
             .iter()
             .find(|(_, worker)| worker.is_processing_key(&job.key))
             .map(|(a, _)| *a);
         if maybe_worker.is_some() {
             return maybe_worker;
+        }
+
+        // now take first available, based on hint then brute-search
+        if let Some(worker) = worker_hint.and_then(|worker| worker_pool.get(&worker)) {
+            if worker.is_available() {
+                return worker_hint;
+            }
         }
 
         // fallback to first free worker as there's no sticky worker
@@ -292,10 +334,11 @@ where
         &mut self,
         job: Job<TKey, TMsg>,
         pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr> {
         if let Some(worker) = self
-            .choose_target_worker(&job, pool_size, worker_pool)
+            .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
             worker.enqueue_job(job)?;
@@ -307,8 +350,15 @@ where
         &mut self,
         _job: &Job<TKey, TMsg>,
         pool_size: usize,
-        _worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
+        worker_hint: Option<WorkerId>,
+        worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
+        if let Some(worker) = worker_hint.and_then(|worker| worker_pool.get(&worker)) {
+            if worker.is_available() {
+                return worker_hint;
+            }
+        }
+
         let mut key = self.last_worker + 1;
         if key >= pool_size {
             key = 0;
@@ -365,10 +415,13 @@ where
         &mut self,
         job: Job<TKey, TMsg>,
         pool_size: usize,
+        worker_hint: Option<WorkerId>,
         worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr> {
-        let key = self.hasher.hash(&job.key, pool_size);
-        if let Some(worker) = worker_pool.get_mut(&key) {
+        if let Some(worker) = self
+            .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
+            .and_then(|wid| worker_pool.get_mut(&wid))
+        {
             worker.enqueue_job(job)?;
         }
         Ok(RouteResult::Handled)
@@ -378,6 +431,7 @@ where
         &mut self,
         job: &Job<TKey, TMsg>,
         pool_size: usize,
+        _worker_hint: Option<WorkerId>,
         _worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
         let key = self.hasher.hash(&job.key, pool_size);

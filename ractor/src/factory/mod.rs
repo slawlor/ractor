@@ -169,6 +169,7 @@ pub mod hash;
 pub mod job;
 pub mod lifecycle;
 pub mod queues;
+pub mod ratelim;
 pub mod routing;
 pub mod stats;
 pub mod worker;
@@ -184,6 +185,7 @@ pub use discard::{
 pub use factoryimpl::{Factory, FactoryArguments, FactoryArgumentsBuilder};
 pub use job::{Job, JobKey, JobOptions, MessageRetryStrategy, RetriableMessage};
 pub use lifecycle::FactoryLifecycleHooks;
+pub use ratelim::{LeakyBucketRateLimiter, RateLimitedRouter, RateLimiter};
 pub use worker::{
     DeadMansSwitchConfiguration, Worker, WorkerBuilder, WorkerCapacityController, WorkerMessage,
     WorkerProperties, WorkerStartContext,
