@@ -164,7 +164,7 @@ pub trait DynamicDiscardController: Send + Sync + 'static {
 }
 
 /// Reason for discarding a job
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum DiscardReason {
     /// The job TTLd
     TtlExpired,

@@ -14,6 +14,7 @@ use crate::factory::JobKey;
 use crate::factory::WorkerId;
 use crate::ActorProcessingErr;
 use crate::Message;
+use crate::State;
 
 /// Custom hashing behavior for factory routing to workers
 pub trait CustomHashFunction<TKey>: Send + Sync
@@ -47,7 +48,7 @@ where
 
 /// A routing mode controls how a request is routed from the factory to a
 /// designated worker
-pub trait Router<TKey, TMsg>: Send + Sync + 'static
+pub trait Router<TKey, TMsg>: State
 where
     TKey: JobKey,
     TMsg: Message,

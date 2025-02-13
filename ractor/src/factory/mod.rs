@@ -169,6 +169,7 @@ pub mod hash;
 pub mod job;
 pub mod lifecycle;
 pub mod queues;
+pub mod ratelim;
 pub mod routing;
 pub mod stats;
 pub mod worker;

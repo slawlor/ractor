@@ -256,6 +256,7 @@ where
             .field("has_lifecycle_hooks", &self.lifecycle_hooks.is_some())
             .field("has_stats", &self.stats.is_some())
             .field("has_discard_handler", &self.discard_handler.is_some())
+            .field("processing_messages", &self.processing_messages)
             .finish()
     }
 }
@@ -303,15 +304,20 @@ where
                 .choose_target_worker(job, self.pool_size, Some(worker_hint), &self.pool)
         });
         if let Some(worker) = target_worker {
-            if let Some(job) = self.queue.pop_front() {
+            while let Some(job) = self.queue.pop_front() {
                 match self.router.route_message(
                     job,
                     self.pool_size,
                     Some(worker),
                     &mut self.pool,
                 )? {
-                    RouteResult::Handled => {}
+                    RouteResult::Handled => {
+                        // routed a job, we're done routing.
+                        return Ok(());
+                    }
                     RouteResult::RateLimited(mut job) => {
+                        // rate limit hit, keep flushing work until we're back under the limit or queue empty.
+                        tracing::trace!("Job rate limited to {worker}");
                         self.stats.job_rate_limited(&self.factory_name);
                         if let Some(handler) = &self.discard_handler {
                             handler.discard(DiscardReason::RateLimited, &mut job);
@@ -319,7 +325,11 @@ where
                         job.reject();
                     }
                     RouteResult::Backlog(_) => {
-                        return Err("Received invalid variant of Backlogging a job because a worker is unavailable, but we already targeted a worker.".into());
+                        tracing::error!(
+                            "Error routing job to {worker}. Invariant violated with backlog when we have a targeted worker"
+                        );
+
+                        panic!("Received invalid variant of `RouteResult::Backlog` because a worker is unavailable, but we already targeted a worker.");
                     }
                 }
             }
