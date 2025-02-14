@@ -299,12 +299,14 @@ where
             }
         }
 
-        let target_worker = self.queue.peek().and_then(|job| {
+        // Note: the while loop here is because if we're ratelimiting we might need to keep trying to route to the hinted
+        // worker (if possible) until there's either no more jobs for the given hint, or we've flushed the queue, or we're
+        // no longer ratelimiting
+        while let Some(worker) = self.queue.peek().and_then(|job| {
             self.router
                 .choose_target_worker(job, self.pool_size, Some(worker_hint), &self.pool)
-        });
-        if let Some(worker) = target_worker {
-            while let Some(job) = self.queue.pop_front() {
+        }) {
+            if let Some(job) = self.queue.pop_front() {
                 match self.router.route_message(
                     job,
                     self.pool_size,
@@ -312,7 +314,7 @@ where
                     &mut self.pool,
                 )? {
                     RouteResult::Handled => {
-                        // routed a job, we're done routing.
+                        // routed a job, we're done trying to route the next active job.
                         return Ok(());
                     }
                     RouteResult::RateLimited(mut job) => {
