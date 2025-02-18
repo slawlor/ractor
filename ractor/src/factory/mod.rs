@@ -158,6 +158,8 @@
 //! }
 //! ```
 
+use std::sync::Arc;
+
 use crate::concurrency::{Duration, Instant};
 #[cfg(feature = "cluster")]
 use crate::message::BoxedDowncastErr;
@@ -190,6 +192,54 @@ pub use worker::{
     DeadMansSwitchConfiguration, Worker, WorkerBuilder, WorkerCapacityController, WorkerMessage,
     WorkerProperties, WorkerStartContext,
 };
+
+/// The settings to change for an update request to the factory at runtime.
+///
+/// Note: A value of `Some(..)` means that the internal value should be updated
+/// inside the factory's state. For values which are originally optional to the factory,
+/// we use `Option<Option<T>>`, so if you want to UNSET the value, it would be `Some(None)`.
+#[derive(bon::Builder)]
+pub struct UpdateSettingsRequest<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    /// The discard handler callback
+    pub discard_handler: Option<Option<Arc<dyn DiscardHandler<TKey, TMsg>>>>,
+    /// The discard settings
+    pub discard_settings: Option<DiscardSettings>,
+    /// Dead-man's switch settings
+    pub dead_mans_switch: Option<Option<DeadMansSwitchConfiguration>>,
+    /// Capacity controller
+    pub capacity_controller: Option<Option<Box<dyn WorkerCapacityController>>>,
+    /// Lifecycle hooks
+    pub lifecycle_hooks: Option<Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>>,
+    /// Statistics layer
+    pub stats: Option<Option<Arc<dyn FactoryStatsLayer>>>,
+    /// The worker count
+    pub worker_count: Option<usize>,
+}
+
+impl<TKey, TMsg> std::fmt::Debug for UpdateSettingsRequest<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpdateSettingsRequest")
+            .field("set_discard_handler", &self.discard_handler.is_some())
+            .field("set_discard_settings", &self.discard_settings.is_some())
+            .field("set_dead_mans_switch", &self.dead_mans_switch.is_some())
+            .field(
+                "set_capacity_controller",
+                &self.capacity_controller.is_some(),
+            )
+            .field("set_lifecycle_hooks", &self.lifecycle_hooks.is_some())
+            .field("set_stats", &self.stats.is_some())
+            .field("set_worker_count", &self.worker_count.is_some())
+            .finish()
+    }
+}
 
 /// Unique identifier of a disctinct worker in the factory
 pub type WorkerId = usize;
@@ -252,6 +302,18 @@ where
     /// Therefore in order to propertly drain a factory, you should use the
     /// `DrainRequests` version so the internal pending queue is properly flushed.
     DrainRequests,
+
+    /// Dynamically update the factory's settings, for those which don't require strong-type
+    /// guarantees. This allows, at runtime, changing the
+    ///
+    /// * Worker Count
+    /// * Discard Settings
+    /// * Lifecycle Hooks
+    /// * Statistics collection
+    /// * Capacity controller
+    /// * Dead-man's switch
+    /// * Discard handler
+    UpdateSettings(UpdateSettingsRequest<TKey, TMsg>),
 }
 
 #[cfg(feature = "cluster")]
