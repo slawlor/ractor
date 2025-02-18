@@ -691,6 +691,72 @@ where
         Ok(())
     }
 
+    async fn update_settings(
+        &mut self,
+        myself: &ActorRef<FactoryMessage<TKey, TMsg>>,
+        UpdateSettingsRequest {
+            discard_handler,
+            discard_settings,
+            dead_mans_switch,
+            capacity_controller,
+            lifecycle_hooks,
+            stats,
+            worker_count,
+        }: UpdateSettingsRequest<TKey, TMsg>,
+    ) -> Result<(), SpawnErr> {
+        if let Some(discard_handler) = discard_handler {
+            tracing::debug!(
+                "Updating discard handler: HashValue={}",
+                discard_handler.is_some()
+            );
+            for (_, worker) in self.pool.iter_mut() {
+                worker.discard_handler = discard_handler.clone();
+            }
+            self.discard_handler = discard_handler;
+        }
+        if let Some(discard_settings) = discard_settings {
+            tracing::debug!("Updating discard settings: {discard_settings:?}");
+            let worker_discard_settings = if self.router.is_factory_queueing() {
+                discard::WorkerDiscardSettings::None
+            } else {
+                discard_settings.get_worker_settings()
+            };
+            for (_, worker) in self.pool.iter_mut() {
+                worker.discard_settings = worker_discard_settings.clone();
+            }
+            self.discard_settings = discard_settings;
+        }
+        if let Some(dead_mans_switch) = dead_mans_switch {
+            tracing::debug!(
+                "Updating dead man's switch settings: HasValue={}",
+                dead_mans_switch.is_some()
+            );
+            self.dead_mans_switch = dead_mans_switch;
+        }
+        if let Some(capacity_controller) = capacity_controller {
+            tracing::debug!(
+                "Updating capacity controller: HasValue={}",
+                capacity_controller.is_some()
+            );
+            self.capacity_controller = capacity_controller;
+        }
+        if let Some(lifecycle_hooks) = lifecycle_hooks {
+            tracing::debug!(
+                "Updating lifecycle hooks: HasValue={}",
+                lifecycle_hooks.is_some()
+            );
+            self.lifecycle_hooks = lifecycle_hooks;
+        }
+        if let Some(stats) = stats {
+            tracing::debug!("Updating factory stats layer: HasValue={}", stats.is_some());
+            self.stats = stats;
+        }
+        if let Some(worker_count) = worker_count {
+            self.resize_pool(myself, worker_count).await?;
+        }
+        Ok(())
+    }
+
     fn reply_with_available_capacity(&self, reply: RpcReplyPort<usize>) {
         // calculate the worker's free capacity
         let worker_availability = self
@@ -701,7 +767,7 @@ where
         match self.discard_settings.get_limit_and_mode() {
             Some((limit, _)) => {
                 // get the queue space and add it to the worker availability
-                let count = (limit - self.queue.len()) + worker_availability;
+                let count = std::cmp::max(limit - self.queue.len(), 0) + worker_availability;
                 let _ = reply.send(count);
             }
             None => {
@@ -971,6 +1037,9 @@ where
             }
             FactoryMessage::DrainRequests => {
                 state.drain_requests(&myself).await?;
+            }
+            FactoryMessage::UpdateSettings(settings) => {
+                state.update_settings(&myself, settings).await?;
             }
         }
 

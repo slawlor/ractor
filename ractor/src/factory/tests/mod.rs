@@ -9,6 +9,7 @@ mod basic;
 mod draining_requests;
 mod dynamic_discarding;
 mod dynamic_pool;
+mod dynamic_settings;
 mod lifecycle;
 mod priority_queueing;
 mod ratelim;

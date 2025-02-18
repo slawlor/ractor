@@ -28,7 +28,7 @@ pub enum DiscardMode {
 /// workers. The workers "think" it's static, but the factory handles the dynamics.
 /// This way the factory can keep the [DynamicDiscardHandler] as a single, uncloned
 /// instance. It also moves NUM_WORKER calculations to 1.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum WorkerDiscardSettings {
     None,
     Static { limit: usize, mode: DiscardMode },
