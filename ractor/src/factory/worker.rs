@@ -496,10 +496,10 @@ where
     /// will cause an oldest job at the head of the queue will be dropped.
     ///
     /// Default is [WorkerDiscardSettings::None]
-    discard_settings: WorkerDiscardSettings,
+    pub(crate) discard_settings: WorkerDiscardSettings,
 
     /// A function to be called for each job to be dropped.
-    discard_handler: Option<Arc<dyn DiscardHandler<TKey, TMsg>>>,
+    pub(crate) discard_handler: Option<Arc<dyn DiscardHandler<TKey, TMsg>>>,
 
     /// Flag indicating if this worker has a ping currently pending
     is_ping_pending: bool,
