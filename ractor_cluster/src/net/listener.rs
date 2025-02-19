@@ -54,7 +54,7 @@ impl Actor for Listener {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Self::Msg>,
+        _myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
         let addr = format!("[::]:{}", self.port);
@@ -65,13 +65,37 @@ impl Actor for Listener {
             }
         };
 
-        // startup the event processing loop by sending an initial msg
-        let _ = myself.cast(ListenerMessage);
-
         // create the initial state
         Ok(Self::State {
             listener: Some(listener),
         })
+    }
+
+    async fn post_start(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        state: &mut Self::State
+    ) -> Result<(), ActorProcessingErr> {
+
+        // If the used port differs from the user-specified port, inform the supervisor.
+        if let Some(listener) = &state.listener {
+            if let Ok(local_addr) = listener.local_addr() {
+                if local_addr.port() != self.port {
+                    if let Some(supervisor) = myself.try_get_supervisor() {
+                        supervisor.send_message(
+                            NodeServerMessage::PortChanged {
+                                port: local_addr.port()
+                            }
+                        )?;
+                    }
+                }
+            }
+        }
+
+        // startup the event processing loop by sending an initial msg
+        let _ = myself.cast(ListenerMessage);
+
+        Ok(())
     }
 
     async fn post_stop(
