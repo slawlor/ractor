@@ -146,7 +146,7 @@ pub enum NodeServerMessage {
     /// free port.
     PortChanged {
         /// The new port number
-        port: u16
+        port: u16,
     },
 }
 
@@ -447,7 +447,7 @@ impl Actor for NodeServer {
             Self::Msg::UnsubscribeToEvents(id) => {
                 let _ = state.subscriptions.remove(&id);
             }
-            Self::Msg::PortChanged {port} => {
+            Self::Msg::PortChanged { port } => {
                 state.this_node_name.connection_string = format!("{}:{}", self.hostname, port);
             }
         }
