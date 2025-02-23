@@ -3,7 +3,7 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! The the transitive dist-connect functionality of the cluster. If B -> A and C -> A
+//! Test the transitive dist-connect functionality of the cluster. If B -> A and C -> A
 //! then C should auto-connect to B
 
 use clap::Args;
