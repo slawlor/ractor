@@ -1,6 +1,6 @@
 # Build from root of repository with
 #
-# docker build -f ractor_cluster_integration_tests/Dockerfile . -t ractor_integration_tests:latest
+# docker build -f ractor_cluster_integration_tests/Dockerfile --build-arg FEATURES="list,of,features" . -t ractor_integration_tests:latest
 # docker run -it ractor_integration_tests:latest help
 
 FROM rust:latest
