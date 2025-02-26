@@ -49,50 +49,39 @@ pub struct ListenerMessage;
 #[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for Listener {
     type Msg = ListenerMessage;
-    type Arguments = ();
+    type Arguments = ActorRef<NodeServerMessage>;
     type State = ListenerState;
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self::Msg>,
-        _: (),
+        myself: ActorRef<Self::Msg>,
+        node_server: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         let addr = format!("[::]:{}", self.port);
         let listener = match TcpListener::bind(&addr).await {
-            Ok(l) => l,
+            Ok(l) => {
+                // If the used port differs from the user-specified port, inform the node server.
+                let local_addr = l.local_addr()?;
+                if local_addr.port() != self.port {
+                    node_server.send_message(NodeServerMessage::PortChanged {
+                        port: local_addr.port(),
+                    })?;
+                }
+
+                l
+            }
             Err(err) => {
                 return Err(From::from(err));
             }
         };
 
+        // startup the event processing loop by sending an initial msg
+        let _ = myself.cast(ListenerMessage);
+
         // create the initial state
         Ok(Self::State {
             listener: Some(listener),
         })
-    }
-
-    async fn post_start(
-        &self,
-        myself: ActorRef<Self::Msg>,
-        state: &mut Self::State,
-    ) -> Result<(), ActorProcessingErr> {
-        // If the used port differs from the user-specified port, inform the supervisor.
-        if let Some(listener) = &state.listener {
-            if let Ok(local_addr) = listener.local_addr() {
-                if local_addr.port() != self.port {
-                    if let Some(supervisor) = myself.try_get_supervisor() {
-                        supervisor.send_message(NodeServerMessage::PortChanged {
-                            port: local_addr.port(),
-                        })?;
-                    }
-                }
-            }
-        }
-
-        // startup the event processing loop by sending an initial msg
-        let _ = myself.cast(ListenerMessage);
-
-        Ok(())
     }
 
     async fn post_stop(

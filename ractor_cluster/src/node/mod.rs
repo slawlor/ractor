@@ -354,7 +354,8 @@ impl Actor for NodeServer {
             self.encryption_mode.clone(),
         );
 
-        let (actor_ref, _) = Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
+        let (actor_ref, _) =
+            Actor::spawn_linked(None, listener, myself.clone(), myself.get_cell()).await?;
 
         Ok(Self::State {
             node_sessions: HashMap::new(),
@@ -476,7 +477,8 @@ impl Actor for NodeServer {
                     );
 
                     let (actor_ref, _) =
-                        Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
+                        Actor::spawn_linked(None, listener, myself.clone(), myself.get_cell())
+                            .await?;
                     state.listener = actor_ref;
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
@@ -514,7 +516,8 @@ impl Actor for NodeServer {
                     );
 
                     let (actor_ref, _) =
-                        Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
+                        Actor::spawn_linked(None, listener, myself.clone(), myself.get_cell())
+                            .await?;
                     state.listener = actor_ref;
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
