@@ -49,17 +49,27 @@ pub struct ListenerMessage;
 #[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for Listener {
     type Msg = ListenerMessage;
-    type Arguments = ();
+    type Arguments = ActorRef<NodeServerMessage>;
     type State = ListenerState;
 
     async fn pre_start(
         &self,
         myself: ActorRef<Self::Msg>,
-        _: (),
+        node_server: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         let addr = format!("[::]:{}", self.port);
         let listener = match TcpListener::bind(&addr).await {
-            Ok(l) => l,
+            Ok(l) => {
+                // If the used port differs from the user-specified port, inform the node server.
+                let local_addr = l.local_addr()?;
+                if local_addr.port() != self.port {
+                    node_server.send_message(NodeServerMessage::PortChanged {
+                        port: local_addr.port(),
+                    })?;
+                }
+
+                l
+            }
             Err(err) => {
                 return Err(From::from(err));
             }

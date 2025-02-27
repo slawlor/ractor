@@ -140,6 +140,14 @@ pub enum NodeServerMessage {
 
     /// Unsubscribe to node events for the given subscription id
     UnsubscribeToEvents(String),
+
+    /// Change the port used in the connection String for the [ crate::net::listener ].
+    /// This is used if the port specified in [ NodeServer ] is 0 and the OS chooses an arbitrary
+    /// free port.
+    PortChanged {
+        /// The new port number
+        port: u16,
+    },
 }
 
 /// Message from the TCP `ractor_cluster::net::session::Session` actor and the
@@ -193,7 +201,7 @@ pub struct NodeServer {
 impl NodeServer {
     /// Create a new node server instance
     ///
-    /// * `port` - The port to run the [NodeServer] on for incoming requests
+    /// * `port` - The port to run the [NodeServer] on for incoming requests. 0 to auto-select a free port.
     /// * `cookie` - The magic cookie for authentication between [NodeServer]s
     /// * `node_name` - The name of this node
     /// * `hostname` - The hostname of the machine
@@ -346,7 +354,8 @@ impl Actor for NodeServer {
             self.encryption_mode.clone(),
         );
 
-        let (actor_ref, _) = Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
+        let (actor_ref, _) =
+            Actor::spawn_linked(None, listener, myself.clone(), myself.get_cell()).await?;
 
         Ok(Self::State {
             node_sessions: HashMap::new(),
@@ -439,6 +448,9 @@ impl Actor for NodeServer {
             Self::Msg::UnsubscribeToEvents(id) => {
                 let _ = state.subscriptions.remove(&id);
             }
+            Self::Msg::PortChanged { port } => {
+                state.this_node_name.connection_string = format!("{}:{}", self.hostname, port);
+            }
         }
         Ok(())
     }
@@ -465,7 +477,8 @@ impl Actor for NodeServer {
                     );
 
                     let (actor_ref, _) =
-                        Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
+                        Actor::spawn_linked(None, listener, myself.clone(), myself.get_cell())
+                            .await?;
                     state.listener = actor_ref;
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
@@ -503,7 +516,8 @@ impl Actor for NodeServer {
                     );
 
                     let (actor_ref, _) =
-                        Actor::spawn_linked(None, listener, (), myself.get_cell()).await?;
+                        Actor::spawn_linked(None, listener, myself.clone(), myself.get_cell())
+                            .await?;
                     state.listener = actor_ref;
                 } else {
                     match state.node_sessions.entry(actor.get_id()) {
