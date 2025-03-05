@@ -239,10 +239,9 @@ impl<T: std::any::Any + Send + 'static> State for T {}
 /// * `args` - The arguments to start the actor
 ///
 /// Returns [Ok((ActorRef, JoinHandle<()>))] upon successful actor startup, [Err(SpawnErr)] otherwise
-pub async fn spawn<T: Actor + Default>(
-    args: T::Arguments,
-) -> Result<(ActorRef<T::Msg>, JoinHandle<()>), SpawnErr> {
-    T::spawn(None, T::default(), args).await
+pub async fn spawn<T: Actor + Default>(args: T::Arguments) -> Result<ActorRef<T::Msg>, SpawnErr> {
+    let (actor, _) = T::spawn(None, T::default(), args).await?;
+    Ok(actor)
 }
 
 /// Perform a background-spawn of an actor with the provided name. This is a utility wrapper
@@ -256,6 +255,7 @@ pub async fn spawn<T: Actor + Default>(
 pub async fn spawn_named<T: Actor + Default>(
     name: crate::ActorName,
     args: T::Arguments,
-) -> Result<(ActorRef<T::Msg>, JoinHandle<()>), SpawnErr> {
-    T::spawn(Some(name), T::default(), args).await
+) -> Result<ActorRef<T::Msg>, SpawnErr> {
+    let (actor, _) = T::spawn(Some(name), T::default(), args).await?;
+    Ok(actor)
 }
