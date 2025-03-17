@@ -90,7 +90,7 @@ impl Actor for PingPong {
 /// Run the ping-pong actor test with
 ///
 /// ```bash
-/// cargo run -p ractor-playground -- ping-pong
+/// cargo run -p ractor_playground -- ping-pong
 /// ```
 pub(crate) async fn run_ping_pong() {
     let (_, actor_handle) = Actor::spawn(None, PingPong, ())
