@@ -383,7 +383,7 @@ async fn test_sending_message_to_dead_actor() {
         }
     }
 
-    let (actor, _) = crate::spawn::<TestActor>(())
+    let actor = crate::spawn::<TestActor>(())
         .await
         .expect("Actor failed to start");
 

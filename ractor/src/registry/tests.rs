@@ -30,7 +30,7 @@ async fn test_basic_registation() {
         }
     }
 
-    let (actor, _) = crate::spawn_named::<EmptyActor>("my_actor".to_string(), ())
+    let actor = crate::spawn_named::<EmptyActor>("my_actor".to_string(), ())
         .await
         .expect("Actor failed to start");
 
