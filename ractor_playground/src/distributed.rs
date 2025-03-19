@@ -12,7 +12,7 @@ use ractor_cluster::RactorClusterMessage;
 /// Run test with
 ///
 /// ```bash
-/// RUST_LOG=debug cargo run -p ractor-playground -- cluster-handshake 8198 8199 true
+/// RUST_LOG=debug cargo run -p ractor_playground -- cluster-handshake 8198 8199 true
 /// ```
 pub(crate) async fn test_auth_handshake(port_a: u16, port_b: u16, valid_cookies: bool) {
     let cookie_a = "cookie".to_string();
