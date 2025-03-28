@@ -752,8 +752,9 @@ async fn test_stuck_workers() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
 async fn test_discarding_new_records_on_queuer() {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    console_error_panic_hook::set_once();
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
         Arc::new(AtomicU16::new(0)),

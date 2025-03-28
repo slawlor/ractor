@@ -58,12 +58,29 @@ pub fn broadcast<T: Clone>(buffer: usize) -> (BroadcastSender<T>, BroadcastRecei
     tokio::sync::broadcast::channel(buffer)
 }
 
-#[cfg(not(feature = "async-std"))]
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    not(feature = "async-std")
+))]
 pub mod tokio_primitives;
-#[cfg(not(feature = "async-std"))]
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    not(feature = "async-std")
+))]
 pub use self::tokio_primitives::*;
 
-#[cfg(feature = "async-std")]
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    feature = "async-std"
+))]
 pub mod async_std_primitives;
-#[cfg(feature = "async-std")]
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    feature = "async-std"
+))]
 pub use self::async_std_primitives::*;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub mod tokio_with_wasm_primitives;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub use self::tokio_with_wasm_primitives::*;

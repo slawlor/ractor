@@ -6,9 +6,13 @@
 //! Specification for a [Job] sent to a factory
 
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::panic::RefUnwindSafe;
 use std::sync::Arc;
-use std::{hash::Hash, time::SystemTime};
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+use std::time::SystemTime;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use web_time::SystemTime;
 
 use bon::Builder;
 use tracing::Span;

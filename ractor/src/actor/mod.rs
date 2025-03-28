@@ -137,6 +137,28 @@ pub trait Actor: Sized + Sync + Send + 'static {
     ///
     /// Returns an initial [Actor::State] to bootstrap the actor
     #[cfg(not(feature = "async-trait"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn pre_start(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        args: Self::Arguments,
+    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>>;
+    /// Invoked when an actor is being started by the system.
+    ///
+    /// Any initialization inherent to the actor's role should be
+    /// performed here hence why it returns the initial state.
+    ///
+    /// Panics in `pre_start` do not invoke the
+    /// supervision strategy and the actor won't be started. [Actor]::`spawn`
+    /// will return an error to the caller
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `args` - Arguments that are passed in the spawning of the actor which might
+    ///   be necessary to construct the initial state
+    ///
+    /// Returns an initial [Actor::State] to bootstrap the actor
+    #[cfg(not(feature = "async-trait"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn pre_start(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -174,6 +196,26 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
     #[cfg(not(feature = "async-trait"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn post_start(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> {
+        async { Ok(()) }
+    }
+    /// Invoked after an actor has started.
+    ///
+    /// Any post initialization can be performed here, such as writing
+    /// to a log file, emitting metrics.
+    ///
+    /// Panics in `post_start` follow the supervision strategy.
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn post_start(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -181,6 +223,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
     ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
         async { Ok(()) }
     }
+
     /// Invoked after an actor has started.
     ///
     /// Any post initialization can be performed here, such as writing
@@ -210,6 +253,25 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `state` - A mutable reference to the internal actor's last known state
     #[allow(unused_variables)]
     #[cfg(not(feature = "async-trait"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn post_stop(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> {
+        async { Ok(()) }
+    }
+    /// Invoked after an actor has been stopped to perform final cleanup. In the
+    /// event the actor is terminated with [Signal::Kill] or has self-panicked,
+    /// `post_stop` won't be called.
+    ///
+    /// Panics in `post_stop` follow the supervision strategy.
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `state` - A mutable reference to the internal actor's last known state
+    #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn post_stop(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -243,6 +305,24 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
     #[cfg(not(feature = "async-trait"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn handle(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> {
+        async { Ok(()) }
+    }
+    /// Handle the incoming message from the event processing loop. Unhandled panickes will be
+    /// captured and sent to the supervisor(s)
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The message to process
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn handle(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -276,6 +356,25 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
     #[cfg(all(feature = "cluster", not(feature = "async-trait")))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn handle_serialized(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        message: crate::message::SerializedMessage,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> {
+        async { Ok(()) }
+    }
+
+    /// Handle the remote incoming message from the event processing loop. Unhandled panickes will be
+    /// captured and sent to the supervisor(s)
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The serialized message to handle
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(all(feature = "cluster", not(feature = "async-trait")))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn handle_serialized(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -310,6 +409,34 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
     #[cfg(not(feature = "async-trait"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn handle_supervisor_evt(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        message: SupervisionEvent,
+        state: &mut Self::State,
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> {
+        async move {
+            match message {
+                SupervisionEvent::ActorTerminated(who, _, _)
+                | SupervisionEvent::ActorFailed(who, _) => {
+                    myself.stop(None);
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+    }
+    /// Handle the incoming supervision event. Unhandled panics will be captured and
+    /// sent the the supervisor(s). The default supervision behavior is to exit the
+    /// supervisor on any child exit. To override this behavior, implement this function.
+    ///
+    /// * `myself` - A handle to the [ActorCell] representing this actor
+    /// * `message` - The message to process
+    /// * `state` - A mutable reference to the internal actor's state
+    #[allow(unused_variables)]
+    #[cfg(not(feature = "async-trait"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn handle_supervisor_evt(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -363,6 +490,26 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
     /// the actor failed to start
     #[cfg(not(feature = "async-trait"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn spawn(
+        name: Option<ActorName>,
+        handler: Self,
+        startup_args: Self::Arguments,
+    ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> {
+        ActorRuntime::<Self>::spawn(name, handler, startup_args)
+    }
+    /// Spawn an actor of this type, which is unsupervised, automatically starting
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The implementation of Self
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
+    ///   initial state creation
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    #[cfg(not(feature = "async-trait"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn spawn(
         name: Option<ActorName>,
         handler: Self,
@@ -401,6 +548,28 @@ pub trait Actor: Sized + Sync + Send + 'static {
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
     /// the actor failed to start
     #[cfg(not(feature = "async-trait"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn spawn_linked(
+        name: Option<ActorName>,
+        handler: Self,
+        startup_args: Self::Arguments,
+        supervisor: ActorCell,
+    ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> {
+        ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor)
+    }
+    /// Spawn an actor of this type with a supervisor, automatically starting the actor
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The implementation of Self
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
+    ///   initial state creation
+    /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    #[cfg(not(feature = "async-trait"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn spawn_linked(
         name: Option<ActorName>,
         handler: Self,
