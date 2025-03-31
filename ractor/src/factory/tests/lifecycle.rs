@@ -147,7 +147,10 @@ impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_lifecycle_hooks() {
     let hooks = AtomicHooks {
         state: Arc::new(AtomicU8::new(0)),

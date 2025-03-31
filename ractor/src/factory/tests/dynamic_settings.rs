@@ -55,7 +55,10 @@ impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_dynamic_settings() {
     let counter_one = Arc::new(AtomicU8::new(0));
     let counter_two = Arc::new(AtomicU8::new(0));

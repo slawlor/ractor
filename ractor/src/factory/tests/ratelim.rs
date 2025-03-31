@@ -160,31 +160,46 @@ async fn test_factory_rate_limiting_common<TRouter: Router<(), ()>>(router: TRou
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_factory_rate_limiting_queuer() {
     test_factory_rate_limiting_common::<QueuerRouting<(), ()>>(Default::default()).await
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_factory_rate_limiting_sticky_queuer() {
     test_factory_rate_limiting_common::<StickyQueuerRouting<(), ()>>(Default::default()).await
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_factory_rate_limiting_key_persistent() {
     test_factory_rate_limiting_common::<KeyPersistentRouting<(), ()>>(Default::default()).await
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_factory_rate_limiting_round_robin() {
     test_factory_rate_limiting_common::<RoundRobinRouting<(), ()>>(Default::default()).await
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_factory_rate_limiting_custom_hash() {
     struct MyHasher;
 
@@ -200,7 +215,10 @@ async fn test_factory_rate_limiting_custom_hash() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_leaky_bucket_rate_limiting() {
     // Setup
 

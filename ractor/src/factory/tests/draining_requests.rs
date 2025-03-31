@@ -105,7 +105,10 @@ impl WorkerBuilder<TestWorker, ()> for SlowWorkerBuilder {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_request_draining() {
     let counter = Arc::new(AtomicU16::new(0));
 

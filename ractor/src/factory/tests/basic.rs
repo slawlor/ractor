@@ -138,7 +138,10 @@ impl WorkerBuilder<TestWorker, ()> for InsanelySlowWorkerBuilder {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_dispatch_key_persistent() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -210,7 +213,10 @@ async fn test_dispatch_key_persistent() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_dispatch_queuer() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -285,7 +291,10 @@ async fn test_dispatch_queuer() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_dispatch_round_robin() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -358,7 +367,10 @@ async fn test_dispatch_round_robin() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_dispatch_custom_hashing() {
     struct MyHasher<TKey>
     where
@@ -443,7 +455,10 @@ async fn test_dispatch_custom_hashing() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_dispatch_sticky_queueing() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -518,7 +533,10 @@ async fn test_dispatch_sticky_queueing() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_discarding_old_records_on_queuer() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -659,7 +677,10 @@ impl Actor for StuckWorker {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_stuck_workers() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
@@ -753,8 +774,6 @@ async fn test_stuck_workers() {
 
 #[crate::concurrency::test]
 async fn test_discarding_new_records_on_queuer() {
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    console_error_panic_hook::set_once();
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
         Arc::new(AtomicU16::new(0)),
