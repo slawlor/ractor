@@ -13,6 +13,9 @@ use crate::ActorRef;
 use crate::RactorErr;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use getrandom as _;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 #[test]
 #[cfg_attr(

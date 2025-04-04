@@ -182,7 +182,6 @@ pub mod time;
 use concurrency::JoinHandle;
 #[cfg(not(feature = "async-trait"))]
 use strum as _;
-
 // ======================== Test Modules and blind imports ======================== //
 
 #[cfg(test)]
@@ -259,3 +258,24 @@ pub async fn spawn_named<T: Actor + Default>(
 ) -> Result<(ActorRef<T::Msg>, JoinHandle<()>), SpawnErr> {
     T::spawn(Some(name), T::default(), args).await
 }
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+mod platform_wrapper {
+    /// A wrapper for [std::marker::Send] on non-`wasm32-unknown-unknown` targets, or an empty trait on `wasm32-unknown-unknown` targets.
+    /// Introduced for compatibility between wasm32 and other targets
+    pub trait MaybeSend {}
+    impl<T> MaybeSend for T {}
+    pub(crate) use web_time::SystemTime;
+}
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+mod platform_wrapper {
+    /// A wrapper for [std::marker::Send] on non-`wasm32-unknown-unknown` targets, or an empty trait on `wasm32-unknown-unknown` targets.
+    /// Introduced for compatibility between wasm32 and other targets
+    pub trait MaybeSend: Send {}
+    impl<T> MaybeSend for T where T: Send {}
+    pub(crate) use std::time::SystemTime;
+}
+
+#[cfg(not(feature = "async-trait"))]
+pub use platform_wrapper::MaybeSend;
+pub(crate) use platform_wrapper::SystemTime;

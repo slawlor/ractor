@@ -15,6 +15,7 @@ use bon::Builder;
 use tracing::Instrument;
 
 use crate::concurrency::{Duration, Instant, JoinHandle};
+use crate::MaybeSend;
 use crate::{Actor, ActorId, ActorProcessingErr};
 use crate::{ActorCell, ActorRef, Message, MessagingErr, SupervisionEvent};
 
@@ -78,37 +79,12 @@ pub trait Worker: Send + Sync + 'static {
     ///
     /// Returns an initial [Worker::State] to bootstrap the actor
     #[cfg(not(feature = "async-trait"))]
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn pre_start(
         &self,
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         args: Self::Arguments,
-    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>>;
-
-    /// Invoked when a worker is being started by the system.
-    ///
-    /// Any initialization inherent to the actor's role should be
-    /// performed here hence why it returns the initial state.
-    ///
-    /// Panics in `pre_start` do not invoke the
-    /// supervision strategy and the actor won't be started. The `spawn`
-    /// will return an error to the caller
-    ///
-    /// * `wid` - The id of this worker in the factory
-    /// * `factory` - The handle to the factory that owns and manages this worker
-    /// * `args` - Arguments that are passed in the spawning of the worker which are
-    ///   necessary to construct the initial state
-    ///
-    /// Returns an initial [Worker::State] to bootstrap the actor
-    #[cfg(not(feature = "async-trait"))]
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn pre_start(
-        &self,
-        wid: WorkerId,
-        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
-        args: Self::Arguments,
-    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send;
+    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + MaybeSend;
 
     /// Invoked when a worker is being started by the system.
     ///
@@ -145,34 +121,12 @@ pub trait Worker: Send + Sync + 'static {
     /// Panics in `post_start` follow the supervision strategy.
     #[allow(unused_variables)]
     #[cfg(not(feature = "async-trait"))]
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn post_start(
         &self,
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> {
-        async { Ok(()) }
-    }
-    /// Invoked after an actor has started.
-    ///
-    /// Any post initialization can be performed here, such as writing
-    /// to a log file, emitting metrics.
-    ///
-    /// * `wid` - The id of this worker in the factory
-    /// * `factory` - The handle to the factory that owns and manages this worker
-    /// * `state` - The worker's internal state, which is mutable and owned by the worker
-    ///
-    /// Panics in `post_start` follow the supervision strategy.
-    #[allow(unused_variables)]
-    #[cfg(not(feature = "async-trait"))]
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn post_start(
-        &self,
-        wid: WorkerId,
-        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
-        state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async { Ok(()) }
     }
     /// Invoked after an actor has started.
@@ -207,33 +161,12 @@ pub trait Worker: Send + Sync + 'static {
     /// Panics in `post_stop` follow the supervision strategy.
     #[allow(unused_variables)]
     #[cfg(not(feature = "async-trait"))]
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn post_stop(
         &self,
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> {
-        async { Ok(()) }
-    }
-    /// Invoked after an actor has been stopped to perform final cleanup. In the
-    /// event the actor is terminated with killed or has self-panicked,
-    /// `post_stop` won't be called.
-    ///
-    /// * `wid` - The id of this worker in the factory
-    /// * `factory` - The handle to the factory that owns and manages this worker
-    /// * `state` - The worker's internal state, which is mutable and owned by the worker
-    ///
-    /// Panics in `post_stop` follow the supervision strategy.
-    #[allow(unused_variables)]
-    #[cfg(not(feature = "async-trait"))]
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn post_stop(
-        &self,
-        wid: WorkerId,
-        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
-        state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async { Ok(()) }
     }
     /// Invoked after an actor has been stopped to perform final cleanup. In the
@@ -267,36 +200,13 @@ pub trait Worker: Send + Sync + 'static {
     /// Returns the [Job::key] upon success or the error on failure
     #[allow(unused_variables)]
     #[cfg(not(feature = "async-trait"))]
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn handle(
         &self,
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         job: Job<Self::Key, Self::Message>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<Self::Key, ActorProcessingErr>> {
-        async { Ok(job.key) }
-    }
-
-    /// Handle the incoming message from the event processing loop. Unhandled panickes will be
-    /// captured and sent to the supervisor(s)
-    ///
-    /// * `wid` - The id of this worker in the factory
-    /// * `factory` - The handle to the factory that owns and manages this worker
-    /// * `job` - The [Job] which this worker should process
-    /// * `state` - The worker's internal state, which is mutable and owned by the worker
-    ///
-    /// Returns the [Job::key] upon success or the error on failure
-    #[allow(unused_variables)]
-    #[cfg(not(feature = "async-trait"))]
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn handle(
-        &self,
-        wid: WorkerId,
-        factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
-        job: Job<Self::Key, Self::Message>,
-        state: &mut Self::State,
-    ) -> impl Future<Output = Result<Self::Key, ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<Self::Key, ActorProcessingErr>> + MaybeSend {
         async { Ok(job.key) }
     }
 
@@ -330,40 +240,12 @@ pub trait Worker: Send + Sync + 'static {
     /// * `state` - A mutable reference to the internal actor's state
     #[allow(unused_variables)]
     #[cfg(not(feature = "async-trait"))]
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn handle_supervisor_evt(
         &self,
         myself: ActorCell,
         message: SupervisionEvent,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> {
-        async move {
-            match message {
-                SupervisionEvent::ActorTerminated(who, _, _)
-                | SupervisionEvent::ActorFailed(who, _) => {
-                    myself.stop(None);
-                }
-                _ => {}
-            }
-            Ok(())
-        }
-    }
-    /// Handle the incoming supervision event. Unhandled panics will be captured and
-    /// sent the the supervisor(s). The default supervision behavior is to exit the
-    /// supervisor on any child exit. To override this behavior, implement this function.
-    ///
-    /// * `myself` - A reference to this actor's ActorCell
-    /// * `message` - The message to process
-    /// * `state` - A mutable reference to the internal actor's state
-    #[allow(unused_variables)]
-    #[cfg(not(feature = "async-trait"))]
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn handle_supervisor_evt(
-        &self,
-        myself: ActorCell,
-        message: SupervisionEvent,
-        state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async move {
             match message {
                 SupervisionEvent::ActorTerminated(who, _, _)
