@@ -260,7 +260,7 @@ pub async fn spawn_named<T: Actor + Default>(
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-mod platform_wrapper {
+mod target_specific {
     /// A wrapper for [std::marker::Send] on non-`wasm32-unknown-unknown` targets, or an empty trait on `wasm32-unknown-unknown` targets.
     /// Introduced for compatibility between wasm32 and other targets
     pub trait MaybeSend {}
@@ -268,7 +268,7 @@ mod platform_wrapper {
     pub(crate) use web_time::SystemTime;
 }
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-mod platform_wrapper {
+mod target_specific {
     /// A wrapper for [std::marker::Send] on non-`wasm32-unknown-unknown` targets, or an empty trait on `wasm32-unknown-unknown` targets.
     /// Introduced for compatibility between wasm32 and other targets
     pub trait MaybeSend: Send {}
@@ -277,5 +277,5 @@ mod platform_wrapper {
 }
 
 #[cfg(not(feature = "async-trait"))]
-pub use platform_wrapper::MaybeSend;
-pub(crate) use platform_wrapper::SystemTime;
+pub use target_specific::MaybeSend;
+pub(crate) use target_specific::SystemTime;
