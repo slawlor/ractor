@@ -15,6 +15,7 @@ use bon::Builder;
 use tracing::Instrument;
 
 use crate::concurrency::{Duration, Instant, JoinHandle};
+#[cfg(not(feature = "async-trait"))]
 use crate::MaybeSend;
 use crate::{Actor, ActorId, ActorProcessingErr};
 use crate::{ActorCell, ActorRef, Message, MessagingErr, SupervisionEvent};
