@@ -138,8 +138,7 @@ impl SupervisionTree {
                 feature = "async-std",
                 all(target_arch = "wasm32", target_os = "unknown")
             ))]
-            #[allow(clippy::redundant_pattern_matching)]
-            if let Err(_) = res {
+            if res.is_err() {
                 panic!("JoinSet join error");
             }
             #[cfg(not(any(
@@ -173,8 +172,7 @@ impl SupervisionTree {
                 feature = "async-std",
                 all(target_arch = "wasm32", target_os = "unknown")
             ))]
-            #[allow(clippy::redundant_pattern_matching)]
-            if let Err(_) = res {
+            if res.is_err() {
                 panic!("JoinSet join error");
             }
             #[cfg(not(any(

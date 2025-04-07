@@ -60,9 +60,9 @@ use futures::TryFutureExt;
 use tracing::Instrument;
 
 use crate::concurrency::JoinHandle;
-use crate::ActorId;
 #[cfg(not(feature = "async-trait"))]
-use crate::MaybeSend;
+use crate::concurrency::MaybeSend;
+use crate::ActorId;
 pub mod messages;
 use messages::*;
 

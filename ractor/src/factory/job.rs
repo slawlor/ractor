@@ -5,7 +5,7 @@
 
 //! Specification for a [Job] sent to a factory
 
-use crate::SystemTime;
+use crate::concurrency::SystemTime;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::panic::RefUnwindSafe;
