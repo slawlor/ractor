@@ -12,6 +12,9 @@ use crate::ActorProcessingErr;
 use crate::ActorRef;
 use crate::RactorErr;
 
+// It was used by examples
+use ractor_example_entry_proc as _;
+
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use getrandom as _;
 
