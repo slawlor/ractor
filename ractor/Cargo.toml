@@ -86,7 +86,7 @@ tracing-test = "0.2"
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
 tokio = { version = "1.30", features = ["rt", "time", "sync", "macros"] }
 wasm-bindgen-test = "0.3.50"
-getrandom = { version = "0.3", features = ["js"] }
+getrandom = { version = "0.2.15", features = ["js"] }
 criterion = { version = "0.5", default-features = false }
 
 [[bench]]
