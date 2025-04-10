@@ -93,7 +93,10 @@ impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_worker_pool_adjustment_manual() {
     // Setup
 
@@ -184,7 +187,10 @@ async fn test_worker_pool_adjustment_manual() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_worker_pool_adjustment_automatic() {
     // Setup
 

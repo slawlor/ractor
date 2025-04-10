@@ -34,7 +34,10 @@ impl Actor for TestActor {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_basic_group_in_default_scope() {
     let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
@@ -55,7 +58,10 @@ async fn test_basic_group_in_default_scope() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_basic_group_in_named_scope() {
     let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
@@ -78,7 +84,10 @@ async fn test_basic_group_in_named_scope() {
 #[named]
 #[serial]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_which_scopes_and_groups() {
     let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
@@ -116,7 +125,10 @@ async fn test_which_scopes_and_groups() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_multiple_members_in_group() {
     let group = function_name!().to_string();
 
@@ -153,7 +165,10 @@ async fn test_multiple_members_in_group() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_multiple_members_in_scoped_group() {
     let scope = function_name!().to_string();
     let group = function_name!().to_string();
@@ -192,7 +207,10 @@ async fn test_multiple_members_in_scoped_group() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_which_scoped_groups() {
     let scope = function_name!().to_string();
     let group = function_name!().to_string();
@@ -231,7 +249,10 @@ async fn test_which_scoped_groups() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_multiple_groups() {
     let group_a = concat!(function_name!(), "_a").to_string();
     let group_b = concat!(function_name!(), "_b").to_string();
@@ -276,7 +297,10 @@ async fn test_multiple_groups() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_multiple_groups_in_multiple_scopes() {
     let scope_a = concat!(function_name!(), "_b").to_string();
     let scope_b = concat!(function_name!(), "_b").to_string();
@@ -342,7 +366,10 @@ async fn test_multiple_groups_in_multiple_scopes() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_actor_leaves_pg_group_on_shutdown() {
     let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
@@ -367,7 +394,10 @@ async fn test_actor_leaves_pg_group_on_shutdown() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_actor_leaves_scope_on_shupdown() {
     let (actor, handle) = Actor::spawn(None, TestActor, ())
         .await
@@ -393,7 +423,10 @@ async fn test_actor_leaves_scope_on_shupdown() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_actor_leaves_pg_group_manually() {
     let group = function_name!().to_string();
 
@@ -433,7 +466,10 @@ async fn test_actor_leaves_pg_group_manually() {
 
 #[named]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_actor_leaves_scope_manually() {
     let scope = function_name!().to_string();
     let group = function_name!().to_string();
@@ -483,7 +519,10 @@ async fn test_actor_leaves_scope_manually() {
 #[named]
 #[serial]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_pg_monitoring() {
     let group = function_name!().to_string();
 
@@ -589,7 +628,10 @@ async fn test_pg_monitoring() {
 #[named]
 #[serial]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_scope_monitoring() {
     let scope = function_name!().to_string();
     let group = function_name!().to_string();
@@ -730,7 +772,10 @@ async fn test_scope_monitoring() {
 #[named]
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn local_vs_remote_pg_members() {
     use crate::ActorRuntime;
 
@@ -800,7 +845,10 @@ async fn local_vs_remote_pg_members() {
 #[named]
 #[cfg(feature = "cluster")]
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn local_vs_remote_pg_members_in_named_scopes() {
     use crate::ActorRuntime;
 

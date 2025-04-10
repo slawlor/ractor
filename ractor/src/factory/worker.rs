@@ -14,6 +14,8 @@ use std::sync::Arc;
 use bon::Builder;
 use tracing::Instrument;
 
+#[cfg(not(feature = "async-trait"))]
+use crate::concurrency::MaybeSend;
 use crate::concurrency::{Duration, Instant, JoinHandle};
 use crate::{Actor, ActorId, ActorProcessingErr};
 use crate::{ActorCell, ActorRef, Message, MessagingErr, SupervisionEvent};
@@ -83,7 +85,7 @@ pub trait Worker: Send + Sync + 'static {
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         args: Self::Arguments,
-    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send;
+    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + MaybeSend;
 
     /// Invoked when a worker is being started by the system.
     ///
@@ -125,7 +127,7 @@ pub trait Worker: Send + Sync + 'static {
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async { Ok(()) }
     }
     /// Invoked after an actor has started.
@@ -165,7 +167,7 @@ pub trait Worker: Send + Sync + 'static {
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async { Ok(()) }
     }
     /// Invoked after an actor has been stopped to perform final cleanup. In the
@@ -205,7 +207,7 @@ pub trait Worker: Send + Sync + 'static {
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         job: Job<Self::Key, Self::Message>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<Self::Key, ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<Self::Key, ActorProcessingErr>> + MaybeSend {
         async { Ok(job.key) }
     }
 
@@ -244,7 +246,7 @@ pub trait Worker: Send + Sync + 'static {
         myself: ActorCell,
         message: SupervisionEvent,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async move {
             match message {
                 SupervisionEvent::ActorTerminated(who, _, _)

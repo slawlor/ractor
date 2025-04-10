@@ -12,8 +12,19 @@ use crate::ActorProcessingErr;
 use crate::ActorRef;
 use crate::RactorErr;
 
+// It was used by examples
+use ractor_example_entry_proc as _;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use getrandom as _;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 #[test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 fn test_error_conversions() {
     let messaging = crate::MessagingErr::<()>::InvalidActorType;
     let ractor_err = RactorErr::<()>::from(crate::MessagingErr::InvalidActorType);
@@ -36,7 +47,10 @@ fn test_error_conversions() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_error_message_extraction() {
     struct TestActor;
 

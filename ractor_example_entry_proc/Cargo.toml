@@ -1,0 +1,21 @@
+[package]
+name = "ractor_example_entry_proc"
+version = "0.0.0"
+authors = ["Sean Lawlor <slawlor>"]
+description = "A wrapper for tokio::main which uses different arguments on wasm"
+license = "MIT"
+edition = "2021"
+categories = []
+keywords = ["actor", "ractor"]
+repository = "https://github.com/slawlor/ractor"
+readme = "../README.md"
+rust-version = "1.64"
+
+[lib]
+name = "ractor_example_entry_proc"
+path = "src/lib.rs"
+proc-macro = true
+
+[dependencies]
+quote = "1"
+syn = { version = "2", features = ["full"] }

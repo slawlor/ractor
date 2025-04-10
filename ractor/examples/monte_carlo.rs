@@ -230,7 +230,7 @@ fn init_logging() {
     tracing::subscriber::set_global_default(subscriber).expect("to set global subscriber");
 }
 
-#[tokio::main]
+#[ractor_example_entry_proc::ractor_example_entry]
 async fn main() {
     init_logging();
 

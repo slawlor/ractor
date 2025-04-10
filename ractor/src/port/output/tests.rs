@@ -15,7 +15,10 @@ use crate::{Actor, ActorRef};
 use super::*;
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_single_forward() {
     struct TestActor;
     enum TestActorMessage {
@@ -79,7 +82,10 @@ async fn test_single_forward() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_50_receivers() {
     struct TestActor;
     enum TestActorMessage {
@@ -159,7 +165,10 @@ async fn test_50_receivers() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_delivery() {
     struct TestActor;
     enum TestActorMessage {
@@ -395,7 +404,10 @@ mod output_port_subscriber_tests {
     }
 
     #[crate::concurrency::test]
-    #[tracing_test::traced_test]
+    #[cfg_attr(
+        not(all(target_arch = "wasm32", target_os = "unknown")),
+        tracing_test::traced_test
+    )]
     async fn test_output_port_subscriber() {
         let (number_publisher_ref, number_publisher_handler) =
             Actor::spawn(None, NumberPublisher, ()).await.unwrap();

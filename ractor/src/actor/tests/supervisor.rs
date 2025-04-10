@@ -15,7 +15,11 @@ use crate::{concurrency::Duration, message::BoxedDowncastErr, periodic_check, Ac
 use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 async fn test_supervision_panic_in_post_startup() {
     struct Child;
     struct Supervisor {
@@ -105,7 +109,10 @@ async fn test_supervision_panic_in_post_startup() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_supervision_error_in_post_startup() {
     struct Child;
     struct Supervisor {
@@ -192,7 +199,11 @@ async fn test_supervision_error_in_post_startup() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 async fn test_supervision_panic_in_handle() {
     struct Child;
     struct Supervisor {
@@ -288,7 +299,10 @@ async fn test_supervision_panic_in_handle() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_supervision_error_in_handle() {
     struct Child;
     struct Supervisor {
@@ -384,7 +398,11 @@ async fn test_supervision_error_in_handle() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 async fn test_supervision_panic_in_post_stop() {
     struct Child;
     struct Supervisor {
@@ -464,7 +482,10 @@ async fn test_supervision_panic_in_post_stop() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_supervision_error_in_post_stop() {
     struct Child;
     struct Supervisor {
@@ -546,7 +567,11 @@ async fn test_supervision_error_in_post_stop() {
 /// Test that a panic in the supervisor's handling propagates to
 /// the supervisor's supervisor
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 async fn test_supervision_panic_in_supervisor_handle() {
     struct Child;
     struct Midpoint;
@@ -687,7 +712,10 @@ async fn test_supervision_panic_in_supervisor_handle() {
 /// Test that a panic in the supervisor's handling propagates to
 /// the supervisor's supervisor
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_supervision_error_in_supervisor_handle() {
     struct Child;
     struct Midpoint;
@@ -826,7 +854,10 @@ async fn test_supervision_error_in_supervisor_handle() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_killing_a_supervisor_terminates_children() {
     struct Child;
     struct Supervisor;
@@ -899,7 +930,10 @@ async fn test_killing_a_supervisor_terminates_children() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn instant_supervised_spawns() {
     let counter = Arc::new(AtomicU8::new(0));
 
@@ -1001,7 +1035,10 @@ async fn instant_supervised_spawns() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_supervisor_captures_dead_childs_state() {
     struct Child;
     struct Supervisor {
@@ -1104,7 +1141,10 @@ async fn test_supervisor_captures_dead_childs_state() {
 // 1. terminate_children_after()
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_supervisor_double_link() {
     struct Who;
 
@@ -1146,7 +1186,12 @@ async fn test_supervisor_double_link() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+// Ignored on wasm32-unknown-unknown, since panic can't be catched on this platform
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 async fn test_supervisor_exit_doesnt_call_child_post_stop() {
     struct Child {
         post_stop_calls: Arc<AtomicU8>,
@@ -1230,7 +1275,10 @@ async fn test_supervisor_exit_doesnt_call_child_post_stop() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn stopping_children_and_wait_during_parent_shutdown() {
     struct Child {
         post_stop_calls: Arc<AtomicU8>,
@@ -1312,7 +1360,10 @@ async fn stopping_children_and_wait_during_parent_shutdown() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn stopping_children_will_shutdown_parent_too() {
     struct Child {
         post_stop_calls: Arc<AtomicU8>,
@@ -1395,7 +1446,10 @@ async fn stopping_children_will_shutdown_parent_too() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn draining_children_and_wait_during_parent_shutdown() {
     struct Child {
         post_stop_calls: Arc<AtomicU8>,
@@ -1477,7 +1531,10 @@ async fn draining_children_and_wait_during_parent_shutdown() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn draining_children_will_shutdown_parent_too() {
     struct Child {
         post_stop_calls: Arc<AtomicU8>,
@@ -1563,7 +1620,10 @@ async fn draining_children_will_shutdown_parent_too() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 #[cfg(feature = "monitors")]
 async fn test_simple_monitor() {
     struct Peer;

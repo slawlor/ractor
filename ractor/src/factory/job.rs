@@ -5,10 +5,11 @@
 
 //! Specification for a [Job] sent to a factory
 
+use crate::concurrency::SystemTime;
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::panic::RefUnwindSafe;
 use std::sync::Arc;
-use std::{hash::Hash, time::SystemTime};
 
 use bon::Builder;
 use tracing::Span;
@@ -701,7 +702,10 @@ mod tests {
     type TheJob = Job<TestKey, TestMessage>;
 
     #[test]
-    #[tracing_test::traced_test]
+    #[cfg_attr(
+        not(all(target_arch = "wasm32", target_os = "unknown")),
+        tracing_test::traced_test
+    )]
     fn test_job_serialization() {
         // Check Cast variant
         let job_a = TheJob {
@@ -767,7 +771,10 @@ mod tests {
     }
 
     #[test]
-    #[tracing_test::traced_test]
+    #[cfg_attr(
+        not(all(target_arch = "wasm32", target_os = "unknown")),
+        tracing_test::traced_test
+    )]
     fn test_factory_message_serialization() {
         let job_a = TheJob {
             key: TestKey { item: 123 },

@@ -116,7 +116,10 @@ impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_basic_priority_queueing() {
     // Setup
     // a counter for each priority

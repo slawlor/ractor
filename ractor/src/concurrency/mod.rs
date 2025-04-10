@@ -58,12 +58,50 @@ pub fn broadcast<T: Clone>(buffer: usize) -> (BroadcastSender<T>, BroadcastRecei
     tokio::sync::broadcast::channel(buffer)
 }
 
-#[cfg(not(feature = "async-std"))]
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    not(feature = "async-std")
+))]
 pub mod tokio_primitives;
-#[cfg(not(feature = "async-std"))]
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    not(feature = "async-std")
+))]
 pub use self::tokio_primitives::*;
 
-#[cfg(feature = "async-std")]
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    feature = "async-std"
+))]
 pub mod async_std_primitives;
-#[cfg(feature = "async-std")]
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    feature = "async-std"
+))]
 pub use self::async_std_primitives::*;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub mod tokio_with_wasm_primitives;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub use self::tokio_with_wasm_primitives::*;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+mod target_specific {
+    /// A wrapper for [std::marker::Send] on non-`wasm32-unknown-unknown` targets, or an empty trait on `wasm32-unknown-unknown` targets.
+    /// Introduced for compatibility between wasm32 and other targets
+    pub trait MaybeSend {}
+    impl<T> MaybeSend for T {}
+    pub(crate) use web_time::SystemTime;
+}
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+mod target_specific {
+    /// A wrapper for [std::marker::Send] on non-`wasm32-unknown-unknown` targets, or an empty trait on `wasm32-unknown-unknown` targets.
+    /// Introduced for compatibility between wasm32 and other targets
+    pub trait MaybeSend: Send {}
+    impl<T> MaybeSend for T where T: Send {}
+    pub(crate) use std::time::SystemTime;
+}
+
+#[cfg(not(feature = "async-trait"))]
+pub use target_specific::MaybeSend;
+pub(crate) use target_specific::SystemTime;

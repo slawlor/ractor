@@ -98,7 +98,10 @@ impl WorkerBuilder<MyWorker, ()> for MyWorkerBuilder {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_worker_death_restarts_and_gets_next_message() {
     let counter = Arc::new(AtomicU16::new(0));
     let worker_builder = MyWorkerBuilder {
@@ -257,7 +260,10 @@ where
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_factory_can_silent_retry() {
     let num_retries = Arc::new(AtomicU8::new(0));
 

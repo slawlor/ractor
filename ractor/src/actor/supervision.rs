@@ -134,14 +134,17 @@ impl SupervisionTree {
         }
         // drain the tasks
         while let Some(res) = js.join_next().await {
-            #[cfg(feature = "async-std")]
-            {
-                match res {
-                    Err(_) => panic!("JoinSet join error"),
-                    _ => {}
-                }
+            #[cfg(any(
+                feature = "async-std",
+                all(target_arch = "wasm32", target_os = "unknown")
+            ))]
+            if res.is_err() {
+                panic!("JoinSet join error");
             }
-            #[cfg(not(feature = "async-std"))]
+            #[cfg(not(any(
+                feature = "async-std",
+                all(target_arch = "wasm32", target_os = "unknown")
+            )))]
             {
                 match res {
                     Err(err) if err.is_panic() => std::panic::resume_unwind(err.into_panic()),
@@ -165,14 +168,17 @@ impl SupervisionTree {
         }
         // drain the tasks
         while let Some(res) = js.join_next().await {
-            #[cfg(feature = "async-std")]
-            {
-                match res {
-                    Err(_) => panic!("JoinSet join error"),
-                    _ => {}
-                }
+            #[cfg(any(
+                feature = "async-std",
+                all(target_arch = "wasm32", target_os = "unknown")
+            ))]
+            if res.is_err() {
+                panic!("JoinSet join error");
             }
-            #[cfg(not(feature = "async-std"))]
+            #[cfg(not(any(
+                feature = "async-std",
+                all(target_arch = "wasm32", target_os = "unknown")
+            )))]
             {
                 match res {
                     Err(err) if err.is_panic() => std::panic::resume_unwind(err.into_panic()),

@@ -5,7 +5,7 @@
 
 // TODO #124 (slawlor): Redesign this without usage of core time primatives (i.e.
 // use concurrency instants)
-#[cfg(not(target_arch = "wasm32"))]
+
 use std::future::Future;
 
 use crate::concurrency::sleep;

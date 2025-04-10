@@ -60,8 +60,9 @@ use futures::TryFutureExt;
 use tracing::Instrument;
 
 use crate::concurrency::JoinHandle;
+#[cfg(not(feature = "async-trait"))]
+use crate::concurrency::MaybeSend;
 use crate::ActorId;
-
 pub mod messages;
 use messages::*;
 
@@ -141,7 +142,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         &self,
         myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
-    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send;
+    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + MaybeSend;
     /// Invoked when an actor is being started by the system.
     ///
     /// Any initialization inherent to the actor's role should be
@@ -178,9 +179,10 @@ pub trait Actor: Sized + Sync + Send + 'static {
         &self,
         myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async { Ok(()) }
     }
+
     /// Invoked after an actor has started.
     ///
     /// Any post initialization can be performed here, such as writing
@@ -214,7 +216,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         &self,
         myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async { Ok(()) }
     }
     /// Invoked after an actor has been stopped to perform final cleanup. In the
@@ -248,7 +250,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async { Ok(()) }
     }
     /// Handle the incoming message from the event processing loop. Unhandled panickes will be
@@ -281,7 +283,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         myself: ActorRef<Self::Msg>,
         message: crate::message::SerializedMessage,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async { Ok(()) }
     }
     /// Handle the remote incoming message from the event processing loop. Unhandled panickes will be
@@ -315,7 +317,7 @@ pub trait Actor: Sized + Sync + Send + 'static {
         myself: ActorRef<Self::Msg>,
         message: SupervisionEvent,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
         async move {
             match message {
                 SupervisionEvent::ActorTerminated(who, _, _)
@@ -367,7 +369,8 @@ pub trait Actor: Sized + Sync + Send + 'static {
         name: Option<ActorName>,
         handler: Self,
         startup_args: Self::Arguments,
-    ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> + Send {
+    ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> + MaybeSend
+    {
         ActorRuntime::<Self>::spawn(name, handler, startup_args)
     }
     /// Spawn an actor of this type, which is unsupervised, automatically starting
@@ -406,7 +409,8 @@ pub trait Actor: Sized + Sync + Send + 'static {
         handler: Self,
         startup_args: Self::Arguments,
         supervisor: ActorCell,
-    ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> + Send {
+    ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> + MaybeSend
+    {
         ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor)
     }
     /// Spawn an actor of this type with a supervisor, automatically starting the actor

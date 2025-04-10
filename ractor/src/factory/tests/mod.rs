@@ -13,4 +13,5 @@ mod dynamic_settings;
 mod lifecycle;
 mod priority_queueing;
 mod ratelim;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod worker_lifecycle;

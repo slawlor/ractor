@@ -182,7 +182,6 @@ pub mod time;
 use concurrency::JoinHandle;
 #[cfg(not(feature = "async-trait"))]
 use strum as _;
-
 // ======================== Test Modules and blind imports ======================== //
 
 #[cfg(test)]
