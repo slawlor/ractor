@@ -1,6 +1,6 @@
 [package]
 name = "ractor_example_entry_proc"
-version = "0.15.2"
+version = "0.0.0"
 authors = ["Sean Lawlor <slawlor>"]
 description = "A wrapper for tokio::main which uses different arguments on wasm"
 license = "MIT"

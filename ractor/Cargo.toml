@@ -69,7 +69,7 @@ rand = "0.8"
 tracing-glog = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-ractor_example_entry_proc = { version = "0.15.0", path = "../ractor_example_entry_proc" }
+ractor_example_entry_proc = { path = "../ractor_example_entry_proc" }
 
 [target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dev-dependencies]
 tokio = { version = "1.30", features = [
