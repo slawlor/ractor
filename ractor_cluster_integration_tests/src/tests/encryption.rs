@@ -66,13 +66,7 @@ pub async fn test(config: EncryptionConfig) -> i32 {
 
     let ca_path = PathBuf::from("test-ca/rsa-2048/ca.cert");
     let mut ca_pem = BufReader::new(File::open(ca_path).expect("Failed to load CA certificate"));
-    let ca_certs = rustls_pemfile::certs(&mut ca_pem).filter_map(|cert| {
-        if let Ok(c) = cert {
-            Some(c)
-        } else {
-            None
-        }
-    });
+    let ca_certs = rustls_pemfile::certs(&mut ca_pem).filter_map(|cert| cert.ok());
 
     let mut root_cert_store = tokio_rustls::rustls::RootCertStore::empty();
     let trust_anchors = ca_certs.map(|cert| {
