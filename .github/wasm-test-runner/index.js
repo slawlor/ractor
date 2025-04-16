@@ -43,19 +43,29 @@ import { spawn } from "child_process";
     await page.goto(`http://127.0.0.1:8000`);
     await Promise.race([
         (async () => {
+            let lastLog = null;
             while (true) {
                 const logOutput = await page.$("#output");
+
                 if (logOutput === null) {
                     console.log("#output not found, waiting..");
                 } else {
                     const log = await logOutput.evaluate((hd) => hd.innerText);
-                    console.log(log);
-                    if (log.includes("test result: FAILED")) {
+                    let currentLogLine;
+                    if (lastLog === null) {
+                        currentLogLine = log
+                    } else {
+                        currentLogLine = log.slice(lastLog.length);
+                    }
+                    lastLog = log;
+                    process.stdout.write(currentLogLine);
+                    if (currentLogLine.includes("test result: FAILED")) {
                         throw new Error("Test failed");
-                    } else if (log.includes("test result: ok")) {
+                    } else if (currentLogLine.includes("test result: ok")) {
                         return;
                     }
                 }
+
                 await new Promise(res => setTimeout(res, 1000));
             }
         })(),
@@ -63,6 +73,7 @@ import { spawn } from "child_process";
             rej(new Error("Timed out when running tests.."))
         }, 5 * 60 * 1000))
     ]);
+
     await page.close();
     await browser.close()
     await new Promise((resolve) => xvfb.stop(resolve));
