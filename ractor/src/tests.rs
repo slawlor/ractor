@@ -92,3 +92,8 @@ async fn test_error_message_extraction() {
 async fn test_platform_sleep_works() {
     crate::concurrency::sleep(Duration::from_millis(100)).await;
 }
+
+#[crate::concurrency::test]
+async fn must_fail_test() {
+    assert!(false);
+}
