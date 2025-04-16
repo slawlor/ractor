@@ -1,0 +1,16 @@
+{
+  "name": "xvfb-run-test",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "puppeteer": "^24.6.1",
+    "xvfb": "^0.4.0"
+  },
+  "type": "module"
+}
