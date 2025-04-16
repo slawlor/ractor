@@ -104,11 +104,11 @@ where
     sender(msg)
 }
 
-async fn internal_call<F, TMessage, TReply, TMsgBuilder>(
+fn internal_call<F, TMessage, TReply, TMsgBuilder>(
     sender: F,
     msg_builder: TMsgBuilder,
     timeout_option: Option<Duration>,
-) -> Result<CallResult<TReply>, MessagingErr<TMessage>>
+) -> impl std::future::Future<Output = Result<CallResult<TReply>, MessagingErr<TMessage>>>
 where
     F: Fn(TMessage) -> Result<(), MessagingErr<TMessage>>,
     TMessage: Message,
@@ -119,21 +119,24 @@ where
         Some(duration) => (tx, duration).into(),
         None => tx.into(),
     };
-    sender(msg_builder(port))?;
+    let sent = sender(msg_builder(port));
 
     // wait for the reply
-    Ok(if let Some(duration) = timeout_option {
-        match crate::concurrency::timeout(duration, rx).await {
-            Ok(Ok(result)) => CallResult::Success(result),
-            Ok(Err(_send_err)) => CallResult::SenderError,
-            Err(_timeout_err) => CallResult::Timeout,
-        }
-    } else {
-        match rx.await {
-            Ok(result) => CallResult::Success(result),
-            Err(_send_err) => CallResult::SenderError,
-        }
-    })
+    async move {
+        sent?;
+        Ok(if let Some(duration) = timeout_option {
+            match crate::concurrency::timeout(duration, rx).await {
+                Ok(Ok(result)) => CallResult::Success(result),
+                Ok(Err(_send_err)) => CallResult::SenderError,
+                Err(_timeout_err) => CallResult::Timeout,
+            }
+        } else {
+            match rx.await {
+                Ok(result) => CallResult::Success(result),
+                Err(_send_err) => CallResult::SenderError,
+            }
+        })
+    }
 }
 
 /// Sends an asynchronous request to the specified actor, ignoring if the

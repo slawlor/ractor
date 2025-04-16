@@ -89,7 +89,9 @@ pub use self::tokio_with_wasm_primitives::*;
 mod target_specific {
     /// A wrapper for [std::marker::Send] on non-`wasm32-unknown-unknown` targets, or an empty trait on `wasm32-unknown-unknown` targets.
     /// Introduced for compatibility between wasm32 and other targets
+    #[cfg(not(feature = "async-trait"))]
     pub trait MaybeSend {}
+    #[cfg(not(feature = "async-trait"))]
     impl<T> MaybeSend for T {}
     pub(crate) use web_time::SystemTime;
 }
@@ -97,7 +99,9 @@ mod target_specific {
 mod target_specific {
     /// A wrapper for [std::marker::Send] on non-`wasm32-unknown-unknown` targets, or an empty trait on `wasm32-unknown-unknown` targets.
     /// Introduced for compatibility between wasm32 and other targets
+    #[cfg(not(feature = "async-trait"))]
     pub trait MaybeSend: Send {}
+    #[cfg(not(feature = "async-trait"))]
     impl<T> MaybeSend for T where T: Send {}
     pub(crate) use std::time::SystemTime;
 }

@@ -141,7 +141,7 @@ pub enum NodeServerMessage {
     /// Unsubscribe to node events for the given subscription id
     UnsubscribeToEvents(String),
 
-    /// Change the port used in the connection String for the [ crate::net::listener ].
+    /// Change the port used in the connection String for the `ractor_cluster::net::listener`.
     /// This is used if the port specified in [ NodeServer ] is 0 and the OS chooses an arbitrary
     /// free port.
     PortChanged {
