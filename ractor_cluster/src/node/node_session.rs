@@ -21,7 +21,7 @@ use rand::Rng;
 use tokio::time::Duration;
 
 use super::auth;
-use crate::net::session::SessionMessage;
+use crate::net::SessionMessage;
 use crate::node::NodeConnectionMode;
 use crate::protocol::auth as auth_protocol;
 use crate::protocol::control as control_protocol;
@@ -92,6 +92,7 @@ impl ReadyState {
 ///
 /// Lastly the node's have an intern-node "ping" operation which occurs to keep the TCP session alive
 /// and additionally measure peer latency.
+#[derive(Debug)]
 pub struct NodeSession {
     node_id: crate::NodeId,
     is_server: bool,
@@ -793,8 +794,9 @@ impl NodeSession {
 }
 
 /// The state of the node session
+#[derive(Debug)]
 pub struct NodeSessionState {
-    tcp: Option<ActorRef<crate::net::session::SessionMessage>>,
+    tcp: Option<ActorRef<SessionMessage>>,
     peer_addr: SocketAddr,
     local_addr: SocketAddr,
     epoch: Instant,
@@ -886,7 +888,7 @@ impl Actor for NodeSession {
         let peer_addr = stream.peer_addr();
         let local_addr = stream.local_addr();
         // startup the TCP socket handler for message write + reading
-        let actor = crate::net::session::Session::spawn_linked(
+        let actor = crate::net::Session::spawn_linked(
             myself.clone(),
             stream,
             peer_addr,

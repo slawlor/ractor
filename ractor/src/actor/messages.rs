@@ -78,6 +78,9 @@ impl std::fmt::Display for StopMessage {
     }
 }
 
+#[cfg(feature = "cluster")]
+impl crate::Message for StopMessage {}
+
 /// A supervision event from the supervision tree
 pub enum SupervisionEvent {
     /// An actor was started
@@ -101,6 +104,9 @@ pub enum SupervisionEvent {
     #[cfg(feature = "cluster")]
     PidLifecycleEvent(crate::registry::PidLifecycleEvent),
 }
+
+#[cfg(feature = "cluster")]
+impl crate::Message for SupervisionEvent {}
 
 impl SupervisionEvent {
     /// If this supervision event refers to an [Actor] lifecycle event, return

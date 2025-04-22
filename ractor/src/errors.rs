@@ -135,8 +135,6 @@ impl<T> MessagingErr<T> {
     }
 }
 
-unsafe impl<T> Sync for MessagingErr<T> {}
-
 impl<T> std::fmt::Debug for MessagingErr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -150,6 +148,13 @@ impl<T> std::fmt::Debug for MessagingErr<T> {
 // SAFETY: This is required in order to map [MessagingErr] to
 // ActorProcessingErr which requires errors to be Sync.
 impl<T> std::error::Error for MessagingErr<T> {}
+
+// SAFETY: This bound will make the MessagingErr be marked as `Sync`,
+// even though all messages must only be `Send`. HOWEVER errors are generally
+// never read in a `Sync` required context, and this bound is only
+// required due to the auto-conversion to `std::error::Error``
+#[allow(unsafe_code)]
+unsafe impl<T> Sync for MessagingErr<T> {}
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for MessagingErr<T> {
     fn from(e: tokio::sync::mpsc::error::SendError<T>) -> Self {

@@ -9,16 +9,20 @@ use std::net::SocketAddr;
 
 use tokio::net::TcpStream;
 
-pub mod listener;
-pub mod session;
+mod listener;
+mod session;
+
+pub(crate) use listener::{Listener, ListenerMessage};
+pub(crate) use session::{Session, SessionMessage};
 
 /// A network port
-pub type NetworkPort = u16;
+pub(crate) type NetworkPort = u16;
 
 /// A network data stream which can either be
 /// 1. unencrypted
 /// 2. encrypted and the server-side of the session
 /// 3. encrypted and the client-side of the session
+#[derive(Debug)]
 pub enum NetworkStream {
     /// Unencrypted session
     Raw {
@@ -74,4 +78,21 @@ pub enum IncomingEncryptionMode {
     Raw,
     /// Accept sockets and establish a secure connection
     Tls(tokio_rustls::TlsAcceptor),
+}
+
+impl std::fmt::Debug for IncomingEncryptionMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut wip = f.debug_struct("IncomingEncryptionMode");
+
+        match &self {
+            Self::Raw => {
+                _ = wip.field("mode", &"Raw");
+            }
+            Self::Tls(config) => {
+                _ = wip.field("mode", &"Tls").field("config", &config.config());
+            }
+        }
+
+        wip.finish()
+    }
 }
