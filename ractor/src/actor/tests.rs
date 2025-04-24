@@ -515,7 +515,7 @@ fn port_forward<Tin, Tout, F>(
 ) -> crate::RpcReplyPort<Tin>
 where
     Tin: Send + 'static,
-    Tout: Send + 'static,
+    Tout: crate::Message,
     F: Fn(Tin) -> Tout + Send + 'static,
 {
     let (tx, rx) = crate::concurrency::oneshot();

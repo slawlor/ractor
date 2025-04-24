@@ -7,23 +7,27 @@
 //! between nodes. Generated via [prost]
 
 /// Node authentication protocol
-pub mod auth {
+pub(crate) mod auth {
+    #![allow(unreachable_pub)]
     include!(concat!(env!("OUT_DIR"), "/auth.rs"));
 }
 
 /// Node actor inter-communication protocol
-pub mod node {
+pub(crate) mod node {
+    #![allow(unreachable_pub)]
     include!(concat!(env!("OUT_DIR"), "/node.rs"));
 }
 
 /// Control messages between nodes
-pub mod control {
+pub(crate) mod control {
+    #![allow(unreachable_pub)]
     include!(concat!(env!("OUT_DIR"), "/control.rs"));
 }
 
 /// Meta types which include all base network protocol message types
-pub mod meta {
+pub(crate) mod meta {
+    #![allow(unreachable_pub)]
     include!(concat!(env!("OUT_DIR"), "/meta.rs"));
 }
 
-pub use meta::NetworkMessage;
+pub(crate) use meta::NetworkMessage;

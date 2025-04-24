@@ -61,6 +61,7 @@ use crate::{NodeId, RactorMessage};
 const PROTOCOL_VERSION: u32 = 1;
 
 /// Reply to a [NodeServerMessage::CheckSession] message
+#[derive(Debug)]
 pub enum SessionCheckReply {
     /// There is no other connection with this peer
     NoOtherConnection,
@@ -90,6 +91,7 @@ impl From<SessionCheckReply> for auth_protocol::server_status::Status {
 }
 
 /// Messages to/from the session manager
+#[allow(missing_debug_implementations)]
 #[derive(RactorMessage)]
 pub enum NodeServerMessage {
     /// Notifies the session manager that a new incoming (`is_server = true`) or outgoing (`is_server = false`)
@@ -152,7 +154,7 @@ pub enum NodeServerMessage {
 
 /// Message from the TCP `ractor_cluster::net::session::Session` actor and the
 /// monitoring Sesson actor
-#[derive(RactorMessage)]
+#[derive(RactorMessage, Debug)]
 pub enum NodeSessionMessage {
     /// A network message was received from the network
     MessageReceived(crate::protocol::NetworkMessage),
@@ -170,7 +172,7 @@ pub enum NodeSessionMessage {
 /// Node connection mode from the [Erlang](https://www.erlang.org/doc/reference_manual/distributed.html#node-connections)
 /// specification. f a node A connects to node B, and node B has a connection to node C,
 /// then node A also tries to connect to node C
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum NodeConnectionMode {
     /// Transitive connection mode. Node A connecting to Node B will list Node B's peers and try and connect to those as well
     Transitive,
@@ -189,6 +191,7 @@ impl Default for NodeConnectionMode {
 /// responsible for hosting a server port for incoming `node()` connections. It also supervises
 /// all of the [NodeSession] actors which are tied to tcp sessions and manage the FSM around `node()`s
 /// establishing inter connections.
+#[derive(Debug)]
 pub struct NodeServer {
     port: crate::net::NetworkPort,
     cookie: String,
@@ -227,7 +230,7 @@ impl NodeServer {
 }
 
 /// Node session information
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct NodeServerSessionInformation {
     /// The NodeSession actor
     pub actor: ActorRef<NodeSessionMessage>,
@@ -297,8 +300,9 @@ pub trait NodeEventSubscription: Send + 'static {
 }
 
 /// The state of the node server
+#[allow(missing_debug_implementations)]
 pub struct NodeServerState {
-    listener: ActorRef<crate::net::listener::ListenerMessage>,
+    listener: ActorRef<crate::net::ListenerMessage>,
     node_sessions: HashMap<ActorId, NodeServerSessionInformation>,
     node_id_counter: NodeId,
     this_node_name: auth_protocol::NameMessage,
@@ -348,11 +352,8 @@ impl Actor for NodeServer {
         myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
-        let listener = crate::net::listener::Listener::new(
-            self.port,
-            myself.clone(),
-            self.encryption_mode.clone(),
-        );
+        let listener =
+            crate::net::Listener::new(self.port, myself.clone(), self.encryption_mode.clone());
 
         let (actor_ref, _) =
             Actor::spawn_linked(None, listener, myself.clone(), myself.get_cell()).await?;
@@ -470,7 +471,7 @@ impl Actor for NodeServer {
 
                     // try to re-create the listener. If it's a port-bind issue, we will have already panicked on
                     // trying to start the NodeServer
-                    let listener = crate::net::listener::Listener::new(
+                    let listener = crate::net::Listener::new(
                         self.port,
                         myself.clone(),
                         self.encryption_mode.clone(),
@@ -509,7 +510,7 @@ impl Actor for NodeServer {
 
                     // try to re-create the listener. If it's a port-bind issue, we will have already panicked on
                     // trying to start the NodeServer
-                    let listener = crate::net::listener::Listener::new(
+                    let listener = crate::net::Listener::new(
                         self.port,
                         myself.clone(),
                         self.encryption_mode.clone(),

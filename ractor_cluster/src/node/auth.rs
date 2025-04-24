@@ -44,11 +44,11 @@ pub(crate) enum ServerAuthenticationProcess {
 
 impl ServerAuthenticationProcess {
     /// Initialize the FSM state
-    pub fn init() -> Self {
+    pub(crate) fn init() -> Self {
         Self::WaitingOnPeerName
     }
 
-    pub fn start_challenge(&self, cookie: &'_ str) -> Self {
+    pub(crate) fn start_challenge(&self, cookie: &'_ str) -> Self {
         if matches!(self, Self::WaitingOnClientStatus | Self::HavePeerName(_)) {
             let challenge = rand::thread_rng().next_u32();
             let digest = crate::hash::challenge_digest(cookie, challenge);
@@ -59,7 +59,7 @@ impl ServerAuthenticationProcess {
     }
 
     /// Implement the FSM state transitions
-    pub fn next(&self, auth_message: proto::AuthenticationMessage, cookie: &'_ str) -> Self {
+    pub(crate) fn next(&self, auth_message: proto::AuthenticationMessage, cookie: &'_ str) -> Self {
         if let Some(msg) = auth_message.msg {
             match msg {
                 proto::authentication_message::Msg::Name(name) => {
@@ -125,12 +125,12 @@ pub(crate) enum ClientAuthenticationProcess {
 
 impl ClientAuthenticationProcess {
     /// Initialize the FSM state
-    pub fn init() -> Self {
+    pub(crate) fn init() -> Self {
         Self::WaitingForServerStatus
     }
 
     /// Implement the client FSM transitions
-    pub fn next(&self, auth_message: proto::AuthenticationMessage, cookie: &'_ str) -> Self {
+    pub(crate) fn next(&self, auth_message: proto::AuthenticationMessage, cookie: &'_ str) -> Self {
         if let Some(msg) = auth_message.msg {
             match msg {
                 proto::authentication_message::Msg::ServerStatus(status) => {

@@ -43,10 +43,20 @@
 //! remote-supporting messages, respectively.
 //!
 
-#![warn(unused_imports)]
-#![warn(unsafe_code)]
-#![warn(missing_docs)]
-#![warn(unused_crate_dependencies)]
+#![warn(
+    dead_code,
+    missing_debug_implementations,
+    missing_docs,
+    rust_2018_idioms,
+    rustdoc::all,
+    rustdoc::missing_crate_level_docs,
+    unreachable_pub,
+    unused_imports,
+    unused_variables,
+    unused_crate_dependencies,
+    clippy::mod_module_files,
+    unsafe_code
+)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod hash;

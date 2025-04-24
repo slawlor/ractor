@@ -24,6 +24,7 @@ pub struct AuthHandshakeConfig {
     client_host: Option<String>,
 }
 
+#[derive(Debug)]
 struct SubscriptionEventLogger;
 
 impl ractor_cluster::NodeEventSubscription for SubscriptionEventLogger {
