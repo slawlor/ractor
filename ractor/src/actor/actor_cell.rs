@@ -196,7 +196,7 @@ impl ActorPortSet {
 /// underlying actor have terminated and no longer exist.
 #[derive(Clone)]
 pub struct ActorCell {
-    inner: Arc<ActorProperties>,
+    pub(crate) inner: Arc<ActorProperties>,
 }
 
 impl std::fmt::Debug for ActorCell {

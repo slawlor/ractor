@@ -179,6 +179,11 @@ pub mod registry;
 pub mod rpc;
 #[cfg(feature = "cluster")]
 pub mod serialization;
+#[cfg(all(
+    feature = "tokio_runtime",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
+pub mod thread_local;
 pub mod time;
 
 use concurrency::JoinHandle;
@@ -233,9 +238,8 @@ impl<T: std::any::Any + Send + 'static> State for T {}
 
 // ======================== Helper Functionality ======================== //
 
-/// Perform a background-spawn of an actor. This is a utility wrapper over [Actor::spawn] which drops
-/// the [crate::concurrency::JoinHandle] for convenience and assumes the actor implementation implements
-/// [Default].
+/// Perform a background-spawn of an actor. This is a utility wrapper over [Actor::spawn] which
+/// assumes the actor implementation implements [Default].
 ///
 /// * `args` - The arguments to start the actor
 ///
@@ -246,9 +250,26 @@ pub async fn spawn<T: Actor + Default>(
     T::spawn(None, T::default(), args).await
 }
 
+/// Perform a background-spawn of an thread-local actor. This is a utility wrapper over [thread_local::ThreadLocalActor::spawn]
+/// which assumes the actor implementation implements [Default].
+///
+/// * `args` - The arguments to start the actor
+/// * `spawner` - The thread-local spawner ([thread_local::ThreadLocalActorSpawner]) used to spawn thread-local actors
+///
+/// Returns [Ok((ActorRef, JoinHandle<()>))] upon successful actor startup, [Err(SpawnErr)] otherwise
+#[cfg(all(
+    feature = "tokio_runtime",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
+pub async fn spawn_local<T: thread_local::ThreadLocalActor>(
+    args: T::Arguments,
+    spawner: thread_local::ThreadLocalActorSpawner,
+) -> Result<(ActorRef<T::Msg>, JoinHandle<()>), SpawnErr> {
+    T::spawn(None, args, spawner).await
+}
+
 /// Perform a background-spawn of an actor with the provided name. This is a utility wrapper
-/// over [Actor::spawn] which drops the [crate::concurrency::JoinHandle] for convenience and
-/// assumes the actor implementation implements [Default].
+/// over [Actor::spawn] which assumes the actor implementation implements [Default].
 ///
 /// * `name` - The name for the actor to spawn
 /// * `args` - The arguments to start the actor
