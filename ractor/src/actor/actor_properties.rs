@@ -29,8 +29,8 @@ pub(crate) enum MuxedMessage {
 pub(crate) struct ActorProperties {
     pub(crate) id: ActorId,
     pub(crate) name: Option<ActorName>,
-    status: Arc<AtomicU8>,
-    wait_handler: Arc<mpsc::Notify>,
+    pub(crate) status: Arc<AtomicU8>,
+    pub(crate) wait_handler: Arc<mpsc::Notify>,
     pub(crate) signal: Mutex<Option<OneshotInputPort<Signal>>>,
     pub(crate) stop: Mutex<Option<OneshotInputPort<StopMessage>>>,
     pub(crate) supervision: InputPort<SupervisionEvent>,

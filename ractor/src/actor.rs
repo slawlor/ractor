@@ -437,10 +437,10 @@ pub trait Actor: Sized + Sync + Send + 'static {
 
 /// Helper struct for tracking the results from actor processing loops
 #[doc(hidden)]
-struct ActorLoopResult {
-    should_exit: bool,
-    exit_reason: Option<String>,
-    was_killed: bool,
+pub(crate) struct ActorLoopResult {
+    pub(crate) should_exit: bool,
+    pub(crate) exit_reason: Option<String>,
+    pub(crate) was_killed: bool,
 }
 
 impl ActorLoopResult {
