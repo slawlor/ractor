@@ -21,8 +21,6 @@ use crate::{
     Actor, ActorCell, ActorProcessingErr, ActorRef, ActorStatus, SpawnErr, SupervisionEvent,
 };
 
-mod supervisor;
-
 struct EmptyMessage;
 #[cfg(feature = "cluster")]
 impl crate::Message for EmptyMessage {}

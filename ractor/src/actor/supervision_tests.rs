@@ -1112,9 +1112,9 @@ async fn test_supervisor_captures_dead_childs_state() {
         }
     }
 
-    let mut temp_state = super::super::messages::BoxedState::new(123u64);
+    let mut temp_state = super::messages::BoxedState::new(123u64);
     assert_eq!(Err(BoxedDowncastErr), temp_state.take::<u32>());
-    let mut temp_state = super::super::messages::BoxedState::new(123u64);
+    let mut temp_state = super::messages::BoxedState::new(123u64);
     assert_eq!(Ok(123u64), temp_state.take::<u64>());
     assert_eq!(Err(BoxedDowncastErr), temp_state.take::<u64>());
 
