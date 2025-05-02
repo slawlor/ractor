@@ -12,7 +12,7 @@
 use std::future::Future;
 
 use crate::concurrency::JoinHandle;
-use crate::Actor as TraditionalActor;
+use crate::Actor as SendActor;
 use crate::ActorCell;
 use crate::ActorName;
 use crate::ActorProcessingErr;
@@ -25,14 +25,9 @@ use crate::SupervisionEvent;
 
 mod inner;
 #[cfg(test)]
+mod supervision_tests;
+#[cfg(test)]
 mod tests;
-
-/// Represents the state of an thread-local actor. Separate
-/// from the traditional [State] trait, this does NOT require
-/// that the state be [Send] and therefore does NOT need to be
-/// safe to send between threads.
-pub trait ThreadLocalState: std::any::Any + 'static {}
-impl<T: std::any::Any + 'static> ThreadLocalState for T {}
 
 /// [ThreadLocalActor] defines the behavior of an Actor. It specifies the
 /// Message type, State type, and all processing logic for the actor
@@ -56,13 +51,15 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     /// The message type for this actor
     type Msg: Message;
 
-    /// The type of state this actor manages internally
-    type State: ThreadLocalState;
+    /// The type of state this actor manages internally. This type
+    /// has no bound requirements, and needs to neither be [Send] nor
+    /// [Sync] when used in a [ThreadLocalActor] context.
+    type State;
 
     /// Initialization arguments. These must be [Send] as they are
     /// sent to the pinned thread in order to startup the actor.
-    /// However the actor's local `State` does NOT need to be
-    /// [Send] and neither does the actor instance.
+    /// However the actor's local [ThreadLocalActor::State] does
+    /// NOT need to be [Send] and neither does the actor instance.
     type Arguments: State;
 
     /// Invoked when an actor is being started by the system.
@@ -71,14 +68,14 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     /// performed here hence why it returns the initial state.
     ///
     /// Panics in `pre_start` do not invoke the
-    /// supervision strategy and the actor won't be started. [Actor]::`spawn`
+    /// supervision strategy and the actor won't be started. [ThreadLocalActor]::`spawn`
     /// will return an error to the caller
     ///
     /// * `myself` - A handle to the [ActorCell] representing this actor
     /// * `args` - Arguments that are passed in the spawning of the actor which might
     ///   be necessary to construct the initial state
     ///
-    /// Returns an initial [Actor::State] to bootstrap the actor
+    /// Returns an initial [ThreadLocalActor::State] to bootstrap the actor
     fn pre_start(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -104,7 +101,7 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     }
 
     /// Invoked after an actor has been stopped to perform final cleanup. In the
-    /// event the actor is terminated with [Signal::Kill] or has self-panicked,
+    /// event the actor is terminated with `Signal::Kill` or has self-panicked,
     /// `post_stop` won't be called.
     ///
     /// Panics in `post_stop` follow the supervision strategy.
@@ -183,7 +180,7 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [ThreadLocalActor] to facilitate startup and
     ///   initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -200,8 +197,8 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
-    ///   initial state creation
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [ThreadLocalActor] to
+    ///   facilitate startup and initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
@@ -224,18 +221,18 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
 
 impl<T> ThreadLocalActor for T
 where
-    T: TraditionalActor + Default,
+    T: SendActor + Default,
 {
-    type Msg = <T as TraditionalActor>::Msg;
-    type State = <T as TraditionalActor>::State;
-    type Arguments = <T as TraditionalActor>::Arguments;
+    type Msg = <T as SendActor>::Msg;
+    type State = <T as SendActor>::State;
+    type Arguments = <T as SendActor>::Arguments;
 
     async fn pre_start(
         &self,
         myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        <Self as TraditionalActor>::pre_start(self, myself, args).await
+        <Self as SendActor>::pre_start(self, myself, args).await
     }
 
     async fn post_start(
@@ -243,7 +240,7 @@ where
         myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        <Self as TraditionalActor>::post_start(self, myself, state).await
+        <Self as SendActor>::post_start(self, myself, state).await
     }
 
     async fn handle(
@@ -252,7 +249,7 @@ where
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        <Self as TraditionalActor>::handle(self, myself, message, state).await
+        <Self as SendActor>::handle(self, myself, message, state).await
     }
 
     #[cfg(feature = "cluster")]
@@ -262,7 +259,7 @@ where
         message: crate::message::SerializedMessage,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        <Self as TraditionalActor>::handle_serialized(self, myself, message, state).await
+        <Self as SendActor>::handle_serialized(self, myself, message, state).await
     }
 
     async fn handle_supervisor_evt(
@@ -271,7 +268,7 @@ where
         message: SupervisionEvent,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        <Self as TraditionalActor>::handle_supervisor_evt(self, myself, message, state).await
+        <Self as SendActor>::handle_supervisor_evt(self, myself, message, state).await
     }
 }
 
@@ -282,6 +279,7 @@ struct SpawnArgs {
             + Send,
     >,
     reply: RpcReplyPort<JoinHandle<Result<JoinHandle<()>, SpawnErr>>>,
+    name: Option<String>,
 }
 
 /// The [ThreadLocalActorSpawner] is responsible for spawning [ThreadLocalActor] instances
@@ -320,10 +318,27 @@ impl ThreadLocalActorSpawner {
 
             // TODO (seanlawlor): Supported named spawn
             local.spawn_local(async move {
-                while let Some(SpawnArgs { builder, reply }) = recv.recv().await {
+                while let Some(SpawnArgs {
+                    builder,
+                    reply,
+                    name,
+                }) = recv.recv().await
+                {
                     let fut = builder();
-                    let handle = tokio::task::spawn_local(fut);
-                    _ = reply.send(handle);
+                    #[cfg(tokio_unstable)]
+                    {
+                        let mut builder = tokio::task::Builder::new();
+                        if let Some(name) = name {
+                            builder = builder.name(name);
+                        }
+                        builder.spawn_local(fut).expect("Tokio task spawn failed")
+                    }
+                    #[cfg(not(tokio_unstable))]
+                    {
+                        _ = name;
+                        let handle = tokio::task::spawn_local(fut);
+                        _ = reply.send(handle);
+                    }
                 }
                 // If the while loop returns, then all the LocalSpawner
                 // objects have been dropped.
@@ -345,11 +360,13 @@ impl ThreadLocalActorSpawner {
                     -> std::pin::Pin<Box<dyn Future<Output = Result<JoinHandle<()>, SpawnErr>>>>
                 + Send,
         >,
+        name: Option<String>,
     ) -> Result<JoinHandle<()>, SpawnErr> {
         let (tx, rx) = crate::concurrency::oneshot();
         let args = SpawnArgs {
             builder,
             reply: tx.into(),
+            name,
         };
 
         if self.send.send(args).is_err() {
@@ -360,5 +377,27 @@ impl ThreadLocalActorSpawner {
             .map_err(|inner| SpawnErr::StartupFailed(inner.into()))?
             .await
             .map_err(|joinerr| SpawnErr::StartupFailed(joinerr.into()))?
+    }
+}
+
+impl ActorCell {
+    /// Spawn an actor of the given type as a thread-local child of this actor, automatically starting the actor.
+    /// This [ActorCell] becomes the supervisor of the child actor.
+    ///
+    /// * `name`: A name to give the actor. Useful for global referencing or debug printing
+    /// * `handler` The implementation of Self
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
+    ///   initial state creation
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
+    /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
+    /// the actor failed to start
+    pub async fn spawn_local_linked<T: ThreadLocalActor>(
+        &self,
+        name: Option<String>,
+        startup_args: T::Arguments,
+        spawner: ThreadLocalActorSpawner,
+    ) -> Result<(ActorRef<T::Msg>, JoinHandle<()>), SpawnErr> {
+        T::spawn_linked(name, startup_args, self.clone(), spawner).await
     }
 }

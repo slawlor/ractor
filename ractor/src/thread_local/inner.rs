@@ -251,6 +251,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         actor_ref.set_status(ActorStatus::Starting);
 
         // Generate the ActorRef which will be returned
+        let spawn_name = name.clone();
         let myself_ret = actor_ref.clone();
 
         // run the processing loop, backgrounding the work
@@ -311,7 +312,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
             .boxed_local()
         });
         let handle = spawner
-            .spawn(builder)
+            .spawn(builder, spawn_name)
             .await
             .map_err(|e| SpawnErr::StartupFailed(e.into()))?;
 

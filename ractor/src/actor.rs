@@ -74,6 +74,8 @@ pub mod derived_actor;
 mod supervision;
 
 #[cfg(test)]
+mod supervision_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
