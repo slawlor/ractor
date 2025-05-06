@@ -83,7 +83,7 @@
 //!         &self,
 //!         wid: WorkerId,
 //!         factory: &ActorRef<FactoryMessage<(), ExampleMessage>>,
-//!         Job {msg, key, ..}: Job<(), ExampleMessage>,
+//!         Job { msg, key, .. }: Job<(), ExampleMessage>,
 //!         _state: &mut Self::State,
 //!     ) -> Result<(), ActorProcessingErr> {
 //!         // Actual business logic that we want to parallelize
@@ -115,7 +115,7 @@
 //!         (),
 //!         ExampleWorker,
 //!         routing::QueuerRouting<(), ExampleMessage>,
-//!         queues::DefaultQueue<(), ExampleMessage>
+//!         queues::DefaultQueue<(), ExampleMessage>,
 //!     >::default();
 //!     let factory_args = FactoryArguments::builder()
 //!         .worker_builder(Box::new(ExampleWorkerBuilder))
@@ -123,7 +123,7 @@
 //!         .router(Default::default())
 //!         .num_initial_workers(5)
 //!         .build();
-//!     
+//!
 //!     let (factory, handle) = Actor::spawn(None, factory_def, factory_args)
 //!         .await
 //!         .expect("Failed to startup factory");
