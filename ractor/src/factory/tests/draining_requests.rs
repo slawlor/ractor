@@ -168,3 +168,55 @@ async fn test_request_draining() {
     // check the counter
     assert_eq!(999, counter.load(Ordering::Relaxed));
 }
+
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+async fn test_worker_drains_when_worker_queueing() {
+    let counter = Arc::new(AtomicU16::new(0));
+
+    let worker_builder = SlowWorkerBuilder {
+        counter: counter.clone(),
+    };
+    let factory_definition = Factory::<
+        TestKey,
+        TestMessage,
+        (),
+        TestWorker,
+        routing::KeyPersistentRouting<TestKey, TestMessage>,
+        queues::DefaultQueue<TestKey, TestMessage>,
+    >::default();
+    let args = FactoryArguments::builder()
+        .num_initial_workers(1)
+        .queue(Default::default())
+        .router(Default::default())
+        .worker_builder(Box::new(worker_builder))
+        .build();
+    let (factory, factory_handle) = Actor::spawn(None, factory_definition, args)
+        .await
+        .expect("Failed to spawn factory");
+
+    for id in 0..999 {
+        factory
+            .cast(FactoryMessage::Dispatch(Job {
+                key: TestKey { id },
+                msg: TestMessage::Ok,
+                options: JobOptions::default(),
+                accepted: None,
+            }))
+            .expect("Failed to send to factory");
+    }
+
+    // start draining requests
+    factory
+        .cast(FactoryMessage::DrainRequests)
+        .expect("Failed to contact factory");
+
+    // wait for factory to exit (it should once drained)
+    factory_handle.await.unwrap();
+
+    // check the counter, make sure all messages processed
+    assert_eq!(999, counter.load(Ordering::Relaxed));
+}

@@ -88,15 +88,18 @@ mod tests;
 ///     // Create the thread-local spawner
 ///     let spawner = ThreadLocalActorSpawner::new();
 ///     // spawn the actor
-///     let (who, handle) = ractor::spawn_local::<TheActor>("Something".to_string(), spawner.clone()).await.expect("Failed to spawn thread-local actor!");
-/// 
+///     let (who, handle) =
+///         ractor::spawn_local::<TheActor>("Something".to_string(), spawner.clone())
+///             .await
+///             .expect("Failed to spawn thread-local actor!");
+///
 ///     // send messages to the actor
 ///     who.cast(()).expect("Failed to send");
 ///     who.cast(()).expect("Failed to send");
-/// 
+///
 ///     // Tell the actor to drain then stop
 ///     who.drain();
-/// 
+///
 ///     // wait for the termination
 ///     handle.await.unwrap();
 /// }
