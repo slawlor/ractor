@@ -47,6 +47,63 @@ mod tests;
 /// patterns. Panics are also captured from the inner functions and wrapped into an Error
 /// type, however should an [Err(_)] result from any of these functions the **actor will
 /// terminate** and cleanup.
+///
+/// # Example
+///
+/// ```
+/// use ractor::thread_local::ThreadLocalActor;
+/// use ractor::thread_local::ThreadLocalActorSpawner;
+/// use ractor::ActorProcessingErr;
+/// use ractor::ActorRef;
+///
+/// #[derive(Default)]
+/// struct TheActor;
+///
+/// impl ThreadLocalActor for TheActor {
+///     type Msg = ();
+///     type Arguments = String;
+///     type State = String;
+///
+///     async fn pre_start(
+///         &self,
+///         _myself: ActorRef<Self::Msg>,
+///         args: Self::Arguments,
+///     ) -> Result<Self::State, ActorProcessingErr> {
+///         Ok(args)
+///     }
+///
+///     async fn handle(
+///         &self,
+///         _myself: ActorRef<Self::Msg>,
+///         _msg: (),
+///         state: &mut Self::State,
+///     ) -> Result<(), ActorProcessingErr> {
+///         println!("Message! {state}");
+///         Ok(())
+///     }
+/// }
+///
+/// #[tokio::main]
+/// async fn main() {
+///     // Create the thread-local spawner
+///     let spawner = ThreadLocalActorSpawner::new();
+///     // spawn the actor
+///     let (who, handle) =
+///         ractor::spawn_local::<TheActor>("Something".to_string(), spawner.clone())
+///             .await
+///             .expect("Failed to spawn thread-local actor!");
+///
+///     // send messages to the actor
+///     who.cast(()).expect("Failed to send");
+///     who.cast(()).expect("Failed to send");
+///
+///     // Tell the actor to drain then stop
+///     who.drain();
+///
+///     // wait for the termination
+///     handle.await.unwrap();
+/// }
+/// ```
 pub trait ThreadLocalActor: Default + Sized + 'static {
     /// The message type for this actor
     type Msg: Message;
@@ -179,9 +236,10 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     /// Spawn an actor of this type, which is unsupervised, automatically starting
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
-    /// * `handler` The implementation of Self
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [ThreadLocalActor] to facilitate startup and
     ///   initial state creation
+    /// * `spawner`: The [ThreadLocalActorSpawner] which will control starting this actor on a specific
+    ///   thread
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -196,10 +254,11 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     /// Spawn an actor of this type with a supervisor, automatically starting the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
-    /// * `handler` The implementation of Self
     /// * `startup_args`: Arguments passed to the `pre_start` call of the [ThreadLocalActor] to
     ///   facilitate startup and initial state creation
     /// * `supervisor`: The [ActorCell] which is to become the supervisor (parent) of this actor
+    /// * `spawner`: The [ThreadLocalActorSpawner] which will control starting this actor on a specific
+    ///   thread
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference
     /// along with the join handle which will complete when the actor terminates. Returns [Err(SpawnErr)] if
@@ -386,7 +445,7 @@ impl ActorCell {
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
     /// * `handler` The implementation of Self
-    /// * `startup_args`: Arguments passed to the `pre_start` call of the [Actor] to facilitate startup and
+    /// * `startup_args`: Arguments passed to the `pre_start` call of the [ThreadLocalActor] to facilitate startup and
     ///   initial state creation
     ///
     /// Returns a [Ok((ActorRef, JoinHandle<()>))] upon successful start, denoting the actor reference

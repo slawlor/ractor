@@ -5,7 +5,7 @@
 
 //! A clone of the [super::auth_handshake] test but with encryped communications
 //!
-//! Encryption certificates used are the same as [rustls]'s examples: <https://github.com/rustls/rustls>
+//! Encryption certificates used are the same as [tokio_rustls::rustls]'s examples: <https://github.com/rustls/rustls>
 
 use std::convert::TryFrom;
 use std::fs::File;

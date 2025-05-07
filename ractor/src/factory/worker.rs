@@ -616,12 +616,12 @@ where
 
     /// Identify if the worker is available for enqueueing work
     pub fn is_available(&self) -> bool {
-        self.curr_jobs.is_empty()
+        self.curr_jobs.is_empty() && self.message_queue.is_empty()
     }
 
     /// Identify if the worker is currently processing any requests
     pub fn is_working(&self) -> bool {
-        !self.curr_jobs.is_empty()
+        !self.is_available()
     }
 
     /// Denotes if the worker is stuck (i.e. unable to complete it's current job)
@@ -721,6 +721,7 @@ where
         let options = self.curr_jobs.remove(&key);
         // maybe queue up the next job
         if let Some(mut job) = self.get_next_non_expired_job() {
+            self.curr_jobs.insert(job.key.clone(), job.options.clone());
             job.set_worker_time();
             self.actor.cast(WorkerMessage::Dispatch(job))?;
         }
