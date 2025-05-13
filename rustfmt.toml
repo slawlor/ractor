@@ -1,0 +1,7 @@
+# To format doc tests, you need to run cargo +nightly fmt
+# and uncomment the following line
+#
+# format_code_in_doc_comments = true
+# imports_granularity = "Item"
+# reorder_imports = true
+# group_imports = "StdExternalCrate"

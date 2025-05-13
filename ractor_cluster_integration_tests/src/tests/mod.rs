@@ -7,7 +7,8 @@
 
 use clap::Parser;
 use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::thread_rng;
+use rand::Rng;
 
 pub mod auth_handshake;
 pub mod dist_connect;

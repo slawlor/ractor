@@ -7,15 +7,15 @@ use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::Actor;
-use crate::ActorProcessingErr;
-use crate::ActorRef;
 use tokio::sync::Notify;
 
 use crate::factory::queues::Priority;
 use crate::factory::queues::PriorityManager;
 use crate::factory::queues::StandardPriority;
 use crate::factory::*;
+use crate::Actor;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
 
 type TestKey = StandardPriority;
 

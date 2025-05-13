@@ -20,10 +20,18 @@
 
 #![allow(clippy::incompatible_msrv)]
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::collections::VecDeque;
 
-use ractor::{cast, Actor, ActorId, ActorName, ActorProcessingErr, ActorRef, RpcReplyPort};
-use tokio::time::{Duration, Instant};
+use ractor::cast;
+use ractor::Actor;
+use ractor::ActorId;
+use ractor::ActorName;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
+use ractor::RpcReplyPort;
+use tokio::time::Duration;
+use tokio::time::Instant;
 
 // ============================ Fork Actor ============================ //
 
@@ -465,6 +473,7 @@ fn init_logging() {
 
     use std::io::stderr;
     use std::io::IsTerminal;
+
     use tracing_glog::Glog;
     use tracing_glog::GlogFields;
     use tracing_subscriber::filter::EnvFilter;

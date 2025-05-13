@@ -5,21 +5,24 @@
 
 //! General tests, more logic-specific tests are contained in sub-modules
 
-use std::sync::{
-    atomic::{AtomicU32, AtomicU8, Ordering},
-    Arc,
-};
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-use crate::{
-    actor::derived_actor::DerivedActorRef,
-    common_test::periodic_check,
-    concurrency::{sleep, Duration},
-    MessagingErr, RactorErr,
-};
-
-use crate::{
-    Actor, ActorCell, ActorProcessingErr, ActorRef, ActorStatus, SpawnErr, SupervisionEvent,
-};
+use crate::actor::derived_actor::DerivedActorRef;
+use crate::common_test::periodic_check;
+use crate::concurrency::sleep;
+use crate::concurrency::Duration;
+use crate::Actor;
+use crate::ActorCell;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
+use crate::ActorStatus;
+use crate::MessagingErr;
+use crate::RactorErr;
+use crate::SpawnErr;
+use crate::SupervisionEvent;
 
 struct EmptyMessage;
 #[cfg(feature = "cluster")]
@@ -428,7 +431,8 @@ async fn test_sending_message_to_dead_actor() {
     tracing_test::traced_test
 )]
 async fn test_serialized_cast() {
-    use crate::message::{BoxedDowncastErr, SerializedMessage};
+    use crate::message::BoxedDowncastErr;
+    use crate::message::SerializedMessage;
     use crate::Message;
 
     let counter = Arc::new(AtomicU8::new(0));
@@ -546,8 +550,10 @@ where
     tracing_test::traced_test
 )]
 async fn test_serialized_rpc() {
-    use crate::message::{BoxedDowncastErr, SerializedMessage};
-    use crate::{Message, RpcReplyPort};
+    use crate::message::BoxedDowncastErr;
+    use crate::message::SerializedMessage;
+    use crate::Message;
+    use crate::RpcReplyPort;
 
     let counter = Arc::new(AtomicU8::new(0));
 
@@ -659,8 +665,11 @@ async fn test_serialized_rpc() {
     tracing_test::traced_test
 )]
 async fn test_remote_actor() {
-    use crate::message::{BoxedDowncastErr, SerializedMessage};
-    use crate::{ActorId, ActorRuntime, Message};
+    use crate::message::BoxedDowncastErr;
+    use crate::message::SerializedMessage;
+    use crate::ActorId;
+    use crate::ActorRuntime;
+    use crate::Message;
 
     let counter = Arc::new(AtomicU8::new(0));
 

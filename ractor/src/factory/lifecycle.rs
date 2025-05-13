@@ -7,14 +7,17 @@
 //! lifecycle (startup/shutdown/etc) such that users can intercept and
 //! adjust factory functionality at key interjection points.
 
+#[cfg(not(feature = "async-trait"))]
+use futures::future::BoxFuture;
+#[cfg(not(feature = "async-trait"))]
+use futures::FutureExt;
+
 use super::FactoryMessage;
 use super::JobKey;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
 use crate::Message;
 use crate::State;
-#[cfg(not(feature = "async-trait"))]
-use futures::{future::BoxFuture, FutureExt};
 
 /// Hooks for [crate::factory::Factory] lifecycle events based on the
 /// underlying actor's lifecycle.

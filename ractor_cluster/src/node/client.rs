@@ -7,8 +7,10 @@
 
 use std::fmt::Display;
 
-use ractor::{ActorRef, MessagingErr};
-use tokio::net::{TcpStream, ToSocketAddrs};
+use ractor::ActorRef;
+use ractor::MessagingErr;
+use tokio::net::TcpStream;
+use tokio::net::ToSocketAddrs;
 use tokio_rustls::rustls::pki_types::ServerName;
 
 /// A client connection error. Possible issues are Socket connection

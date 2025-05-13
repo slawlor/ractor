@@ -7,12 +7,13 @@
 
 use std::time::Duration;
 
-use crate::{concurrency::timeout, ActorProcessingErr};
 use futures::future::join_all;
 
-use crate::{Actor, ActorRef};
-
 use super::*;
+use crate::concurrency::timeout;
+use crate::Actor;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
 
 #[crate::concurrency::test]
 #[cfg_attr(
@@ -249,7 +250,11 @@ use output_port_subscriber_tests::*;
 
 mod output_port_subscriber_tests {
     use super::*;
-    use crate::{call_t, cast, Actor, ActorRef, RpcReplyPort};
+    use crate::call_t;
+    use crate::cast;
+    use crate::Actor;
+    use crate::ActorRef;
+    use crate::RpcReplyPort;
 
     enum NumberPublisherMessage {
         Publish(u8),

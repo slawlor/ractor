@@ -5,17 +5,19 @@
 
 //! Supervisor tests
 
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
 
+use crate::thread_local::ThreadLocalActor;
 use crate::thread_local::ThreadLocalActorSpawner;
-use crate::{thread_local::ThreadLocalActor, ActorProcessingErr};
-
-use crate::{Actor, ActorCell, ActorRef, SupervisionEvent};
+use crate::Actor;
+use crate::ActorCell;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
+use crate::SupervisionEvent;
 
 static LOCAL_SPAWNER: OnceCell<ThreadLocalActorSpawner> = OnceCell::new();
 

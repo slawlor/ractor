@@ -11,7 +11,6 @@
 //! the actor framework.
 
 use crate::concurrency;
-
 use crate::MessagingErr;
 
 // ============ Output Ports ============ //

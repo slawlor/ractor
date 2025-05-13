@@ -9,13 +9,12 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::concurrency::Duration;
-use crate::Actor;
-use crate::ActorProcessingErr;
-use crate::ActorRef;
-
 use crate::factory::routing::CustomHashFunction;
 use crate::factory::*;
 use crate::periodic_check;
+use crate::Actor;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
 
 const NUM_TEST_WORKERS: usize = 3;
 

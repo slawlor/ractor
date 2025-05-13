@@ -78,10 +78,18 @@ mod supervision_tests;
 #[cfg(test)]
 mod tests;
 
-use crate::errors::{ActorErr, ActorProcessingErr, MessagingErr, SpawnErr};
-use crate::{ActorName, Message, State};
-use actor_cell::{ActorCell, ActorPortSet, ActorStatus};
+use actor_cell::ActorCell;
+use actor_cell::ActorPortSet;
+use actor_cell::ActorStatus;
 use actor_ref::ActorRef;
+
+use crate::errors::ActorErr;
+use crate::errors::ActorProcessingErr;
+use crate::errors::MessagingErr;
+use crate::errors::SpawnErr;
+use crate::ActorName;
+use crate::Message;
+use crate::State;
 
 pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> ActorProcessingErr {
     match e.downcast::<String>() {

@@ -9,11 +9,14 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use dashmap::mapref::entry::Entry::{Occupied, Vacant};
+use dashmap::mapref::entry::Entry::Occupied;
+use dashmap::mapref::entry::Entry::Vacant;
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
-use crate::{ActorCell, ActorId, SupervisionEvent};
+use crate::ActorCell;
+use crate::ActorId;
+use crate::SupervisionEvent;
 
 /// Represents a change ocurring to some actor in the global process registry. Only relevant in
 /// cluster enabled functionality.

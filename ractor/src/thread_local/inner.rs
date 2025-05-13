@@ -15,6 +15,8 @@ use futures::FutureExt;
 use futures::TryFutureExt;
 use tracing::Instrument;
 
+use super::ThreadLocalActor;
+use super::ThreadLocalActorSpawner;
 use crate::actor::actor_cell;
 use crate::actor::actor_cell::ActorPortSet;
 use crate::actor::actor_properties::ActorProperties;
@@ -37,9 +39,6 @@ use crate::MessagingErr;
 use crate::Signal;
 use crate::SpawnErr;
 use crate::SupervisionEvent;
-
-use super::ThreadLocalActor;
-use super::ThreadLocalActorSpawner;
 
 impl ActorCell {
     pub(crate) fn new_thread_local<TActor>(

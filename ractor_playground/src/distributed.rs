@@ -5,8 +5,11 @@
 
 //! Distributed cluster playground
 
+use ractor::concurrency::Duration;
+use ractor::Actor;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
 use ractor::RpcReplyPort;
-use ractor::{concurrency::Duration, Actor, ActorProcessingErr, ActorRef};
 use ractor_cluster::RactorClusterMessage;
 
 /// Run test with

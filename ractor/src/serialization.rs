@@ -203,9 +203,13 @@ mod impls {
 
 #[cfg(test)]
 mod tests {
+    use rand::distributions::Alphanumeric;
+    use rand::thread_rng;
+    use rand::Rng;
+
     use super::BytesConvertable;
-    use crate::{message::BoxedDowncastErr, Message};
-    use rand::{distributions::Alphanumeric, thread_rng, Rng};
+    use crate::message::BoxedDowncastErr;
+    use crate::Message;
 
     fn random_string() -> String {
         thread_rng()

@@ -13,9 +13,14 @@
 //! ## Examples
 //!
 //! ```rust
+//! use ractor::call;
+//! use ractor::call_t;
+//! use ractor::cast;
 //! use ractor::concurrency::Duration;
-//! use ractor::{call, call_t, cast};
-//! use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+//! use ractor::Actor;
+//! use ractor::ActorProcessingErr;
+//! use ractor::ActorRef;
+//! use ractor::RpcReplyPort;
 //!
 //! struct ExampleActor;
 //!
@@ -87,9 +92,15 @@
 //! }
 //! ```
 
-use crate::concurrency::{self, Duration, JoinHandle};
-
-use crate::{ActorCell, ActorRef, DerivedActorRef, Message, MessagingErr, RpcReplyPort};
+use crate::concurrency::Duration;
+use crate::concurrency::JoinHandle;
+use crate::concurrency::{self};
+use crate::ActorCell;
+use crate::ActorRef;
+use crate::DerivedActorRef;
+use crate::Message;
+use crate::MessagingErr;
+use crate::RpcReplyPort;
 
 pub mod call_result;
 pub use call_result::CallResult;

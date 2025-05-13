@@ -7,7 +7,8 @@
 
 use std::sync::Arc;
 
-use crate::concurrency::{Duration, Instant};
+use crate::concurrency::Duration;
+use crate::concurrency::Instant;
 use crate::factory::JobOptions;
 
 /// A wrapper over whatever stats collection a user wishes to utilize

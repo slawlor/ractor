@@ -7,7 +7,9 @@
 //! then C should auto-connect to B
 
 use clap::Args;
-use ractor::concurrency::{sleep, Duration, Instant};
+use ractor::concurrency::sleep;
+use ractor::concurrency::Duration;
+use ractor::concurrency::Instant;
 use ractor::Actor;
 
 const DIST_CONNECT_TIME_ALLOWANCE_MS: u128 = 2000;

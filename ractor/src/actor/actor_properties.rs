@@ -3,20 +3,29 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::actor::messages::StopMessage;
 use crate::actor::supervision::SupervisionTree;
-use crate::concurrency::{
-    MpscUnboundedReceiver as InputPortReceiver, MpscUnboundedSender as InputPort, OneshotReceiver,
-    OneshotSender as OneshotInputPort,
-};
+use crate::concurrency as mpsc;
+use crate::concurrency::MpscUnboundedReceiver as InputPortReceiver;
+use crate::concurrency::MpscUnboundedSender as InputPort;
+use crate::concurrency::OneshotReceiver;
+use crate::concurrency::OneshotSender as OneshotInputPort;
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
-use crate::{concurrency as mpsc, Message};
-use crate::{Actor, ActorId, ActorName, ActorStatus, MessagingErr, Signal, SupervisionEvent};
+use crate::Actor;
+use crate::ActorId;
+use crate::ActorName;
+use crate::ActorStatus;
+use crate::Message;
+use crate::MessagingErr;
+use crate::Signal;
+use crate::SupervisionEvent;
 
 /// A muxed-message wrapper which allows the message port to receive either a message or a drain
 /// request which is a point-in-time marker that the actor's input channel should be drained

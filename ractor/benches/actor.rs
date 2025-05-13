@@ -6,10 +6,13 @@
 #[macro_use]
 extern crate criterion;
 
-use criterion::{BatchSize, Criterion};
+use criterion::BatchSize;
+use criterion::Criterion;
+use ractor::Actor;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
 #[cfg(feature = "cluster")]
 use ractor::Message;
-use ractor::{Actor, ActorProcessingErr, ActorRef};
 
 struct BenchActor;
 

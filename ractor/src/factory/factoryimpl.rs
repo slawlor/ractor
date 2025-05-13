@@ -12,6 +12,9 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use self::routing::RouteResult;
+use super::queues::Queue;
+use super::routing::Router;
+use super::*;
 use crate::concurrency::Duration;
 use crate::concurrency::Instant;
 use crate::Actor;
@@ -20,10 +23,6 @@ use crate::ActorRef;
 use crate::Message;
 use crate::SpawnErr;
 use crate::SupervisionEvent;
-
-use super::queues::Queue;
-use super::routing::Router;
-use super::*;
 
 /// The global execution limit, any more than 1M and realistically
 /// we'll get into scheduling problems unless the requests have an

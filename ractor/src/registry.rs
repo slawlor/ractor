@@ -37,7 +37,9 @@
 //!
 //! ```rust
 //! use ractor::registry;
-//! use ractor::{Actor, ActorProcessingErr, ActorRef};
+//! use ractor::Actor;
+//! use ractor::ActorProcessingErr;
+//! use ractor::ActorRef;
 //!
 //! struct ExampleActor;
 //!
@@ -80,16 +82,22 @@
 
 use std::sync::Arc;
 
-use dashmap::mapref::entry::Entry::{Occupied, Vacant};
+use dashmap::mapref::entry::Entry::Occupied;
+use dashmap::mapref::entry::Entry::Vacant;
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
-use crate::{ActorCell, ActorName};
+use crate::ActorCell;
+use crate::ActorName;
 
 #[cfg(feature = "cluster")]
 pub mod pid_registry;
 #[cfg(feature = "cluster")]
-pub use pid_registry::{get_all_pids, where_is_pid, PidLifecycleEvent};
+pub use pid_registry::get_all_pids;
+#[cfg(feature = "cluster")]
+pub use pid_registry::where_is_pid;
+#[cfg(feature = "cluster")]
+pub use pid_registry::PidLifecycleEvent;
 
 #[cfg(test)]
 mod tests;

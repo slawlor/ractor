@@ -6,8 +6,9 @@
 //! Tests on the actor registry
 
 use crate::concurrency::Duration;
-
-use crate::{Actor, ActorProcessingErr, SpawnErr};
+use crate::Actor;
+use crate::ActorProcessingErr;
+use crate::SpawnErr;
 
 #[crate::concurrency::test]
 #[cfg_attr(
@@ -149,10 +150,12 @@ mod pid_registry_tests {
     use dashmap::DashMap;
 
     use super::super::pid_registry::*;
-    use crate::{
-        common_test::periodic_check, concurrency::Duration, Actor, ActorId, ActorProcessingErr,
-        SupervisionEvent,
-    };
+    use crate::common_test::periodic_check;
+    use crate::concurrency::Duration;
+    use crate::Actor;
+    use crate::ActorId;
+    use crate::ActorProcessingErr;
+    use crate::SupervisionEvent;
 
     struct RemoteActor;
     struct RemoteActorMessage;

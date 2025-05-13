@@ -5,7 +5,9 @@
 
 //! A ping-pong actor implementation
 
-use ractor::{Actor, ActorProcessingErr, ActorRef};
+use ractor::Actor;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
 
 pub struct PingPong;
 

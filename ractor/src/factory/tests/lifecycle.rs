@@ -10,16 +10,17 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 #[cfg(not(feature = "async-trait"))]
-use futures::{future::BoxFuture, FutureExt};
+use futures::future::BoxFuture;
+#[cfg(not(feature = "async-trait"))]
+use futures::FutureExt;
 
 use crate::concurrency::sleep;
 use crate::concurrency::Duration;
+use crate::factory::*;
+use crate::periodic_check;
 use crate::Actor;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
-
-use crate::factory::*;
-use crate::periodic_check;
 
 #[derive(Clone)]
 struct AtomicHooks {

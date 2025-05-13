@@ -14,7 +14,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use super::{actor_cell::ActorCell, messages::SupervisionEvent};
+use super::actor_cell::ActorCell;
+use super::messages::SupervisionEvent;
 use crate::ActorId;
 
 /// A supervision tree

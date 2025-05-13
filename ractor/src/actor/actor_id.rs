@@ -10,7 +10,8 @@
 //! ActorIds are generally helpful in logging and pattern matching, but not directly
 //! used in addressing outside of `ractor_cluster` network-based call internals.
 
-use std::{fmt::Display, sync::atomic::AtomicU64};
+use std::fmt::Display;
+use std::sync::atomic::AtomicU64;
 
 /// An actor's globally unique identifier
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]

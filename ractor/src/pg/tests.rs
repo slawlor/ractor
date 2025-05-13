@@ -3,17 +3,21 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::common_test::periodic_check;
-use crate::concurrency::Duration;
 use ::function_name::named;
 use serial_test::serial;
 
-use crate::{Actor, ActorProcessingErr, GroupName, ScopeName, SupervisionEvent};
-
+use crate::common_test::periodic_check;
+use crate::concurrency::Duration;
 use crate::pg::{self};
+use crate::Actor;
+use crate::ActorProcessingErr;
+use crate::GroupName;
+use crate::ScopeName;
+use crate::SupervisionEvent;
 
 struct TestActor;
 

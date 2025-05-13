@@ -51,7 +51,10 @@
 //! ```rust
 //! use ractor::concurrency::Duration;
 //! use ractor::factory::*;
-//! use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+//! use ractor::Actor;
+//! use ractor::ActorProcessingErr;
+//! use ractor::ActorRef;
+//! use ractor::RpcReplyPort;
 //!
 //! #[derive(Debug)]
 //! enum ExampleMessage {
@@ -160,10 +163,12 @@
 
 use std::sync::Arc;
 
-use crate::concurrency::{Duration, Instant};
+use crate::concurrency::Duration;
+use crate::concurrency::Instant;
 #[cfg(feature = "cluster")]
 use crate::message::BoxedDowncastErr;
-use crate::{Message, RpcReplyPort};
+use crate::Message;
+use crate::RpcReplyPort;
 
 pub mod discard;
 pub mod factoryimpl;
@@ -179,19 +184,31 @@ pub mod worker;
 #[cfg(test)]
 mod tests;
 
-use stats::FactoryStatsLayer;
-
-pub use discard::{
-    DiscardHandler, DiscardMode, DiscardReason, DiscardSettings, DynamicDiscardController,
-};
-pub use factoryimpl::{Factory, FactoryArguments, FactoryArgumentsBuilder};
-pub use job::{Job, JobKey, JobOptions, MessageRetryStrategy, RetriableMessage};
+pub use discard::DiscardHandler;
+pub use discard::DiscardMode;
+pub use discard::DiscardReason;
+pub use discard::DiscardSettings;
+pub use discard::DynamicDiscardController;
+pub use factoryimpl::Factory;
+pub use factoryimpl::FactoryArguments;
+pub use factoryimpl::FactoryArgumentsBuilder;
+pub use job::Job;
+pub use job::JobKey;
+pub use job::JobOptions;
+pub use job::MessageRetryStrategy;
+pub use job::RetriableMessage;
 pub use lifecycle::FactoryLifecycleHooks;
-pub use ratelim::{LeakyBucketRateLimiter, RateLimitedRouter, RateLimiter};
-pub use worker::{
-    DeadMansSwitchConfiguration, Worker, WorkerBuilder, WorkerCapacityController, WorkerMessage,
-    WorkerProperties, WorkerStartContext,
-};
+pub use ratelim::LeakyBucketRateLimiter;
+pub use ratelim::RateLimitedRouter;
+pub use ratelim::RateLimiter;
+use stats::FactoryStatsLayer;
+pub use worker::DeadMansSwitchConfiguration;
+pub use worker::Worker;
+pub use worker::WorkerBuilder;
+pub use worker::WorkerCapacityController;
+pub use worker::WorkerMessage;
+pub use worker::WorkerProperties;
+pub use worker::WorkerStartContext;
 
 /// The settings to change for an update request to the factory at runtime.
 ///

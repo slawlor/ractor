@@ -5,14 +5,15 @@
 
 //! Tests around dynamic setting changes in factories
 
-use std::sync::{
-    atomic::{AtomicU8, Ordering},
-    Arc,
-};
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use crate::concurrency::sleep;
 use crate::factory::*;
-use crate::{Actor, ActorProcessingErr, ActorRef};
+use crate::Actor;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
 
 struct TestWorker;
 

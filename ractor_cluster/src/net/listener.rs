@@ -5,8 +5,10 @@
 
 //! TCP Server to accept incoming sessions
 
-use ractor::{cast, ActorProcessingErr};
-use ractor::{Actor, ActorRef};
+use ractor::cast;
+use ractor::Actor;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
 use tokio::net::TcpListener;
 
 use super::IncomingEncryptionMode;
