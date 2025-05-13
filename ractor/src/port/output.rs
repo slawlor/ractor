@@ -10,12 +10,14 @@
 //! to them which are automatically forwarded to downstream actors waiting for inputs. They optionally
 //! have a message transformer attached to them to convert them to the appropriate message type
 
-use std::{fmt::Debug, sync::RwLock};
+use std::fmt::Debug;
+use std::sync::RwLock;
 
-use crate::concurrency::JoinHandle;
 use tokio::sync::broadcast as pubsub;
 
-use crate::{ActorRef, Message};
+use crate::concurrency::JoinHandle;
+use crate::ActorRef;
+use crate::Message;
 
 #[cfg(test)]
 mod tests;

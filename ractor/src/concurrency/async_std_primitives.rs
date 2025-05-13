@@ -8,19 +8,19 @@
 //! We still rely on tokio for some core executor-independent parts
 //! such as channels (see: https://github.com/tokio-rs/tokio/issues/4232#issuecomment-968329443).
 
-use std::{
-    fmt::Debug,
-    future::Future,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    task::{Context, Poll},
-};
+use std::fmt::Debug;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 
+use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
-use futures::{future::BoxFuture, FutureExt, StreamExt};
+use futures::FutureExt;
+use futures::StreamExt;
 
 /// Represents a [JoinHandle] on a spawned task.
 /// Adds some syntactic wrapping to support a JoinHandle
@@ -230,7 +230,6 @@ where
 
 /// test macro
 pub use async_std::test;
-
 pub use futures::select_biased as select;
 
 #[cfg(test)]

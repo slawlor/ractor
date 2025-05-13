@@ -5,7 +5,8 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn};
+use syn::parse_macro_input;
+use syn::ItemFn;
 
 /// Expands to `#[tokio::main(flavor = "current_thread")]` on `wasm32-unknown-unknown`, `#[tokio::main]` on other platforms
 #[proc_macro_attribute]

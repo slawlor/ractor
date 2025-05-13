@@ -19,8 +19,13 @@
 
 use std::collections::HashMap;
 
-use ractor::{cast, Actor, ActorId, ActorProcessingErr, ActorRef};
-use rand::{thread_rng, Rng};
+use ractor::cast;
+use ractor::Actor;
+use ractor::ActorId;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
+use rand::thread_rng;
+use rand::Rng;
 
 // ================== Player Actor ================== //
 
@@ -208,6 +213,7 @@ fn init_logging() {
 
     use std::io::stderr;
     use std::io::IsTerminal;
+
     use tracing_glog::Glog;
     use tracing_glog::GlogFields;
     use tracing_subscriber::filter::EnvFilter;

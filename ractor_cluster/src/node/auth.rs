@@ -171,9 +171,8 @@ impl ClientAuthenticationProcess {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::auth::NodeFlags;
-
     use super::*;
+    use crate::protocol::auth::NodeFlags;
 
     #[test]
     fn server_auth_state() {

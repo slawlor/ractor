@@ -16,7 +16,10 @@
 
 extern crate ractor;
 
-use ractor::{cast, Actor, ActorProcessingErr, ActorRef};
+use ractor::cast;
+use ractor::Actor;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
 
 pub struct PingPong;
 
@@ -85,6 +88,7 @@ fn init_logging() {
 
     use std::io::stderr;
     use std::io::IsTerminal;
+
     use tracing_glog::Glog;
     use tracing_glog::GlogFields;
     use tracing_subscriber::filter::EnvFilter;

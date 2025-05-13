@@ -35,7 +35,6 @@
 //! -> If either child actor closes, then it will terminate the overall `ractor_cluster::net::session::Session` which in
 //!    turn will terminate the [NodeSession] and the [NodeServer] will de-register the [NodeSession] from its
 //!    internal state
-//!
 
 /*
 What's there to do? See tracking issue <https://github.com/slawlor/ractor/issues/16> for the most
@@ -47,16 +46,22 @@ up-to-date information on the status of remoting and actors
 pub mod auth;
 pub mod client;
 pub mod node_session;
-pub use node_session::NodeSession;
-
+use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::{cmp::Ordering, collections::hash_map::Entry};
 
-use ractor::{Actor, ActorId, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
+pub use node_session::NodeSession;
+use ractor::Actor;
+use ractor::ActorId;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
+use ractor::RpcReplyPort;
+use ractor::SupervisionEvent;
 
 use crate::net::IncomingEncryptionMode;
 use crate::protocol::auth as auth_protocol;
-use crate::{NodeId, RactorMessage};
+use crate::NodeId;
+use crate::RactorMessage;
 
 const PROTOCOL_VERSION: u32 = 1;
 

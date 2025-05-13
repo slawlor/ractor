@@ -12,11 +12,10 @@ use std::sync::Arc;
 use crate::concurrency::sleep;
 use crate::concurrency::Duration;
 use crate::concurrency::JoinHandle;
+use crate::factory::*;
 use crate::Actor;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
-
-use crate::factory::*;
 
 struct MyWorker {
     counter: Arc<AtomicU16>,

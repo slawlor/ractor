@@ -5,7 +5,8 @@
 
 //! Factory worker properties
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 #[cfg(not(feature = "async-trait"))]
 use std::future::Future;
@@ -14,19 +15,29 @@ use std::sync::Arc;
 use bon::Builder;
 use tracing::Instrument;
 
-#[cfg(not(feature = "async-trait"))]
-use crate::concurrency::MaybeSend;
-use crate::concurrency::{Duration, Instant, JoinHandle};
-use crate::{Actor, ActorId, ActorProcessingErr};
-use crate::{ActorCell, ActorRef, Message, MessagingErr, SupervisionEvent};
-
-use super::discard::{DiscardMode, WorkerDiscardSettings};
+use super::discard::DiscardMode;
+use super::discard::WorkerDiscardSettings;
 use super::stats::FactoryStatsLayer;
+use super::DiscardHandler;
+use super::DiscardReason;
 use super::FactoryMessage;
 use super::Job;
 use super::JobKey;
+use super::JobOptions;
 use super::WorkerId;
-use super::{DiscardHandler, DiscardReason, JobOptions};
+use crate::concurrency::Duration;
+use crate::concurrency::Instant;
+use crate::concurrency::JoinHandle;
+#[cfg(not(feature = "async-trait"))]
+use crate::concurrency::MaybeSend;
+use crate::Actor;
+use crate::ActorCell;
+use crate::ActorId;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
+use crate::Message;
+use crate::MessagingErr;
+use crate::SupervisionEvent;
 
 /// The configuration for the dead-man's switch functionality
 #[derive(Builder, Debug)]

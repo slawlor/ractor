@@ -5,7 +5,6 @@
 
 //! Specification for a [Job] sent to a factory
 
-use crate::concurrency::SystemTime;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::panic::RefUnwindSafe;
@@ -14,13 +13,16 @@ use std::sync::Arc;
 use bon::Builder;
 use tracing::Span;
 
-use crate::{concurrency::Duration, Message};
-use crate::{ActorRef, RpcReplyPort};
-
-#[cfg(feature = "cluster")]
-use crate::{message::BoxedDowncastErr, BytesConvertable};
-
 use super::FactoryMessage;
+use crate::concurrency::Duration;
+use crate::concurrency::SystemTime;
+#[cfg(feature = "cluster")]
+use crate::message::BoxedDowncastErr;
+use crate::ActorRef;
+#[cfg(feature = "cluster")]
+use crate::BytesConvertable;
+use crate::Message;
+use crate::RpcReplyPort;
 
 /// Represents a key to a job. Needs to be hashable for routing properties. Additionally needs
 /// to be serializable for remote factories
@@ -620,10 +622,12 @@ impl<TKey: JobKey, TMessage: Message> RetriableMessage<TKey, TMessage> {
 mod tests {
     use super::super::FactoryMessage;
     use super::Job;
-    use crate::{
-        concurrency::Duration, factory::JobOptions, serialization::BytesConvertable, Message,
-    };
-    use crate::{message::SerializedMessage, RpcReplyPort};
+    use crate::concurrency::Duration;
+    use crate::factory::JobOptions;
+    use crate::message::SerializedMessage;
+    use crate::serialization::BytesConvertable;
+    use crate::Message;
+    use crate::RpcReplyPort;
 
     #[derive(Eq, Hash, PartialEq, Clone, Debug)]
     struct TestKey {

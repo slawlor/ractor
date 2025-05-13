@@ -16,8 +16,13 @@
 //! it then does a teardown
 
 use clap::Args;
-use ractor::concurrency::{sleep, Duration, Instant};
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use ractor::concurrency::sleep;
+use ractor::concurrency::Duration;
+use ractor::concurrency::Instant;
+use ractor::Actor;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
+use ractor::RpcReplyPort;
 use ractor_cluster::RactorClusterMessage;
 
 const NUM_HELLOS: u16 = 10;

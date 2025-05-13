@@ -8,7 +8,8 @@ use std::io::stderr;
 use std::io::IsTerminal;
 
 use clap::Parser;
-use rustyrepl::{Repl, ReplCommandProcessor};
+use rustyrepl::Repl;
+use rustyrepl::ReplCommandProcessor;
 use tracing_glog::Glog;
 use tracing_glog::GlogFields;
 use tracing_subscriber::filter::Directive;

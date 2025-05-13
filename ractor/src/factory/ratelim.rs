@@ -7,7 +7,8 @@
 
 use std::collections::HashMap;
 
-use crate::concurrency::{Duration, Instant};
+use crate::concurrency::Duration;
+use crate::concurrency::Instant;
 use crate::factory::routing::RouteResult;
 use crate::factory::routing::Router;
 use crate::factory::Job;
@@ -173,9 +174,8 @@ impl RateLimiter for LeakyBucketRateLimiter {
 
 #[cfg(test)]
 mod tests {
-    use crate::concurrency::sleep;
-
     use super::*;
+    use crate::concurrency::sleep;
 
     #[crate::concurrency::test]
     async fn test_basic_leaky_bucket() {

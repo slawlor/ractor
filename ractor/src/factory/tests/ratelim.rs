@@ -9,7 +9,8 @@ use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::concurrency::{sleep, Duration};
+use crate::concurrency::sleep;
+use crate::concurrency::Duration;
 use crate::factory::routing::*;
 use crate::factory::*;
 use crate::*;

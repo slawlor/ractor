@@ -5,14 +5,15 @@
 
 //! Tests of timers
 
-use std::sync::{
-    atomic::{AtomicU8, Ordering},
-    Arc,
-};
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-use crate::{common_test::periodic_check, concurrency::Duration, ActorProcessingErr};
-
-use crate::{Actor, ActorRef};
+use crate::common_test::periodic_check;
+use crate::concurrency::Duration;
+use crate::Actor;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
 
 #[crate::concurrency::test]
 #[cfg_attr(

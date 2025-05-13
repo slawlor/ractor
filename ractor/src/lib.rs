@@ -23,7 +23,9 @@
 //! An example "ping-pong" actor might be the following
 //!
 //! ```rust
-//! use ractor::{Actor, ActorProcessingErr, ActorRef};
+//! use ractor::Actor;
+//! use ractor::ActorProcessingErr;
+//! use ractor::ActorRef;
 //!
 //! /// [PingPong] is a basic actor that will print
 //! /// ping..pong.. repeatedly until some exit
@@ -193,32 +195,40 @@ use strum as _;
 
 #[cfg(test)]
 mod tests;
+// ======================== Re-exports ======================== //
+pub use actor::actor_cell::ActorCell;
+pub use actor::actor_cell::ActorStatus;
+pub use actor::actor_cell::ACTIVE_STATES;
+pub use actor::actor_id::ActorId;
+pub use actor::actor_ref::ActorRef;
+pub use actor::derived_actor::DerivedActorRef;
+pub use actor::messages::Signal;
+pub use actor::messages::SupervisionEvent;
+pub use actor::Actor;
+pub use actor::ActorRuntime;
+#[cfg(feature = "async-trait")]
+pub use async_trait::async_trait;
 #[cfg(test)]
 use criterion as _;
+pub use errors::ActorErr;
+pub use errors::ActorProcessingErr;
+pub use errors::MessagingErr;
+pub use errors::RactorErr;
+pub use errors::SpawnErr;
+pub use message::Message;
 #[cfg(test)]
 use paste as _;
+pub use port::OutputMessage;
+pub use port::OutputPort;
+pub use port::RpcReplyPort;
 #[cfg(test)]
 use rand as _;
+#[cfg(feature = "cluster")]
+pub use serialization::BytesConvertable;
 #[cfg(test)]
 use tracing_glog as _;
 #[cfg(test)]
 use tracing_subscriber as _;
-
-// ======================== Re-exports ======================== //
-
-pub use actor::actor_cell::{ActorCell, ActorStatus, ACTIVE_STATES};
-pub use actor::actor_id::ActorId;
-pub use actor::actor_ref::ActorRef;
-pub use actor::derived_actor::DerivedActorRef;
-pub use actor::messages::{Signal, SupervisionEvent};
-pub use actor::{Actor, ActorRuntime};
-#[cfg(feature = "async-trait")]
-pub use async_trait::async_trait;
-pub use errors::{ActorErr, ActorProcessingErr, MessagingErr, RactorErr, SpawnErr};
-pub use message::Message;
-pub use port::{OutputMessage, OutputPort, RpcReplyPort};
-#[cfg(feature = "cluster")]
-pub use serialization::BytesConvertable;
 
 // ======================== Type aliases and Trait definitions ======================== //
 

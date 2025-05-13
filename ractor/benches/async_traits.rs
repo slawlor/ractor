@@ -14,10 +14,13 @@
 #[macro_use]
 extern crate criterion;
 
-use criterion::{BatchSize, Criterion};
+use criterion::BatchSize;
+use criterion::Criterion;
+use ractor::Actor;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
 #[cfg(feature = "cluster")]
 use ractor::Message;
-use ractor::{Actor, ActorProcessingErr, ActorRef};
 
 #[allow(clippy::async_yields_async)]
 fn big_stack_futures(c: &mut Criterion) {

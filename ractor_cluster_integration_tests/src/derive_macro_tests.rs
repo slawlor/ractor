@@ -4,8 +4,10 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 use ractor::message::SerializedMessage;
-use ractor::{Message, RpcReplyPort};
-use ractor_cluster::{RactorClusterMessage, RactorMessage};
+use ractor::Message;
+use ractor::RpcReplyPort;
+use ractor_cluster::RactorClusterMessage;
+use ractor_cluster::RactorMessage;
 
 #[test]
 fn test_non_serializable_generation() {

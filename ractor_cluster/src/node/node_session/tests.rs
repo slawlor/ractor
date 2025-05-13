@@ -5,18 +5,16 @@
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::sync::{
-    atomic::{AtomicU8, Ordering},
-    Arc,
-};
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Instant;
 
 use ractor::concurrency::sleep;
 
+use super::*;
 use crate::node::NodeConnectionMode;
 use crate::NodeSessionMessage;
-
-use super::*;
 
 struct DummyNodeServer;
 #[cfg_attr(feature = "async-trait", ractor::async_trait)]

@@ -22,7 +22,9 @@
 //!
 //! ```rust
 //! use ractor::pg;
-//! use ractor::{Actor, ActorProcessingErr, ActorRef};
+//! use ractor::Actor;
+//! use ractor::ActorProcessingErr;
+//! use ractor::ActorRef;
 //!
 //! struct ExampleActor;
 //!
@@ -71,12 +73,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use dashmap::mapref::entry::Entry::{Occupied, Vacant};
+use dashmap::mapref::entry::Entry::Occupied;
+use dashmap::mapref::entry::Entry::Vacant;
 use dashmap::DashMap;
-
 use once_cell::sync::OnceCell;
 
-use crate::{ActorCell, ActorId, GroupName, ScopeName, SupervisionEvent};
+use crate::ActorCell;
+use crate::ActorId;
+use crate::GroupName;
+use crate::ScopeName;
+use crate::SupervisionEvent;
 
 /// Key to set the default scope
 pub const DEFAULT_SCOPE: &str = "__default_scope__";

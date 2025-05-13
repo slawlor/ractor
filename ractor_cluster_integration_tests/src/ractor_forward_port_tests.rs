@@ -5,7 +5,8 @@
 
 use ractor::concurrency::Duration;
 use ractor::message::SerializedMessage;
-use ractor::{Message, RpcReplyPort};
+use ractor::Message;
+use ractor::RpcReplyPort;
 use ractor_cluster::RactorClusterMessage;
 
 #[derive(RactorClusterMessage)]

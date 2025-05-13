@@ -13,8 +13,11 @@
 
 #![allow(clippy::incompatible_msrv)]
 
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
-
+use ractor::Actor;
+use ractor::ActorProcessingErr;
+use ractor::ActorRef;
+use ractor::RpcReplyPort;
+use ractor::SupervisionEvent;
 use tokio::time::Duration;
 
 // ============================== Main ============================== //
@@ -24,6 +27,7 @@ fn init_logging() {
 
     use std::io::stderr;
     use std::io::IsTerminal;
+
     use tracing_glog::Glog;
     use tracing_glog::GlogFields;
     use tracing_subscriber::filter::EnvFilter;

@@ -7,7 +7,8 @@
 //! space
 
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
+use std::hash::Hasher;
 
 /// Hash a key into a finite space
 pub fn hash_with_max<TKey>(key: &TKey, excluded_max: usize) -> usize

@@ -7,9 +7,11 @@
 
 use std::marker::PhantomData;
 
-use crate::{ActorName, Message, MessagingErr, SupervisionEvent};
-
 use super::ActorCell;
+use crate::ActorName;
+use crate::Message;
+use crate::MessagingErr;
+use crate::SupervisionEvent;
 
 /// An [ActorRef] is a strongly-typed wrapper over an [ActorCell]
 /// to provide some syntactic wrapping on the requirement to pass

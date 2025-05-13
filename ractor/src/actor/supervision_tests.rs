@@ -5,14 +5,20 @@
 
 //! Supervisor tests
 
-use std::sync::{
-    atomic::{AtomicU64, AtomicU8, Ordering},
-    Arc,
-};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-use crate::{concurrency::Duration, message::BoxedDowncastErr, periodic_check, ActorProcessingErr};
-
-use crate::{Actor, ActorCell, ActorRef, ActorStatus, SupervisionEvent};
+use crate::concurrency::Duration;
+use crate::message::BoxedDowncastErr;
+use crate::periodic_check;
+use crate::Actor;
+use crate::ActorCell;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
+use crate::ActorStatus;
+use crate::SupervisionEvent;
 
 #[crate::concurrency::test]
 #[cfg_attr(

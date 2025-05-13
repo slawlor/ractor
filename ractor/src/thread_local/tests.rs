@@ -5,24 +5,26 @@
 
 //! General tests, more logic-specific tests are contained in sub-modules
 
-use std::sync::{
-    atomic::{AtomicU32, AtomicU8, Ordering},
-    Arc,
-};
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
 
-use crate::{
-    actor::derived_actor::DerivedActorRef,
-    common_test::periodic_check,
-    concurrency::{sleep, Duration},
-    MessagingErr,
-};
-
-use crate::thread_local::ThreadLocalActor as Actor;
-use crate::{ActorCell, ActorProcessingErr, ActorRef, ActorStatus, SpawnErr, SupervisionEvent};
-
 use super::ThreadLocalActorSpawner;
+use crate::actor::derived_actor::DerivedActorRef;
+use crate::common_test::periodic_check;
+use crate::concurrency::sleep;
+use crate::concurrency::Duration;
+use crate::thread_local::ThreadLocalActor as Actor;
+use crate::ActorCell;
+use crate::ActorProcessingErr;
+use crate::ActorRef;
+use crate::ActorStatus;
+use crate::MessagingErr;
+use crate::SpawnErr;
+use crate::SupervisionEvent;
 
 static LOCAL_SPAWNER: OnceCell<ThreadLocalActorSpawner> = OnceCell::new();
 

@@ -18,7 +18,9 @@
 //!
 //! ```rust
 //! use ractor::concurrency::Duration;
-//! use ractor::{Actor, ActorProcessingErr, ActorRef};
+//! use ractor::Actor;
+//! use ractor::ActorProcessingErr;
+//! use ractor::ActorRef;
 //!
 //! struct ExampleActor;
 //!
@@ -83,9 +85,12 @@
 //! }
 //! ```
 
-use crate::concurrency::{Duration, JoinHandle};
-
-use crate::{ActorCell, Message, MessagingErr, ACTIVE_STATES};
+use crate::concurrency::Duration;
+use crate::concurrency::JoinHandle;
+use crate::ActorCell;
+use crate::Message;
+use crate::MessagingErr;
+use crate::ACTIVE_STATES;
 
 #[cfg(test)]
 mod tests;

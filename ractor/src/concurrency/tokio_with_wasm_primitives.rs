@@ -99,7 +99,6 @@ macro_rules! select {
     }
 
 pub(crate) use select;
-
 // test macro
 #[cfg(test)]
 pub use wasm_bindgen_test::wasm_bindgen_test as test;

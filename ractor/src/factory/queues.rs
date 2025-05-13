@@ -360,10 +360,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::concurrency::Duration;
-
     use super::super::*;
     use super::*;
+    use crate::concurrency::Duration;
 
     #[derive(Default, Debug)]
     enum BasicPriority {
