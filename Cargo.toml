@@ -6,6 +6,7 @@ members = [
     "ractor_playground",
     "ractor_cluster_integration_tests",
     "ractor_example_entry_proc",
-    "xtask",
+    "xtask", 
+    "ractor_async_trait_decl",
 ]
 resolver = "2"
