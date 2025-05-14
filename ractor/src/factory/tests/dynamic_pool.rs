@@ -48,20 +48,7 @@ struct TestWorker {
 #[cfg(feature = "cluster")]
 impl crate::Message for TestMessage {}
 
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Worker for TestWorker {
     type Key = TestKey;
     type Message = TestMessage;
@@ -210,20 +197,7 @@ async fn test_worker_pool_adjustment_automatic() {
 
     struct DynamicWorkerController;
 
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl WorkerCapacityController for DynamicWorkerController {
         #[cfg(feature = "async-trait")]
         async fn get_pool_size(&mut self, _current: usize) -> usize {

@@ -20,7 +20,7 @@ struct BenchActorMessage;
 #[cfg(feature = "cluster")]
 impl Message for BenchActorMessage {}
 
-#[ractor_async_trait_decl::ractor_async_trait_decl]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for BenchActor {
     type Msg = BenchActorMessage;
 
@@ -250,7 +250,7 @@ fn process_messages(c: &mut Criterion) {
         num_msgs: u64,
     }
 
-    #[ractor_async_trait_decl::ractor_async_trait_decl]
+    #[cfg_attr(feature = "async-trait", ractor::async_trait)]
     impl Actor for MessagingActor {
         type Msg = BenchActorMessage;
 

@@ -37,7 +37,7 @@ enum CounterMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for CounterMessage {}
 
-#[ractor_async_trait_decl::ractor_async_trait_decl]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for Counter {
     type Msg = CounterMessage;
 

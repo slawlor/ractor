@@ -44,20 +44,7 @@ impl PriorityManager<StandardPriority, StandardPriority> for TestPriorityManager
     }
 }
 
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Actor for TestWorker {
     type Msg = WorkerMessage<TestKey, TestMessage>;
     type State = (Self::Arguments, u16);

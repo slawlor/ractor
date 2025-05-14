@@ -40,7 +40,7 @@ fn big_stack_futures(c: &mut Criterion) {
     #[cfg(feature = "cluster")]
     impl Message for LargeFutureActorMessage {}
 
-    #[ractor_async_trait_decl::ractor_async_trait_decl]
+    #[cfg_attr(feature = "async-trait", ractor::async_trait)]
     impl Actor for LargeFutureActor {
         type Msg = LargeFutureActorMessage;
 

@@ -189,6 +189,7 @@ pub mod thread_local;
 pub mod time;
 
 use concurrency::JoinHandle;
+use ractor_async_trait_decl as _;
 #[cfg(not(feature = "async-trait"))]
 use strum as _;
 // ======================== Test Modules and blind imports ======================== //
@@ -207,7 +208,9 @@ pub use actor::messages::SupervisionEvent;
 pub use actor::Actor;
 pub use actor::ActorRuntime;
 #[cfg(feature = "async-trait")]
-pub use async_trait::async_trait;
+pub use async_trait::async_trait as original_async_trait;
+pub use ractor_async_trait_decl::ractor_async_trait_decl as async_trait;
+
 #[cfg(test)]
 use criterion as _;
 pub use errors::ActorErr;

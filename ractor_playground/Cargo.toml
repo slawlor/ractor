@@ -12,11 +12,22 @@ publish = false
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-ractor = { path="../ractor", features = ["cluster"] }
+ractor = { path = "../ractor", features = ["cluster"] }
 ractor_cluster = { path = "../ractor_cluster" }
 # ractor_cluster_derive = { path = "../ractor_cluster_derive" }
 # rustyrepl = "0.1"
-tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing"] }
+tokio = { version = "1", features = [
+    "rt",
+    "time",
+    "sync",
+    "macros",
+    "rt-multi-thread",
+    "signal",
+    "tracing",
+] }
 tracing = "0.1"
 tracing-glog = "0.4"
-tracing-subscriber = { version = "0.3", features = ["env-filter"]}
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+async-trait = ["ractor/async-trait"]

@@ -22,7 +22,7 @@ use ractor::ActorRef;
 
 struct Counter;
 
-#[ractor_async_trait_decl::ractor_async_trait_decl]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for Counter {
     type Msg = u32;
     type State = ();

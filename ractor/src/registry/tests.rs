@@ -19,20 +19,7 @@ async fn test_basic_registation() {
     #[derive(Default)]
     struct EmptyActor;
 
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = ();
         type Arguments = ();
@@ -70,20 +57,7 @@ async fn test_basic_registation() {
 async fn test_duplicate_registration() {
     struct EmptyActor;
 
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = ();
         type Arguments = ();
@@ -134,20 +108,7 @@ async fn test_duplicate_registration() {
 async fn test_actor_registry_unenrollment() {
     struct EmptyActor;
 
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = ();
         type Arguments = ();
@@ -199,20 +160,7 @@ mod pid_registry_tests {
     struct RemoteActor;
     struct RemoteActorMessage;
     impl crate::Message for RemoteActorMessage {}
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for RemoteActor {
         type Msg = RemoteActorMessage;
         type State = ();
@@ -233,20 +181,7 @@ mod pid_registry_tests {
     )]
     async fn try_enroll_remote_actor() {
         struct EmptyActor;
-        #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for EmptyActor {
             type Msg = ();
             type State = ();
@@ -296,20 +231,7 @@ mod pid_registry_tests {
     async fn test_basic_registation() {
         struct EmptyActor;
 
-        #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for EmptyActor {
             type Msg = ();
             type Arguments = ();
@@ -346,20 +268,7 @@ mod pid_registry_tests {
     async fn test_actor_registry_unenrollment() {
         struct EmptyActor;
 
-        #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for EmptyActor {
             type Msg = ();
             type Arguments = ();
@@ -406,20 +315,7 @@ mod pid_registry_tests {
 
         struct AutoJoinActor;
 
-        #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for AutoJoinActor {
             type Msg = ();
             type Arguments = ();
@@ -438,20 +334,7 @@ mod pid_registry_tests {
             counter: Arc<DashMap<ActorId, u8>>,
         }
 
-        #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for NotificationMonitor {
             type Msg = ();
             type Arguments = ();

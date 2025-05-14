@@ -32,20 +32,7 @@ async fn test_rpc_cast() {
         counter: Arc<AtomicU8>,
     }
 
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = ();
         type Arguments = ();
@@ -109,20 +96,7 @@ async fn test_rpc_call() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for MessageFormat {}
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = MessageFormat;
         type Arguments = ();
@@ -218,20 +192,7 @@ async fn test_rpc_call_forwarding() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for WorkerMessage {}
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Worker {
         type Msg = WorkerMessage;
         type Arguments = ();
@@ -274,20 +235,7 @@ async fn test_rpc_call_forwarding() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for ForwarderMessage {}
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Forwarder {
         type Msg = ForwarderMessage;
         type Arguments = ();
@@ -404,20 +352,7 @@ async fn test_multi_call() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for MessageFormat {}
-    #[cfg_attr(
-    all(
-        feature = "async-trait",
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ),
-    crate::async_trait
-)]
-#[cfg_attr(
-    all(
-        feature = "async-trait",
-       all(target_arch = "wasm32", target_os = "unknown")
-    ),
-    crate::async_trait(?Send)
-)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = MessageFormat;
         type Arguments = ();

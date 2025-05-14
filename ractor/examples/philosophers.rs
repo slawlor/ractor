@@ -121,7 +121,7 @@ impl Fork {
     }
 }
 
-#[ractor_async_trait_decl::ractor_async_trait_decl]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for Fork {
     type Msg = ForkMessage;
     type State = ForkState;
@@ -334,7 +334,7 @@ impl Philosopher {
     }
 }
 
-#[ractor_async_trait_decl::ractor_async_trait_decl]
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
 impl Actor for Philosopher {
     type Msg = PhilosopherMessage;
     type State = PhilosopherState;

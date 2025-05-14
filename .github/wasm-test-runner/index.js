@@ -7,7 +7,13 @@ import { spawn } from "child_process";
         console.error("Set `WORKING_DIR` to the directory of ractor");
         return;
     }
-    const cargoRunner = spawn("wasm-pack test --chrome ./ractor", { cwd: workingDir, stdio: "pipe", shell: true });
+    let commandLine;
+    if (process.env[2] === "async-trait") {
+        commandLine = "wasm-pack test --chrome ./ractor -- --features async-trait";
+    } else {
+        commandLine = "wasm-pack test --chrome ./ractor";
+    }
+    const cargoRunner = spawn(commandLine, { cwd: workingDir, stdio: "pipe", shell: true });
     cargoRunner.stdout.setEncoding("utf-8");
     cargoRunner.stderr.setEncoding("utf-8");
     const flagPromise = new Promise((resolve) => {
