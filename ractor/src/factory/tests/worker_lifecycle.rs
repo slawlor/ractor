@@ -30,7 +30,20 @@ enum MyWorkerMessage {
 #[cfg(feature = "cluster")]
 impl crate::Message for MyWorkerMessage {}
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    crate::async_trait
+)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+       all(target_arch = "wasm32", target_os = "unknown")
+    ),
+    crate::async_trait(?Send)
+)]
 impl Actor for MyWorker {
     type State = Self::Arguments;
     type Msg = WorkerMessage<(), MyWorkerMessage>;
@@ -211,7 +224,20 @@ where
         _m: PhantomData<fn() -> TMessage2>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    crate::async_trait
+)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+       all(target_arch = "wasm32", target_os = "unknown")
+    ),
+    crate::async_trait(?Send)
+)]
     impl<F2, TKey2, TMessage2> Actor for MockFactory<F2, TKey2, TMessage2>
     where
         TKey2: JobKey,

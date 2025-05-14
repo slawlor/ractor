@@ -103,7 +103,20 @@ enum LeafActorMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for LeafActorMessage {}
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+       all(target_arch = "wasm32", target_os = "unknown")
+    ),
+    ractor::async_trait(?Send)
+)]
 impl Actor for LeafActor {
     type Msg = LeafActorMessage;
     type State = LeafActorState;
@@ -166,7 +179,20 @@ enum MidLevelActorMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for MidLevelActorMessage {}
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+       all(target_arch = "wasm32", target_os = "unknown")
+    ),
+    ractor::async_trait(?Send)
+)]
 impl Actor for MidLevelActor {
     type Msg = MidLevelActorMessage;
     type State = MidLevelActorState;
@@ -246,7 +272,20 @@ enum RootActorMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for RootActorMessage {}
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+       all(target_arch = "wasm32", target_os = "unknown")
+    ),
+    ractor::async_trait(?Send)
+)]
 impl Actor for RootActor {
     type Msg = RootActorMessage;
     type State = RootActorState;
