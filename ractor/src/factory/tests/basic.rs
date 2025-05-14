@@ -53,7 +53,7 @@ struct TestWorker {
     slow: Option<u64>,
 }
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
 impl Worker for TestWorker {
     type Key = TestKey;
     type Message = TestMessage;
@@ -631,7 +631,7 @@ struct StuckWorker {
     slow: Option<u64>,
 }
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
 impl Actor for StuckWorker {
     type Msg = WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;

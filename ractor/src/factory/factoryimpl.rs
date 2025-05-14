@@ -783,7 +783,7 @@ where
     }
 }
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
 impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> Actor
     for Factory<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
 where

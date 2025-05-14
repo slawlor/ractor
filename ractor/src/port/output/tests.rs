@@ -27,7 +27,7 @@ async fn test_single_forward() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for TestActorMessage {}
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for TestActor {
         type Msg = TestActorMessage;
         type Arguments = ();
@@ -94,7 +94,7 @@ async fn test_50_receivers() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for TestActorMessage {}
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for TestActor {
         type Msg = TestActorMessage;
         type Arguments = ();
@@ -177,7 +177,7 @@ async fn test_delivery() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for TestActorMessage {}
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for TestActor {
         type Msg = TestActorMessage;
         type Arguments = ();
@@ -270,7 +270,7 @@ mod output_port_subscriber_tests {
 
     struct NumberPublisher;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for NumberPublisher {
         type State = OutputPort<u8>;
         type Msg = NumberPublisherMessage;
@@ -321,7 +321,7 @@ mod output_port_subscriber_tests {
     }
 
     struct PlusSubscriber;
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for PlusSubscriber {
         type State = u8;
         type Msg = PlusSubscriberMessage;
@@ -374,7 +374,7 @@ mod output_port_subscriber_tests {
     }
 
     struct MulSubscriber;
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for MulSubscriber {
         type State = u8;
         type Msg = MulSubscriberMessage;

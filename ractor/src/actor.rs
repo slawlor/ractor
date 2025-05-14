@@ -122,7 +122,7 @@ pub(crate) fn get_panic_string(e: Box<dyn std::any::Any + Send>) -> ActorProcess
 /// patterns. Panics are also captured from the inner functions and wrapped into an Error
 /// type, however should an [Err(_)] result from any of these functions the **actor will
 /// terminate** and cleanup.
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
 pub trait Actor: Sized + Sync + Send + 'static {
     /// The message type for this actor
     type Msg: Message;

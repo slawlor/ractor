@@ -17,7 +17,7 @@ use crate::*;
 
 struct TestWorker;
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
 impl Worker for TestWorker {
     type State = ();
     type Key = ();
