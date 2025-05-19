@@ -64,7 +64,14 @@ pub struct DeadMansSwitchConfiguration {
 /// without breaking the factory <-> worker API requirement. If you so wish
 /// you can fully specify the actor properties instead of using this
 /// assistance trait.
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    crate::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
 pub trait Worker: Send + Sync + 'static {
     /// The worker's job-key type
     type Key: JobKey;
@@ -310,7 +317,14 @@ impl<TWorker: Worker> std::fmt::Debug for WorkerState<TWorker> {
     }
 }
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    crate::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
 impl<T> Actor for T
 where
     T: Worker,
@@ -419,7 +433,14 @@ where
 
 /// Controls the size of the worker pool by dynamically growing/shrinking the pool
 /// to requested size
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    crate::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
 pub trait WorkerCapacityController: 'static + Send + Sync {
     /// Retrieve the new pool size
     ///

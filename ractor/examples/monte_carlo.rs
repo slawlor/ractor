@@ -69,7 +69,14 @@ struct GameMessage(ActorRef<GameManagerMessage>);
 #[cfg(feature = "cluster")]
 impl ractor::Message for GameMessage {}
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
 impl Actor for Game {
     type Msg = GameMessage;
 
@@ -146,7 +153,14 @@ impl GameManagerState {
     }
 }
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
 impl Actor for GameManager {
     type Msg = GameManagerMessage;
 

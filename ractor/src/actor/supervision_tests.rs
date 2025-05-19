@@ -32,7 +32,14 @@ async fn test_supervision_panic_in_post_startup() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -53,7 +60,14 @@ async fn test_supervision_panic_in_post_startup() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -125,7 +139,14 @@ async fn test_supervision_error_in_post_startup() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -146,7 +167,14 @@ async fn test_supervision_error_in_post_startup() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -216,7 +244,14 @@ async fn test_supervision_panic_in_handle() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -238,7 +273,14 @@ async fn test_supervision_panic_in_handle() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -315,7 +357,14 @@ async fn test_supervision_error_in_handle() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -337,7 +386,14 @@ async fn test_supervision_error_in_handle() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -415,7 +471,14 @@ async fn test_supervision_panic_in_post_stop() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -438,7 +501,14 @@ async fn test_supervision_panic_in_post_stop() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -498,7 +568,14 @@ async fn test_supervision_error_in_post_stop() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -521,7 +598,14 @@ async fn test_supervision_error_in_post_stop() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -585,7 +669,14 @@ async fn test_supervision_panic_in_supervisor_handle() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -607,7 +698,14 @@ async fn test_supervision_panic_in_supervisor_handle() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Midpoint {
         type Msg = ();
         type State = ();
@@ -632,7 +730,14 @@ async fn test_supervision_panic_in_supervisor_handle() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -729,7 +834,14 @@ async fn test_supervision_error_in_supervisor_handle() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type Arguments = ();
@@ -751,7 +863,14 @@ async fn test_supervision_error_in_supervisor_handle() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Midpoint {
         type Msg = ();
         type State = ();
@@ -776,7 +895,14 @@ async fn test_supervision_error_in_supervisor_handle() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -868,7 +994,14 @@ async fn test_killing_a_supervisor_terminates_children() {
     struct Child;
     struct Supervisor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -882,7 +1015,14 @@ async fn test_killing_a_supervisor_terminates_children() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -944,7 +1084,14 @@ async fn instant_supervised_spawns() {
     let counter = Arc::new(AtomicU8::new(0));
 
     struct EmptySupervisor;
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for EmptySupervisor {
         type Msg = ();
         type State = ();
@@ -969,7 +1116,14 @@ async fn instant_supervised_spawns() {
     }
 
     struct EmptyActor;
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for EmptyActor {
         type Msg = String;
         type State = Arc<AtomicU8>;
@@ -1051,7 +1205,14 @@ async fn test_supervisor_captures_dead_childs_state() {
         flag: Arc<AtomicU64>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = u64;
@@ -1073,7 +1234,14 @@ async fn test_supervisor_captures_dead_childs_state() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -1154,7 +1322,14 @@ async fn test_supervisor_captures_dead_childs_state() {
 async fn test_supervisor_double_link() {
     struct Who;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Who {
         type Msg = ();
         type State = ();
@@ -1204,7 +1379,14 @@ async fn test_supervisor_exit_doesnt_call_child_post_stop() {
     }
     struct Supervisor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -1226,7 +1408,14 @@ async fn test_supervisor_exit_doesnt_call_child_post_stop() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -1291,7 +1480,14 @@ async fn stopping_children_and_wait_during_parent_shutdown() {
     }
     struct Supervisor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -1313,7 +1509,14 @@ async fn stopping_children_and_wait_during_parent_shutdown() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -1376,7 +1579,14 @@ async fn stopping_children_will_shutdown_parent_too() {
     }
     struct Supervisor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -1398,7 +1608,14 @@ async fn stopping_children_will_shutdown_parent_too() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -1462,7 +1679,14 @@ async fn draining_children_and_wait_during_parent_shutdown() {
     }
     struct Supervisor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -1484,7 +1708,14 @@ async fn draining_children_and_wait_during_parent_shutdown() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -1547,7 +1778,14 @@ async fn draining_children_will_shutdown_parent_too() {
     }
     struct Supervisor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -1569,7 +1807,14 @@ async fn draining_children_will_shutdown_parent_too() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -1637,7 +1882,14 @@ async fn test_simple_monitor() {
         counter: Arc<AtomicU8>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Peer {
         type Msg = ();
         type State = ();
@@ -1662,7 +1914,14 @@ async fn test_simple_monitor() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for Monitor {
         type Msg = ();
         type State = ();

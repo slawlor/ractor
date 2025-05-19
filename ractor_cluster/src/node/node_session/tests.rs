@@ -17,7 +17,14 @@ use crate::node::NodeConnectionMode;
 use crate::NodeSessionMessage;
 
 struct DummyNodeServer;
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
 impl Actor for DummyNodeServer {
     type Msg = crate::node::NodeServerMessage;
     type State = ();
@@ -56,7 +63,14 @@ impl Actor for DummyNodeServer {
 }
 
 struct DummyNodeSession;
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
 impl Actor for DummyNodeSession {
     type Msg = crate::node::NodeSessionMessage;
     type State = ();
@@ -547,7 +561,14 @@ async fn node_session_handle_node_msg() {
         call_replies: Arc<AtomicU8>,
     }
 
-    #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        ractor::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
     impl Actor for DummyRemoteActor {
         type Msg = crate::remote_actor::RemoteActorMessage;
         type State = ();

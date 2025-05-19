@@ -783,7 +783,14 @@ where
     }
 }
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    crate::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
 impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> Actor
     for Factory<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue>
 where

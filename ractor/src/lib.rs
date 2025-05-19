@@ -207,6 +207,7 @@ pub use actor::messages::SupervisionEvent;
 pub use actor::Actor;
 pub use actor::ActorRuntime;
 #[cfg(feature = "async-trait")]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use async_trait::async_trait;
 #[cfg(test)]
 use criterion as _;

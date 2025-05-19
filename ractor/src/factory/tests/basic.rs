@@ -53,7 +53,14 @@ struct TestWorker {
     slow: Option<u64>,
 }
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    crate::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
 impl Worker for TestWorker {
     type Key = TestKey;
     type Message = TestMessage;
@@ -631,7 +638,14 @@ struct StuckWorker {
     slow: Option<u64>,
 }
 
-#[cfg_attr(feature = "async-trait", crate::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    crate::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
 impl Actor for StuckWorker {
     type Msg = WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;

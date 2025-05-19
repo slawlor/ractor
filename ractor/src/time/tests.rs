@@ -27,7 +27,14 @@ async fn test_intervals() {
         counter: Arc<AtomicU8>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
@@ -94,7 +101,14 @@ async fn test_send_after() {
         counter: Arc<AtomicU8>,
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for TestActor {
         type Msg = ();
         type State = Arc<AtomicU8>;
@@ -157,7 +171,14 @@ async fn test_send_after() {
 async fn test_exit_after() {
     struct TestActor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for TestActor {
         type Msg = ();
         type State = ();
@@ -192,7 +213,14 @@ async fn test_exit_after() {
 async fn test_kill_after() {
     struct TestActor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[cfg_attr(
+        all(
+            feature = "async-trait",
+            not(all(target_arch = "wasm32", target_os = "unknown"))
+        ),
+        crate::async_trait
+    )]
+    #[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), crate::async_trait(?Send))]
     impl Actor for TestActor {
         type Msg = ();
         type State = ();

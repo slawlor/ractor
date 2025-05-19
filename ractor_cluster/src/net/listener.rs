@@ -48,7 +48,14 @@ pub(crate) struct ListenerState {
 #[derive(crate::RactorMessage)]
 pub(crate) struct ListenerMessage;
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
 impl Actor for Listener {
     type Msg = ListenerMessage;
     type Arguments = ActorRef<NodeServerMessage>;

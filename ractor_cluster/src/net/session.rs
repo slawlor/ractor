@@ -115,7 +115,14 @@ pub(crate) struct SessionState {
     reader: ActorRef<SessionReaderMessage>,
 }
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
 impl Actor for Session {
     type Msg = SessionMessage;
     type Arguments = super::NetworkStream;
@@ -295,7 +302,14 @@ enum SessionWriterMessage {
     WriteObject(crate::protocol::NetworkMessage),
 }
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
 impl Actor for SessionWriter {
     type Msg = SessionWriterMessage;
     type Arguments = ActorWriteHalf;
@@ -383,7 +397,14 @@ struct SessionReaderState {
     reader: Option<ActorReadHalf>,
 }
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[cfg_attr(
+    all(
+        feature = "async-trait",
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ),
+    ractor::async_trait
+)]
+#[cfg_attr(all(feature = "async-trait", all(target_arch = "wasm32", target_os = "unknown")), ractor::async_trait(?Send))]
 impl Actor for SessionReader {
     type Msg = SessionReaderMessage;
     type Arguments = ActorReadHalf;
