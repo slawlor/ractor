@@ -386,11 +386,11 @@ impl ThreadLocalActorSpawner {
                     let fut = builder();
                     #[cfg(tokio_unstable)]
                     {
-                        let mut builder = tokio::task::Builder::new();
-                        if let Some(name) = name {
-                            builder = builder.name(name);
-                        }
-                        builder.spawn_local(fut).expect("Tokio task spawn failed")
+                        let handle = tokio::task::Builder::new()
+                            .name(name.unwrap_or_default().as_str())
+                            .spawn_local(fut)
+                            .expect("Tokio task spawn failed");
+                        _ = reply.send(handle);
                     }
                     #[cfg(not(tokio_unstable))]
                     {
