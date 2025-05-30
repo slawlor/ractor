@@ -561,7 +561,7 @@ impl ActorCell {
     pub fn send_serialized(
         &self,
         message: SerializedMessage,
-    ) -> Result<(), MessagingErr<SerializedMessage>> {
+    ) -> Result<(), Box<MessagingErr<SerializedMessage>>> {
         self.inner.send_serialized(message)
     }
 

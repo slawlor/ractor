@@ -103,7 +103,7 @@ pub enum NodeServerMessage {
     /// [crate::NetworkStream] was accepted
     ConnectionOpened {
         /// The [crate::NetworkStream] for this network connection
-        stream: crate::net::NetworkStream,
+        stream: Box<crate::net::NetworkStream>,
         /// Flag denoting if it's a server (incoming) connection when [true], [false] for outgoing
         is_server: bool,
     },
@@ -398,7 +398,7 @@ impl Actor for NodeServer {
                         state.this_node_name.clone(),
                         self.connection_mode,
                     ),
-                    stream,
+                    *stream,
                     myself.get_cell(),
                 )
                 .await
