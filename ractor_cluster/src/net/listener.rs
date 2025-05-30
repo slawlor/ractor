@@ -133,7 +133,7 @@ impl Actor for Listener {
                         let _ = cast!(
                             self.session_manager,
                             NodeServerMessage::ConnectionOpened {
-                                stream,
+                                stream: Box::new(stream),
                                 is_server: true
                             }
                         );

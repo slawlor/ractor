@@ -76,11 +76,11 @@ where
     let local = stream.local_addr()?;
 
     node_server.cast(super::NodeServerMessage::ConnectionOpened {
-        stream: crate::net::NetworkStream::Raw {
+        stream: Box::new(crate::net::NetworkStream::Raw {
             stream,
             peer_addr: addr,
             local_addr: local,
-        },
+        }),
         is_server: false,
     })?;
 
@@ -119,11 +119,11 @@ where
         .map_err(ClientConnectErr::Encryption)?;
 
     node_server.cast(super::NodeServerMessage::ConnectionOpened {
-        stream: crate::net::NetworkStream::TlsClient {
+        stream: Box::new(crate::net::NetworkStream::TlsClient {
             stream: enc_stream,
             peer_addr: addr,
             local_addr: local,
-        },
+        }),
         is_server: false,
     })?;
 

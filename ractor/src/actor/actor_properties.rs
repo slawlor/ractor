@@ -195,18 +195,19 @@ impl ActorProperties {
     pub(crate) fn send_serialized(
         &self,
         message: SerializedMessage,
-    ) -> Result<(), MessagingErr<SerializedMessage>> {
+    ) -> Result<(), Box<MessagingErr<SerializedMessage>>> {
         let boxed = BoxedMessage {
             msg: None,
             serialized_msg: Some(message),
             span: None,
         };
-        self.message
+        Ok(self
+            .message
             .send(MuxedMessage::Message(boxed))
             .map_err(|e| match e.0 {
                 MuxedMessage::Message(m) => MessagingErr::SendErr(m.serialized_msg.unwrap()),
                 _ => panic!("Expected a boxed message but got a drain message"),
-            })
+            })?)
     }
 
     pub(crate) fn send_stop(
