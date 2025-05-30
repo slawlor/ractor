@@ -238,9 +238,9 @@ impl<T> RactorErr<T> {
 impl<T> std::fmt::Debug for RactorErr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Messaging(m) => write!(f, "Messaging({:?})", m),
-            Self::Actor(a) => write!(f, "Actor({:?})", a),
-            Self::Spawn(s) => write!(f, "Spawn({:?})", s),
+            Self::Messaging(m) => write!(f, "Messaging({m:?})"),
+            Self::Actor(a) => write!(f, "Actor({a:?})"),
+            Self::Spawn(s) => write!(f, "Spawn({s:?})"),
             Self::Timeout => write!(f, "Timeout"),
         }
     }

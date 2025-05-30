@@ -37,7 +37,7 @@ impl ractor::Message for Output {}
 
 struct Publisher;
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[ractor_async_trait_decl::ractor_async_trait_decl(ractor::async_trait)]
 impl Actor for Publisher {
     type Msg = PublisherMessage;
 
@@ -76,7 +76,7 @@ enum SubscriberMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for SubscriberMessage {}
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+#[ractor_async_trait_decl::ractor_async_trait_decl(ractor::async_trait)]
 impl Actor for Subscriber {
     type Msg = SubscriberMessage;
 

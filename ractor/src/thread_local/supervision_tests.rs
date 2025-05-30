@@ -60,7 +60,7 @@ async fn test_thread_local_child() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();
@@ -128,7 +128,7 @@ async fn test_thread_local_supervisor() {
     #[derive(Default)]
     struct Supervisor;
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for Child {
         type Msg = ();
         type State = ();
@@ -236,7 +236,7 @@ async fn test_thread_local_child_panic_handle() {
         }
     }
 
-    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
     impl Actor for Supervisor {
         type Msg = ();
         type State = ();

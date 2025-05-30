@@ -189,6 +189,7 @@ pub mod thread_local;
 pub mod time;
 
 use concurrency::JoinHandle;
+use ractor_async_trait_decl as _;
 #[cfg(not(feature = "async-trait"))]
 use strum as _;
 // ======================== Test Modules and blind imports ======================== //
