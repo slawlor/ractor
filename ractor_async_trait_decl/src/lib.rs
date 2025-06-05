@@ -15,14 +15,9 @@ pub fn ractor_async_trait_decl(attr: TokenStream, input: TokenStream) -> TokenSt
         }
     };
 
-    if args.len() != 1 {
-        return quote! {
-            compile_error!("Expected exactly one path to the async_trait, e.g., ractor::async_trait");
-        }
-        .into();
-    }
+    let default_trait = syn::parse_str("async_trait::async_trait").unwrap();
 
-    let async_trait_path = args.first();
+    let async_trait_path = args.first().unwrap_or(&default_trait);
 
     let input_trait = match syn::parse::<ItemTrait>(input.clone())
         .map(|x| x.into_token_stream())

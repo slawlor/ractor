@@ -44,7 +44,7 @@ impl PriorityManager<StandardPriority, StandardPriority> for TestPriorityManager
     }
 }
 
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Actor for TestWorker {
     type Msg = WorkerMessage<TestKey, TestMessage>;
     type State = (Self::Arguments, u16);

@@ -64,7 +64,7 @@ pub struct DeadMansSwitchConfiguration {
 /// without breaking the factory <-> worker API requirement. If you so wish
 /// you can fully specify the actor properties instead of using this
 /// assistance trait.
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 pub trait Worker: Send + Sync + 'static {
     /// The worker's job-key type
     type Key: JobKey;
@@ -310,7 +310,7 @@ impl<TWorker: Worker> std::fmt::Debug for WorkerState<TWorker> {
     }
 }
 
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl<T> Actor for T
 where
     T: Worker,
@@ -419,7 +419,7 @@ where
 
 /// Controls the size of the worker pool by dynamically growing/shrinking the pool
 /// to requested size
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 pub trait WorkerCapacityController: 'static + Send + Sync {
     /// Retrieve the new pool size
     ///

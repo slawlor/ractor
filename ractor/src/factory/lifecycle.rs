@@ -21,7 +21,7 @@ use crate::State;
 
 /// Hooks for [crate::factory::Factory] lifecycle events based on the
 /// underlying actor's lifecycle.
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 pub trait FactoryLifecycleHooks<TKey, TMsg>: State + Sync
 where
     TKey: JobKey,

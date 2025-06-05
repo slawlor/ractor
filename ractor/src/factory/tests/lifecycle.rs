@@ -27,7 +27,7 @@ struct AtomicHooks {
     state: Arc<AtomicU8>,
 }
 
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl FactoryLifecycleHooks<(), ()> for AtomicHooks {
     #[cfg(feature = "async-trait")]
     async fn on_factory_started(
@@ -89,7 +89,7 @@ impl FactoryLifecycleHooks<(), ()> for AtomicHooks {
 
 struct TestWorker;
 
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Actor for TestWorker {
     type State = Self::Arguments;
     type Msg = WorkerMessage<(), ()>;

@@ -19,7 +19,7 @@ async fn test_basic_registation() {
     #[derive(Default)]
     struct EmptyActor;
 
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = ();
         type Arguments = ();
@@ -57,7 +57,7 @@ async fn test_basic_registation() {
 async fn test_duplicate_registration() {
     struct EmptyActor;
 
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = ();
         type Arguments = ();
@@ -108,7 +108,7 @@ async fn test_duplicate_registration() {
 async fn test_actor_registry_unenrollment() {
     struct EmptyActor;
 
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for EmptyActor {
         type Msg = ();
         type Arguments = ();
@@ -160,7 +160,7 @@ mod pid_registry_tests {
     struct RemoteActor;
     struct RemoteActorMessage;
     impl crate::Message for RemoteActorMessage {}
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for RemoteActor {
         type Msg = RemoteActorMessage;
         type State = ();
@@ -181,7 +181,7 @@ mod pid_registry_tests {
     )]
     async fn try_enroll_remote_actor() {
         struct EmptyActor;
-        #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for EmptyActor {
             type Msg = ();
             type State = ();
@@ -231,7 +231,7 @@ mod pid_registry_tests {
     async fn test_basic_registation() {
         struct EmptyActor;
 
-        #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for EmptyActor {
             type Msg = ();
             type Arguments = ();
@@ -268,7 +268,7 @@ mod pid_registry_tests {
     async fn test_actor_registry_unenrollment() {
         struct EmptyActor;
 
-        #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for EmptyActor {
             type Msg = ();
             type Arguments = ();
@@ -315,7 +315,7 @@ mod pid_registry_tests {
 
         struct AutoJoinActor;
 
-        #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for AutoJoinActor {
             type Msg = ();
             type Arguments = ();
@@ -334,7 +334,7 @@ mod pid_registry_tests {
             counter: Arc<DashMap<ActorId, u8>>,
         }
 
-        #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
         impl Actor for NotificationMonitor {
             type Msg = ();
             type Arguments = ();

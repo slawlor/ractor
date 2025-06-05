@@ -32,7 +32,7 @@ async fn test_rpc_cast() {
         counter: Arc<AtomicU8>,
     }
 
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = ();
         type Arguments = ();
@@ -96,7 +96,7 @@ async fn test_rpc_call() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for MessageFormat {}
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = MessageFormat;
         type Arguments = ();
@@ -192,7 +192,7 @@ async fn test_rpc_call_forwarding() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for WorkerMessage {}
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Worker {
         type Msg = WorkerMessage;
         type Arguments = ();
@@ -235,7 +235,7 @@ async fn test_rpc_call_forwarding() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for ForwarderMessage {}
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for Forwarder {
         type Msg = ForwarderMessage;
         type Arguments = ();
@@ -352,7 +352,7 @@ async fn test_multi_call() {
     }
     #[cfg(feature = "cluster")]
     impl crate::Message for MessageFormat {}
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl Actor for TestActor {
         type Msg = MessageFormat;
         type Arguments = ();

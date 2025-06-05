@@ -50,7 +50,7 @@ struct TestWorker {
     slow: Option<u64>,
 }
 
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Actor for TestWorker {
     type Msg = WorkerMessage<TestKey, TestMessage>;
     type State = Self::Arguments;
@@ -123,7 +123,7 @@ impl DiscardHandler<TestKey, TestMessage> for TestDiscarder {
 
 struct DiscardController {}
 
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl DynamicDiscardController for DiscardController {
     #[cfg(feature = "async-trait")]
     async fn compute(&mut self, _current_threshold: usize) -> usize {

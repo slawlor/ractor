@@ -48,7 +48,7 @@ struct TestWorker {
 #[cfg(feature = "cluster")]
 impl crate::Message for TestMessage {}
 
-#[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
 impl Worker for TestWorker {
     type Key = TestKey;
     type Message = TestMessage;
@@ -197,7 +197,7 @@ async fn test_worker_pool_adjustment_automatic() {
 
     struct DynamicWorkerController;
 
-    #[ractor_async_trait_decl::ractor_async_trait_decl(crate::async_trait)]
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
     impl WorkerCapacityController for DynamicWorkerController {
         #[cfg(feature = "async-trait")]
         async fn get_pool_size(&mut self, _current: usize) -> usize {
