@@ -10,6 +10,11 @@ jobs:
   unit-test:
     name: Run unit tests in browser
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        enable_async_trait:
+          - true
+          - false
     steps:
       - uses: actions/checkout@main
 
@@ -30,8 +35,16 @@ jobs:
         run: |
           cd ./.github/wasm-test-runner
           npm install
-      - name: Run tests
+      - name: Run tests (with async-trait)
+        if: ${{matrix.enable_async_trait}}
         run: |
           export WORKING_DIR=$(pwd)
           cd ./.github/wasm-test-runner
-          node ./index.js     
+          node ./index.js async-trait 
+      - name: Run tests (without async-trait)
+        if: ${{!matrix.enable_async_trait}}
+        run: |
+          export WORKING_DIR=$(pwd)
+          cd ./.github/wasm-test-runner
+          node ./index.js
+   
