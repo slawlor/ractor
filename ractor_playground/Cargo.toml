@@ -29,5 +29,3 @@ tracing = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-[features]
-async-trait = ["ractor/async-trait"]

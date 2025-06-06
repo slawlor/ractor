@@ -208,8 +208,7 @@ pub use actor::messages::SupervisionEvent;
 pub use actor::Actor;
 pub use actor::ActorRuntime;
 #[cfg(feature = "async-trait")]
-pub use async_trait::async_trait as original_async_trait;
-pub use ractor_async_trait_decl::ractor_async_trait_decl as async_trait;
+pub use ractor_async_trait_decl::async_trait;
 
 #[cfg(test)]
 use criterion as _;

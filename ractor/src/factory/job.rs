@@ -539,9 +539,10 @@ where
         &self,
         job: Job<TKey, TMsg>,
         strategy: MessageRetryStrategy,
-    ) -> Result<(), crate::MessagingErr<FactoryMessage<TKey, RetriableMessage<TKey, TMsg>>>> {
+    ) -> Result<(), Box<crate::MessagingErr<FactoryMessage<TKey, RetriableMessage<TKey, TMsg>>>>>
+    {
         let job = RetriableMessage::from_job(job, strategy, self.clone());
-        self.cast(FactoryMessage::Dispatch(job))
+        Ok(self.cast(FactoryMessage::Dispatch(job))?)
     }
 }
 

@@ -656,7 +656,7 @@ where
     pub fn enqueue_job(
         &mut self,
         mut job: Job<TKey, TMsg>,
-    ) -> Result<(), MessagingErr<WorkerMessage<TKey, TMsg>>> {
+    ) -> Result<(), Box<MessagingErr<WorkerMessage<TKey, TMsg>>>> {
         // track per-job statistics
         self.stats.new_job(&self.factory_name);
 
@@ -705,10 +705,12 @@ where
     /// Send a ping to the worker
     pub(crate) fn send_factory_ping(
         &mut self,
-    ) -> Result<(), MessagingErr<WorkerMessage<TKey, TMsg>>> {
+    ) -> Result<(), Box<MessagingErr<WorkerMessage<TKey, TMsg>>>> {
         if !self.is_ping_pending {
             self.is_ping_pending = true;
-            self.actor.cast(WorkerMessage::FactoryPing(Instant::now()))
+            Ok(self
+                .actor
+                .cast(WorkerMessage::FactoryPing(Instant::now()))?)
         } else {
             // don't send a new ping if one is currently pending
             Ok(())
@@ -727,7 +729,7 @@ where
     pub(crate) fn worker_complete(
         &mut self,
         key: TKey,
-    ) -> Result<Option<JobOptions>, MessagingErr<WorkerMessage<TKey, TMsg>>> {
+    ) -> Result<Option<JobOptions>, Box<MessagingErr<WorkerMessage<TKey, TMsg>>>> {
         // remove this pending job
         let options = self.curr_jobs.remove(&key);
         // maybe queue up the next job
