@@ -119,11 +119,12 @@ fn internal_call<F, TMessage, TReply, TMsgBuilder>(
     sender: F,
     msg_builder: TMsgBuilder,
     timeout_option: Option<Duration>,
-) -> impl std::future::Future<Output = Result<CallResult<TReply>, MessagingErr<TMessage>>>
+) -> impl std::future::Future<Output = Result<CallResult<TReply>, MessagingErr<TMessage>>> + Send
 where
     F: Fn(TMessage) -> Result<(), MessagingErr<TMessage>>,
     TMessage: Message,
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
+    TReply: Send + 'static,
 {
     let (tx, rx) = concurrency::oneshot();
     let port: RpcReplyPort<TReply> = match timeout_option {
@@ -182,6 +183,7 @@ pub async fn call<TMessage, TReply, TMsgBuilder>(
 where
     TMessage: Message,
     TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
+    TReply: Send + 'static,
 {
     internal_call(|m| actor.send_message(m), msg_builder, timeout_option).await
 }
@@ -331,6 +333,7 @@ where
     ) -> Result<CallResult<TReply>, MessagingErr<TMessage>>
     where
         TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
+        TReply: Send + 'static,
     {
         call::<TMessage, TReply, TMsgBuilder>(&self.inner, msg_builder, timeout_option).await
     }
@@ -380,6 +383,7 @@ where
     ) -> Result<CallResult<TReply>, MessagingErr<TMessage>>
     where
         TMsgBuilder: FnOnce(RpcReplyPort<TReply>) -> TMessage,
+        TReply: Send + 'static,
     {
         internal_call(|m| self.send_message(m), msg_builder, timeout_option).await
     }

@@ -45,6 +45,14 @@ where
     spawn_named(None, future)
 }
 
+/// Spawn a task on the executor runtime which will not be moved to other threads
+pub fn spawn_local<F>(future: F) -> JoinHandle<F::Output>
+where
+    F: Future + 'static,
+{
+    tokio::task::spawn_local(future)
+}
+
 /// Spawn a (possibly) named task on the executor runtime
 pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
 where

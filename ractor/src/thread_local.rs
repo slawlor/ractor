@@ -362,7 +362,10 @@ impl Default for ThreadLocalActorSpawner {
     }
 }
 
+// note: it's not great that we have multiple implementations depending on the async backend in here
+// - ideally this would be moved to ./concurrency/*
 impl ThreadLocalActorSpawner {
+    #[cfg(all(feature = "tokio_runtime", not(target_arch = "wasm32")))]
     /// Create a new [ThreadLocalActorSpawner] on the current thread.
     pub fn new() -> Self {
         let (send, mut recv) = crate::concurrency::mpsc_unbounded();
@@ -395,7 +398,7 @@ impl ThreadLocalActorSpawner {
                     #[cfg(not(tokio_unstable))]
                     {
                         _ = name;
-                        let handle = tokio::task::spawn_local(fut);
+                        let handle = crate::concurrency::spawn_local(fut);
                         _ = reply.send(handle);
                     }
                 }
@@ -406,6 +409,51 @@ impl ThreadLocalActorSpawner {
             // This will return once all senders are dropped and all
             // spawned tasks have returned.
             rt.block_on(local);
+        });
+
+        Self { send }
+    }
+
+    #[cfg(all(feature = "async-std", not(target_arch = "wasm32")))]
+    pub fn new() -> Self {
+        let (send, mut recv) = crate::concurrency::mpsc_unbounded();
+
+        std::thread::spawn(move || {
+            // TODO (seanlawlor): Supported named spawn
+            async_std::task::block_on(async_std::task::spawn_local(async move {
+                while let Some(SpawnArgs {
+                    builder,
+                    reply,
+                    name,
+                }) = recv.recv().await
+                {
+                    let fut = builder();
+                    _ = name;
+                    let handle = crate::concurrency::spawn_local(fut);
+                    _ = reply.send(handle);
+                }
+            }));
+        });
+
+        Self { send }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    /// Create a new [ThreadLocalActorSpawner] on the current thread.
+    pub fn new() -> Self {
+        let (send, mut recv) = crate::concurrency::mpsc_unbounded();
+
+        crate::concurrency::spawn_local(async move {
+            while let Some(SpawnArgs {
+                builder,
+                reply,
+                name: _name,
+            }) = recv.recv().await
+            {
+                let fut = builder();
+                let handle = crate::concurrency::spawn_local(fut);
+                _ = reply.send(handle);
+            }
         });
 
         Self { send }
@@ -431,11 +479,20 @@ impl ThreadLocalActorSpawner {
         if self.send.send(args).is_err() {
             return Err(SpawnErr::StartupFailed("Spawner dead".into()));
         }
-
-        rx.await
-            .map_err(|inner| SpawnErr::StartupFailed(inner.into()))?
+        let rx_result = rx
             .await
-            .map_err(|joinerr| SpawnErr::StartupFailed(joinerr.into()))?
+            .map_err(|inner| SpawnErr::StartupFailed(inner.into()))?
+            .await;
+
+        #[cfg(not(feature = "async-std"))]
+        {
+            rx_result.map_err(|joinerr| SpawnErr::StartupFailed(joinerr.into()))?
+        }
+
+        #[cfg(feature = "async-std")]
+        {
+            rx_result.map_err(|()| SpawnErr::StartupFailed("receive failed".into()))?
+        }
     }
 }
 
