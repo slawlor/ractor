@@ -45,6 +45,13 @@ where
     spawn_named(None, future)
 }
 
+pub fn spawn_local<F>(future: F) -> JoinHandle<F::Output>
+where
+    F: Future + 'static,
+{
+    tokio::task::spawn_local(future)
+}
+
 /// Spawn a (possibly) named task on the executor runtime
 pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
 where

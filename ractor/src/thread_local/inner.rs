@@ -268,7 +268,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                 }
 
                 // run the processing loop, backgrounding the work
-                let handle = tokio::task::spawn_local(async move {
+                let handle = crate::concurrency::spawn_local(async move {
                     let myself = actor_ref.clone();
                     let evt = match Self::processing_loop(
                         ports, &mut state, &handler, actor_ref, id, name,

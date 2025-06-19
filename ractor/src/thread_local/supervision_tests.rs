@@ -28,8 +28,10 @@ fn get_spawner() -> ThreadLocalActorSpawner {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_thread_local_child() {
     use crate::thread_local::ThreadLocalActor;
 

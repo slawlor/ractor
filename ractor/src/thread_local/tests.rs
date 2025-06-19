@@ -39,8 +39,10 @@ struct EmptyMessage;
 impl crate::Message for EmptyMessage {}
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_panic_on_start_captured() {
     #[derive(Default)]
     struct TestActor;

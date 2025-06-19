@@ -363,6 +363,7 @@ impl Default for ThreadLocalActorSpawner {
 }
 
 impl ThreadLocalActorSpawner {
+    #[cfg(feature = "tokio_runtime")]
     /// Create a new [ThreadLocalActorSpawner] on the current thread.
     pub fn new() -> Self {
         let (send, mut recv) = crate::concurrency::mpsc_unbounded();
@@ -395,7 +396,7 @@ impl ThreadLocalActorSpawner {
                     #[cfg(not(tokio_unstable))]
                     {
                         _ = name;
-                        let handle = tokio::task::spawn_local(fut);
+                        let handle = crate::concurrency::spawn_local(fut);
                         _ = reply.send(handle);
                     }
                 }
@@ -409,6 +410,11 @@ impl ThreadLocalActorSpawner {
         });
 
         Self { send }
+    }
+
+    #[cfg(feature = "async-std")]
+    pub fn new() -> Self {
+        todo!()
     }
 
     #[allow(clippy::type_complexity)]
@@ -431,11 +437,20 @@ impl ThreadLocalActorSpawner {
         if self.send.send(args).is_err() {
             return Err(SpawnErr::StartupFailed("Spawner dead".into()));
         }
-
-        rx.await
-            .map_err(|inner| SpawnErr::StartupFailed(inner.into()))?
+        let rx_result = rx
             .await
-            .map_err(|joinerr| SpawnErr::StartupFailed(joinerr.into()))?
+            .map_err(|inner| SpawnErr::StartupFailed(inner.into()))?
+            .await;
+
+        #[cfg(not(feature = "async-std"))]
+        {
+            rx_result.map_err(|joinerr| SpawnErr::StartupFailed(joinerr.into()))?
+        }
+
+        #[cfg(feature = "async-std")]
+        {
+            rx_result.map_err(|joinerr| SpawnErr::StartupFailed("receive failed".into()))?
+        }
     }
 }
 

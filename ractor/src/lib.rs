@@ -181,10 +181,6 @@ pub mod registry;
 pub mod rpc;
 #[cfg(feature = "cluster")]
 pub mod serialization;
-#[cfg(all(
-    feature = "tokio_runtime",
-    not(all(target_arch = "wasm32", target_os = "unknown"))
-))]
 pub mod thread_local;
 pub mod time;
 
