@@ -173,6 +173,7 @@ pub use common_test::*;
 pub mod concurrency;
 pub mod errors;
 pub mod factory;
+#[path = "macros/macro.rs"]
 pub mod macros;
 pub mod message;
 pub mod pg;
