@@ -8,6 +8,7 @@ enum TestMessage {
     CastOnly(i32),
 }
 
+#[cfg(feature = "cluster")]
 impl crate::Message for TestMessage {}
 
 struct TestActor;
