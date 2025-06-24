@@ -29,7 +29,7 @@ pub struct AuthHandshakeConfig {
 struct SubscriptionEventLogger;
 
 impl ractor_cluster::NodeEventSubscription for SubscriptionEventLogger {
-    fn node_session_authenicated(&self, ses: ractor_cluster::node::NodeServerSessionInformation) {
+    fn node_session_authenticated(&self, ses: ractor_cluster::node::NodeServerSessionInformation) {
         tracing::warn!(
             "[SubscriptionEventLogger] Node {} ({}) authenticated",
             ses.node_id,
