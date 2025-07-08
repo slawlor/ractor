@@ -212,7 +212,11 @@ impl<TMessage: Message> ActorRef<TMessage> {
             actor_ref.send_message(msg.into()).map_err(|err| match err {
                 MessagingErr::SendErr(returned) => {
                     let Ok(err) = TFrom::try_from(returned) else {
-                        panic!("Failed to deconvert message to from type");
+                        panic!(
+                            "Failed to deconvert message from {} to {} when sending to: {actor_ref:?}",
+                            std::any::type_name::<TMessage>(),
+                            std::any::type_name::<TFrom>()
+                        );
                     };
                     MessagingErr::SendErr(err)
                 }
