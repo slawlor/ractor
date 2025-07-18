@@ -3,6 +3,7 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
+use std::any::Any;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -28,9 +29,43 @@ use crate::SupervisionEvent;
 
 /// A muxed-message wrapper which allows the message port to receive either a message or a drain
 /// request which is a point-in-time marker that the actor's input channel should be drained
-pub(crate) enum MuxedMessage {
+pub(crate) enum MuxedMessage<T: Any + Send> {
     Drain,
-    Message(BoxedMessage),
+    Message(BoxedMessage<T>),
+}
+pub(crate) trait GenericInputPort: Sync + Send + Any + 'static {
+    fn send_drain(&self) -> Result<(), MessagingErr<()>>;
+    #[cfg(feature = "cluster")]
+    fn send_serialized(
+        &self,
+        message: SerializedMessage,
+    ) -> Result<(), Box<MessagingErr<SerializedMessage>>>;
+    fn type_name(&self) -> &'static str {
+        std::any::type_name_of_val(self)
+    }
+}
+impl<T: Any + Send> GenericInputPort for InputPort<MuxedMessage<T>> {
+    fn send_drain(&self) -> Result<(), MessagingErr<()>> {
+        self.send(MuxedMessage::Drain)
+            .map_err(|_| MessagingErr::SendErr(()))
+    }
+    #[cfg(feature = "cluster")]
+    fn send_serialized(
+        &self,
+        message: SerializedMessage,
+    ) -> Result<(), Box<MessagingErr<SerializedMessage>>> {
+        let boxed = BoxedMessage {
+            msg: None,
+            serialized_msg: Some(message),
+            span: None,
+        };
+        Ok(self
+            .send(MuxedMessage::Message(boxed))
+            .map_err(|e| match e.0 {
+                MuxedMessage::Message(m) => MessagingErr::SendErr(m.serialized_msg.unwrap()),
+                _ => panic!("Expected a boxed message but got a drain message"),
+            })?)
+    }
 }
 
 // The inner-properties of an Actor
@@ -42,7 +77,7 @@ pub(crate) struct ActorProperties {
     pub(crate) signal: Mutex<Option<OneshotInputPort<Signal>>>,
     pub(crate) stop: Mutex<Option<OneshotInputPort<StopMessage>>>,
     pub(crate) supervision: InputPort<SupervisionEvent>,
-    pub(crate) message: InputPort<MuxedMessage>,
+    pub(crate) message: Box<dyn GenericInputPort>,
     pub(crate) tree: SupervisionTree,
     pub(crate) type_id: std::any::TypeId,
     #[cfg(feature = "cluster")]
@@ -50,14 +85,14 @@ pub(crate) struct ActorProperties {
 }
 
 impl ActorProperties {
-    pub(crate) fn new<TActor>(
+    pub(crate) fn new<TActor: Actor>(
         name: Option<ActorName>,
     ) -> (
         Self,
         OneshotReceiver<Signal>,
         OneshotReceiver<StopMessage>,
         InputPortReceiver<SupervisionEvent>,
-        InputPortReceiver<MuxedMessage>,
+        InputPortReceiver<MuxedMessage<TActor::Msg>>,
     )
     where
         TActor: Actor,
@@ -65,7 +100,7 @@ impl ActorProperties {
         Self::new_remote::<TActor>(name, crate::actor::actor_id::get_new_local_id())
     }
 
-    pub(crate) fn new_remote<TActor>(
+    pub(crate) fn new_remote<TActor: Actor>(
         name: Option<ActorName>,
         id: ActorId,
     ) -> (
@@ -73,7 +108,7 @@ impl ActorProperties {
         OneshotReceiver<Signal>,
         OneshotReceiver<StopMessage>,
         InputPortReceiver<SupervisionEvent>,
-        InputPortReceiver<MuxedMessage>,
+        InputPortReceiver<MuxedMessage<TActor::Msg>>,
     )
     where
         TActor: Actor,
@@ -91,7 +126,7 @@ impl ActorProperties {
                 wait_handler: mpsc::Notify::new(),
                 stop: Mutex::new(Some(tx_stop)),
                 supervision: tx_supervision,
-                message: tx_message,
+                message: Box::new(tx_message),
                 tree: SupervisionTree::default(),
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
@@ -144,11 +179,23 @@ impl ActorProperties {
     where
         TMessage: Message,
     {
-        // Only type-check messages of local actors, remote actors send serialized
-        // payloads
-        if self.id.is_local() && self.type_id != std::any::TypeId::of::<TMessage>() {
+        //// Only type-check messages of local actors, remote actors send serialized
+        //// payloads
+        //if self.id.is_local() && self.type_id != std::any::TypeId::of::<TMessage>() {
+        //    return Err(MessagingErr::InvalidActorType);
+        //}
+        if self.type_id != std::any::TypeId::of::<TMessage>() {
             return Err(MessagingErr::InvalidActorType);
         }
+        // SAFETY:
+        // The type of the message is checked at line 153 so this should be safe
+        let sender = unsafe {
+            let ptr: &dyn GenericInputPort = &*self.message;
+            &(*(ptr as *const dyn GenericInputPort as *const InputPort<MuxedMessage<TMessage>>))
+        };
+        //let sender: &InputPort<MuxedMessage<TMessage>> =
+        //    <dyn Any>::downcast_ref::<InputPort<MuxedMessage<TMessage>>>(&*self.message)
+        //        .ok_or_else(|| MessagingErr::InvalidActorType)?;
 
         let status = self.get_status();
         if status >= ActorStatus::Draining {
@@ -159,7 +206,13 @@ impl ActorProperties {
         let boxed = message
             .box_message(&self.id)
             .map_err(|_e| MessagingErr::InvalidActorType)?;
-        self.message
+        // SAFETY:
+        // The type of the message is checked at line 153 so this should be safe
+        //let sender = unsafe {
+        //    let ptr: &dyn GenericInputPort = &*self.message;
+        //    &(*(ptr as *const dyn GenericInputPort as *const InputPort<MuxedMessage<TMessage>>))
+        //};
+        sender
             .send(MuxedMessage::Message(boxed))
             .map_err(|e| match e.0 {
                 MuxedMessage::Message(m) => MessagingErr::SendErr(TMessage::from_boxed(m).unwrap()),
@@ -177,9 +230,7 @@ impl ActorProperties {
                     None
                 }
             });
-        self.message
-            .send(MuxedMessage::Drain)
-            .map_err(|_| MessagingErr::SendErr(()))
+        self.message.send_drain()
     }
 
     /// Start draining, and wait for the actor to exit
@@ -195,18 +246,7 @@ impl ActorProperties {
         &self,
         message: SerializedMessage,
     ) -> Result<(), Box<MessagingErr<SerializedMessage>>> {
-        let boxed = BoxedMessage {
-            msg: None,
-            serialized_msg: Some(message),
-            span: None,
-        };
-        Ok(self
-            .message
-            .send(MuxedMessage::Message(boxed))
-            .map_err(|e| match e.0 {
-                MuxedMessage::Message(m) => MessagingErr::SendErr(m.serialized_msg.unwrap()),
-                _ => panic!("Expected a boxed message but got a drain message"),
-            })?)
+        self.message.send_serialized(message)
     }
 
     pub(crate) fn send_stop(

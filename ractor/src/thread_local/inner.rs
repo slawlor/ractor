@@ -43,7 +43,7 @@ use crate::SupervisionEvent;
 impl ActorCell {
     pub(crate) fn new_thread_local<TActor>(
         name: Option<ActorName>,
-    ) -> Result<(Self, ActorPortSet), SpawnErr>
+    ) -> Result<(Self, ActorPortSet<TActor::Msg>), SpawnErr>
     where
         TActor: crate::thread_local::ThreadLocalActor,
     {
@@ -85,7 +85,7 @@ impl ActorProperties {
         OneshotReceiver<Signal>,
         OneshotReceiver<StopMessage>,
         mpsc::MpscUnboundedReceiver<SupervisionEvent>,
-        mpsc::MpscUnboundedReceiver<MuxedMessage>,
+        mpsc::MpscUnboundedReceiver<MuxedMessage<TActor::Msg>>,
     )
     where
         TActor: crate::thread_local::ThreadLocalActor,
@@ -104,7 +104,7 @@ impl ActorProperties {
                 wait_handler: mpsc::Notify::new(),
                 stop: Mutex::new(Some(tx_stop)),
                 supervision: tx_supervision,
-                message: tx_message,
+                message: Box::new(tx_message),
                 tree: Default::default(),
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
@@ -147,7 +147,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
     /// Returns A tuple [(Actor, ActorPortSet)] to be passed to the `start` function of [Actor]
     fn new(
         name: Option<crate::ActorName>,
-    ) -> Result<(Self, crate::actor::actor_cell::ActorPortSet), crate::SpawnErr> {
+    ) -> Result<(Self, crate::actor::actor_cell::ActorPortSet<TActor::Msg>), crate::SpawnErr> {
         let (actor_cell, ports) =
             crate::actor::actor_cell::ActorCell::new_thread_local::<TActor>(name)?;
         let id = actor_cell.get_id();
@@ -231,7 +231,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
     #[tracing::instrument(name = "Actor", skip(self, ports, startup_args, supervisor), fields(id = self.id.to_string(), name = self.name))]
     async fn start(
         self,
-        ports: ActorPortSet,
+        ports: ActorPortSet<TActor::Msg>,
         startup_args: TActor::Arguments,
         spawner: ThreadLocalActorSpawner,
         supervisor: Option<ActorCell>,
@@ -320,7 +320,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
 
     #[tracing::instrument(name = "Actor", skip(ports, state, handler, myself, _id, _name), fields(id = _id.to_string(), name = _name))]
     async fn processing_loop(
-        mut ports: ActorPortSet,
+        mut ports: ActorPortSet<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
         myself: ActorRef<TActor::Msg>,
@@ -389,7 +389,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
-        ports: &mut ActorPortSet,
+        ports: &mut ActorPortSet<TActor::Msg>,
     ) -> Result<ActorLoopResult, ActorProcessingErr> {
         match ports.listen_in_priority().await {
             Ok(actor_port_message) => match actor_port_message {
@@ -474,7 +474,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
-        mut msg: crate::message::BoxedMessage,
+        mut msg: crate::message::BoxedMessage<TActor::Msg>,
     ) -> Result<(), ActorProcessingErr> {
         // panic in order to kill the actor
         #[cfg(feature = "cluster")]

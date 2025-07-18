@@ -59,15 +59,15 @@ pub enum SerializedMessage {
 /// A "boxed" message denoting a strong-type message
 /// but generic so it can be passed around without type
 /// constraints
-pub struct BoxedMessage {
-    pub(crate) msg: Option<Box<dyn Any + Send>>,
+pub struct BoxedMessage<T: Any + Send> {
+    pub(crate) msg: Option<T>,
     /// A serialized message for a remote actor, accessed only by the `RemoteActorRuntime`
     #[cfg(feature = "cluster")]
     pub serialized_msg: Option<SerializedMessage>,
     pub(crate) span: Option<tracing::Span>,
 }
 
-impl std::fmt::Debug for BoxedMessage {
+impl<T: Any + Send> std::fmt::Debug for BoxedMessage<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.msg.is_some() {
             write!(f, "BoxedMessage(Local)")
@@ -94,23 +94,11 @@ impl std::fmt::Debug for BoxedMessage {
 pub trait Message: Any + Send + Sized + 'static {
     /// Convert a [BoxedMessage] to this concrete type
     #[cfg(feature = "cluster")]
-    fn from_boxed(mut m: BoxedMessage) -> Result<Self, BoxedDowncastErr> {
-        if m.msg.is_some() {
-            match m.msg.take() {
-                Some(m) => {
-                    if m.is::<Self>() {
-                        Ok(*m.downcast::<Self>().unwrap())
-                    } else {
-                        Err(BoxedDowncastErr)
-                    }
-                }
-                _ => Err(BoxedDowncastErr),
-            }
-        } else if m.serialized_msg.is_some() {
-            match m.serialized_msg.take() {
-                Some(m) => Self::deserialize(m),
-                _ => Err(BoxedDowncastErr),
-            }
+    fn from_boxed(m: BoxedMessage<Self>) -> Result<Self, BoxedDowncastErr> {
+        if let Some(msg) = m.msg {
+            Ok(msg)
+        } else if let Some(msg) = m.serialized_msg {
+            Self::deserialize(msg)
         } else {
             Err(BoxedDowncastErr)
         }
@@ -118,22 +106,13 @@ pub trait Message: Any + Send + Sized + 'static {
 
     /// Convert a [BoxedMessage] to this concrete type
     #[cfg(not(feature = "cluster"))]
-    fn from_boxed(mut m: BoxedMessage) -> Result<Self, BoxedDowncastErr> {
-        match m.msg.take() {
-            Some(m) => {
-                if m.is::<Self>() {
-                    Ok(*m.downcast::<Self>().unwrap())
-                } else {
-                    Err(BoxedDowncastErr)
-                }
-            }
-            _ => Err(BoxedDowncastErr),
-        }
+    fn from_boxed(m: BoxedMessage<Self>) -> Result<Self, BoxedDowncastErr> {
+        m.msg.ok_or(BoxedDowncastErr)
     }
 
     /// Convert this message to a [BoxedMessage]
     #[cfg(feature = "cluster")]
-    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
+    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage<Self>, BoxedDowncastErr> {
         let span = {
             #[cfg(feature = "message_span_propogation")]
             {
@@ -153,11 +132,12 @@ pub trait Message: Any + Send + Sized + 'static {
             })
         } else if pid.is_local() {
             Ok(BoxedMessage {
-                msg: Some(Box::new(self)),
+                msg: Some(self),
                 serialized_msg: None,
                 span,
             })
         } else {
+            //TODO: this error is not express the right thing
             Err(BoxedDowncastErr)
         }
     }
@@ -165,7 +145,7 @@ pub trait Message: Any + Send + Sized + 'static {
     /// Convert this message to a [BoxedMessage]
     #[cfg(not(feature = "cluster"))]
     #[allow(unused_variables)]
-    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
+    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage<Self>, BoxedDowncastErr> {
         let span = {
             #[cfg(feature = "message_span_propogation")]
             {
@@ -177,7 +157,7 @@ pub trait Message: Any + Send + Sized + 'static {
             }
         };
         Ok(BoxedMessage {
-            msg: Some(Box::new(self)),
+            msg: Some(self),
             span,
         })
     }
