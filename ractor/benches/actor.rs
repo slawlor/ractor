@@ -334,8 +334,8 @@ fn process_messages(c: &mut Criterion) {
 
 #[allow(clippy::async_yields_async)]
 fn process_output_port_messages(c: &mut Criterion) {
-    const NUM_MSGS: u64 = 100;
-    const NUM_RECEIVERS: u64 = 10;
+    const NUM_MSGS: u64 = 1000;
+    const NUM_RECEIVERS: u64 = 100;
 
     struct MessagingActor {
         num_msgs: u64,
