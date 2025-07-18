@@ -55,7 +55,7 @@ where
     fn default() -> Self {
         // We only need enough buffer for the subscription task to forward to the input port
         // of the receiving actor. Hence 10 should be plenty.
-        let (tx, _rx) = pubsub::channel(10);
+        let (tx, _rx) = pubsub::channel(10000);
         Self {
             tx,
             subscriptions: RwLock::new(vec![]),
