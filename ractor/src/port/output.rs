@@ -11,11 +11,8 @@
 //! have a message transformer attached to them to convert them to the appropriate message type
 
 use std::fmt::Debug;
-use std::sync::RwLock;
 
-use tokio::sync::broadcast as pubsub;
-
-use crate::concurrency::JoinHandle;
+use crate::ActorId;
 use crate::ActorRef;
 use crate::Message;
 
@@ -38,8 +35,7 @@ pub struct OutputPort<TMsg>
 where
     TMsg: OutputMessage,
 {
-    tx: pubsub::Sender<Option<TMsg>>,
-    subscriptions: RwLock<Vec<OutputPortSubscription>>,
+    inner: inner::OutputPort<ActorId, TMsg>,
 }
 
 impl<TMsg: OutputMessage> Debug for OutputPort<TMsg> {
@@ -53,12 +49,8 @@ where
     TMsg: OutputMessage,
 {
     fn default() -> Self {
-        // We only need enough buffer for the subscription task to forward to the input port
-        // of the receiving actor. Hence 10 should be plenty.
-        let (tx, _rx) = pubsub::channel(10);
         Self {
-            tx,
-            subscriptions: RwLock::new(vec![]),
+            inner: inner::OutputPort::default(),
         }
     }
 }
@@ -79,67 +71,14 @@ where
         F: Fn(TMsg) -> Option<TReceiverMsg> + Send + 'static,
         TReceiverMsg: Message,
     {
-        let mut subs = self.subscriptions.write().unwrap();
-
-        // filter out dead subscriptions, since they're no longer valid
-        subs.retain(|sub| !sub.is_dead());
-
-        let sub = OutputPortSubscription::new::<TMsg, F, TReceiverMsg>(
-            self.tx.subscribe(),
-            converter,
-            receiver,
-        );
-        subs.push(sub);
+        self.inner.subscribe(receiver, converter)
     }
 
     /// Send a message on the output port
     ///
     /// * `msg`: The message to send
     pub fn send(&self, msg: TMsg) {
-        if self.tx.receiver_count() > 0 {
-            let _ = self.tx.send(Some(msg));
-        }
-    }
-}
-
-// ============== Subscription implementation ============== //
-
-/// The output port's subscription handle. It holds a handle to a [JoinHandle]
-/// which listens to the [pubsub::Receiver] to see if there's a new message, and if there is
-/// forwards it to the [ActorRef] asynchronously using the specified converter.
-struct OutputPortSubscription {
-    handle: JoinHandle<()>,
-}
-
-impl OutputPortSubscription {
-    /// Determine if the subscription is dead
-    pub(crate) fn is_dead(&self) -> bool {
-        self.handle.is_finished()
-    }
-
-    /// Create a new subscription
-    pub(crate) fn new<TMsg, F, TReceiverMsg>(
-        mut port: pubsub::Receiver<Option<TMsg>>,
-        converter: F,
-        receiver: ActorRef<TReceiverMsg>,
-    ) -> Self
-    where
-        TMsg: OutputMessage,
-        F: Fn(TMsg) -> Option<TReceiverMsg> + Send + 'static,
-        TReceiverMsg: Message,
-    {
-        let handle = crate::concurrency::spawn(async move {
-            while let Ok(Some(msg)) = port.recv().await {
-                if let Some(new_msg) = converter(msg) {
-                    if receiver.cast(new_msg).is_err() {
-                        // kill the subscription process, as the forwarding agent is stopped
-                        return;
-                    }
-                }
-            }
-        });
-
-        Self { handle }
+        self.inner.send(msg)
     }
 }
 
@@ -297,5 +236,235 @@ where
 {
     fn subscribe_to_port(&self, port: &OutputPort<I>) {
         port.subscribe(self.clone(), |msg| Some(O::from(msg)));
+    }
+}
+
+mod inner {
+
+    use super::OutputMessage;
+    use crate::concurrency::{mpsc_unbounded, MpscUnboundedSender};
+    //use crate::concurrency::{mpsc_unbounded, oneshot, MpscUnboundedSender, OneshotSender};
+    use crate::{ActorId, ActorRef, DerivedActorRef, Message};
+
+    const CONSUME_BUDGET_FACTOR: usize = 32;
+
+    enum OutportMessage<Id, TMsg> {
+        Data(TMsg),
+        SetSubscriber(Box<dyn Subscriber<Id, TMsg>>),
+        //RemoveSubscriber(Id),
+        //Subscribers(OneshotSender<Vec<Id>>),
+    }
+
+    pub(super) trait Subscriber<Id, TMsg: OutputMessage>: Send + 'static {
+        // return false if the subscriber should be
+        // removed
+        fn send(&self, value: &TMsg) -> bool;
+        fn id(&self) -> Id;
+    }
+
+    #[derive(Debug, Clone)]
+    pub(super) struct OutputPort<Id, TMsg>(MpscUnboundedSender<OutportMessage<Id, TMsg>>);
+
+    impl<Id: Send + 'static + PartialEq + Clone + Sync, TMsg: OutputMessage> Default
+        for OutputPort<Id, TMsg>
+    {
+        fn default() -> Self {
+            Self::new(true)
+        }
+    }
+
+    impl<Id: Send + 'static + PartialEq + Clone + Sync, TMsg: OutputMessage> OutputPort<Id, TMsg> {
+        pub(super) fn new(allow_duplicate_subscription: bool) -> Self {
+            let (tx, mut rx) = mpsc_unbounded::<OutportMessage<Id, TMsg>>();
+
+            tokio::spawn(async move {
+                let mut subscribers = Vec::<(Id, Box<dyn Subscriber<Id, TMsg>>)>::new();
+
+                while let Some(msg) = rx.recv().await {
+                    match msg {
+                        OutportMessage::Data(v) => {
+                            // We do not want to hold a reference to dyn Subscriber
+                            // to cross an await, otherwise, Subscriber would need to be Sync.
+                            // So we iterate by index. This also simplify extraction
+                            // of subscribers.
+                            let mut i = 0;
+                            while i < subscribers.len() {
+                                if !subscribers[i].1.send(&v) {
+                                    subscribers.remove(i);
+                                } else {
+                                    i += 1;
+                                }
+                                // In case there is a very large number of subscribers and subscribers[i].1.send(&v) is heavy
+                                // the execution of this loop iteration could be unfair.
+                                //
+                                // So every CONSUME_BUDGET_FACTOR send we consume budget for the task
+                                // so that the tokio runtime can take when necessary.
+                                //
+                                // NB: every task get a budget of 128, this budget is decreased by one
+                                // at each rx.recv() call and at each CONSUME_BUDGET_FACTOR call to subscriber.send
+                                if i % CONSUME_BUDGET_FACTOR == 0 {
+                                    tokio::task::consume_budget().await;
+                                }
+                            }
+                        }
+                        OutportMessage::SetSubscriber(subscriber) => {
+                            let sid = subscriber.id();
+
+                            // We ensure there is no duplicate subscription
+                            if !allow_duplicate_subscription {
+                                if let Some((_, prev_subscriber)) =
+                                    subscribers.iter_mut().find(|(id, _)| id == &sid)
+                                {
+                                    // In case of duplication, previous subscription is overrided
+                                    *prev_subscriber = subscriber;
+                                } else {
+                                    subscribers.push((subscriber.id(), subscriber));
+                                }
+                            } else {
+                                subscribers.push((subscriber.id(), subscriber));
+                            }
+                        } //OutportMessage::RemoveSubscriber(id) => {
+                          //    if allow_duplicate_subscription {
+                          //        subscribers.retain(|(sid, _)| sid != &id);
+                          //    } else {
+                          //        // As we ensure there is only 1 id in the vector, we can only
+                          //        // remove the first find subscriber which has the right id.
+                          //        if let Some(i) = subscribers.iter().position(|(sid, _)| sid == &id)
+                          //        {
+                          //            subscribers.remove(i);
+                          //        }
+                          //    }
+                          //}
+                          //OutportMessage::Subscribers(sender) => {
+                          //    _ = sender.send(subscribers.iter().map(|(id, _)| id.clone()).collect());
+                          //}
+                    }
+                }
+            });
+
+            Self(tx)
+        }
+
+        pub(super) fn send(&self, value: TMsg) {
+            _ = self.0.send(OutportMessage::Data(value));
+        }
+
+        //pub(super) async fn subscribers(&self) -> Vec<Id> {
+        //    let (s, r) = oneshot();
+        //    _ = self.0.send(OutportMessage::Subscribers(s));
+        //    r.await.unwrap_or_default()
+        //}
+
+        //pub(super) fn set_subscriber(&self, subscriber: impl Subscriber<Id, TMsg>) {
+        //    _ = self
+        //        .0
+        //        .send(OutportMessage::SetSubscriber(Box::new(subscriber)));
+        //}
+
+        //pub(super) fn remove_subscriber(&self, subscriber: &impl Subscriber<Id, TMsg>) {
+        //    self.remove_subscriber_by_id(subscriber.id())
+        //}
+
+        //pub(super) fn remove_subscriber_by_id(&self, id: Id) {
+        //    _ = self.0.send(OutportMessage::RemoveSubscriber(id));
+        //}
+    }
+
+    impl<TMsg: OutputMessage> OutputPort<ActorId, TMsg> {
+        pub(super) fn subscribe<TReceiverMsg, F>(
+            &self,
+            receiver: ActorRef<TReceiverMsg>,
+            converter: F,
+        ) where
+            F: Fn(TMsg) -> Option<TReceiverMsg> + Send + 'static,
+            TReceiverMsg: Message,
+        {
+            self.set_subscriber_with_filter(receiver, move |msg| converter(msg.clone()))
+        }
+
+        pub(super) fn set_subscriber_with_filter<R: ActorReference>(
+            &self,
+            actor_ref: R,
+            filter: impl Fn(&TMsg) -> Option<R::Msg> + Send + 'static,
+        ) {
+            _ = self
+                .0
+                .send(OutportMessage::SetSubscriber(Box::new(Filtering {
+                    actor_ref,
+                    filter,
+                })));
+        }
+    }
+
+    impl<T: OutputMessage, U: Message> Subscriber<ActorId, T> for ActorRef<U>
+    where
+        U: TryFrom<T>,
+    {
+        fn send(&self, value: &T) -> bool {
+            if let Ok(value) = value.clone().try_into() {
+                self.send_message(value).is_ok()
+            } else {
+                true
+            }
+        }
+
+        fn id(&self) -> ActorId {
+            self.get_id()
+        }
+    }
+    impl<T: OutputMessage> Subscriber<ActorId, T> for DerivedActorRef<T> {
+        fn send(&self, value: &T) -> bool {
+            self.send_message(value.clone()).is_ok()
+        }
+
+        fn id(&self) -> ActorId {
+            self.get_id()
+        }
+    }
+    struct Filtering<T, F> {
+        pub actor_ref: T,
+        pub filter: F,
+    }
+    impl<T: ActorReference, U: OutputMessage, F: Fn(&U) -> Option<T::Msg> + Send + 'static>
+        Subscriber<ActorId, U> for Filtering<T, F>
+    {
+        fn send(&self, value: &U) -> bool {
+            if let Some(v) = (self.filter)(value) {
+                self.actor_ref.send_message(v)
+            } else {
+                true
+            }
+        }
+
+        fn id(&self) -> ActorId {
+            self.actor_ref.id()
+        }
+    }
+    pub(super) trait ActorReference: Send + Sync + 'static {
+        type Msg: Message;
+        fn send_message(&self, value: Self::Msg) -> bool;
+        fn id(&self) -> ActorId;
+    }
+    impl<T: Message> ActorReference for ActorRef<T> {
+        type Msg = T;
+
+        fn send_message(&self, value: T) -> bool {
+            self.send_message(value).is_ok()
+        }
+
+        fn id(&self) -> ActorId {
+            self.get_id()
+        }
+    }
+    impl<T: Message> ActorReference for DerivedActorRef<T> {
+        type Msg = T;
+
+        fn send_message(&self, value: T) -> bool {
+            self.send_message(value).is_ok()
+        }
+
+        fn id(&self) -> ActorId {
+            self.get_id()
+        }
     }
 }
