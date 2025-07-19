@@ -40,9 +40,6 @@ pub(crate) trait GenericInputPort: Sync + Send + Any + 'static {
         &self,
         message: SerializedMessage,
     ) -> Result<(), Box<MessagingErr<SerializedMessage>>>;
-    fn type_name(&self) -> &'static str {
-        std::any::type_name_of_val(self)
-    }
 }
 impl<T: Any + Send> GenericInputPort for InputPort<MuxedMessage<T>> {
     fn send_drain(&self) -> Result<(), MessagingErr<()>> {
@@ -188,14 +185,24 @@ impl ActorProperties {
             return Err(MessagingErr::InvalidActorType);
         }
         // SAFETY:
-        // The type of the message is checked at line 153 so this should be safe
+        // We checke that  TMessage has the right type_id
+        unsafe { self.send_message_unchecked(message) }
+    }
+    /// ## Safety
+    /// This should only be called if self.type_id() == std::any::TypeId::of::<TMessage>
+    pub(crate) unsafe fn send_message_unchecked<TMessage>(
+        &self,
+        message: TMessage,
+    ) -> Result<(), MessagingErr<TMessage>>
+    where
+        TMessage: Message,
+    {
+        // SAFETY:
+        // The caller must ensure that self.type_id() == std::any::TypeId::of::<TMessage>
         let sender = unsafe {
             let ptr: &dyn GenericInputPort = &*self.message;
             &(*(ptr as *const dyn GenericInputPort as *const InputPort<MuxedMessage<TMessage>>))
         };
-        //let sender: &InputPort<MuxedMessage<TMessage>> =
-        //    <dyn Any>::downcast_ref::<InputPort<MuxedMessage<TMessage>>>(&*self.message)
-        //        .ok_or_else(|| MessagingErr::InvalidActorType)?;
 
         let status = self.get_status();
         if status >= ActorStatus::Draining {
