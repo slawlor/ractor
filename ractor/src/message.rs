@@ -77,12 +77,19 @@ impl<T: Any + Send> LocalOrSerialized<T> {
             LocalOrSerialized::Serialized(_) => None,
         }
     }
+    #[cfg(feature = "cluster")]
     pub fn into_serialized(self) -> Option<SerializedMessage> {
         match self {
             LocalOrSerialized::Local(_) => None,
-            #[cfg(feature = "cluster")]
             LocalOrSerialized::Serialized(msg) => Some(msg),
         }
+    }
+    pub fn is_local(&self) -> bool {
+        matches!(self, LocalOrSerialized::Local(_))
+    }
+    #[cfg(feature = "cluster")]
+    pub fn is_serialized(&self) -> bool {
+        matches!(self, LocalOrSerialized::Serialized(_))
     }
 }
 
@@ -125,7 +132,7 @@ pub trait Message: Any + Send + Sized + 'static {
     /// Convert a [BoxedMessage] to this concrete type
     #[cfg(not(feature = "cluster"))]
     fn from_boxed(m: BoxedMessage<Self>) -> Result<Self, BoxedDowncastErr> {
-        m.msg.ok_or(BoxedDowncastErr)
+        m.msg.into_local().ok_or(BoxedDowncastErr)
     }
 
     /// Convert this message to a [BoxedMessage]
@@ -173,7 +180,7 @@ pub trait Message: Any + Send + Sized + 'static {
             }
         };
         Ok(BoxedMessage {
-            msg: Some(self),
+            msg: LocalOrSerialized::Local(self),
             span,
         })
     }

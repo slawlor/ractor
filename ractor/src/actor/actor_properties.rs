@@ -40,7 +40,7 @@ pub(crate) trait GenericInputPort: Sync + Send + Any + 'static {
     fn send_serialized(
         &self,
         message: SerializedMessage,
-    ) -> Result<(), Box<MessagingErr<SerializedMessage>>>;
+    ) -> Result<(), MessagingErr<SerializedMessage>>;
 }
 impl<T: Any + Send> GenericInputPort for InputPort<MuxedMessage<T>> {
     fn send_drain(&self) -> Result<(), MessagingErr<()>> {
@@ -51,7 +51,7 @@ impl<T: Any + Send> GenericInputPort for InputPort<MuxedMessage<T>> {
     fn send_serialized(
         &self,
         message: SerializedMessage,
-    ) -> Result<(), Box<MessagingErr<SerializedMessage>>> {
+    ) -> Result<(), MessagingErr<SerializedMessage>> {
         let boxed = BoxedMessage {
             msg: LocalOrSerialized::Serialized(message),
             span: None,
@@ -178,14 +178,9 @@ impl ActorProperties {
     {
         //// Only type-check messages of local actors, remote actors send serialized
         //// payloads
-        //if self.id.is_local() && self.type_id != std::any::TypeId::of::<TMessage>() {
-        //    return Err(MessagingErr::InvalidActorType);
-        //}
-        if self.type_id != std::any::TypeId::of::<TMessage>() {
+        if self.id.is_local() && self.type_id != std::any::TypeId::of::<TMessage>() {
             return Err(MessagingErr::InvalidActorType);
         }
-        // SAFETY:
-        // We checke that  TMessage has the right type_id
         unsafe { self.send_message_unchecked(message) }
     }
     /// ## Safety
@@ -197,13 +192,6 @@ impl ActorProperties {
     where
         TMessage: Message,
     {
-        // SAFETY:
-        // The caller must ensure that self.type_id() == std::any::TypeId::of::<TMessage>
-        let sender = unsafe {
-            let ptr: &dyn GenericInputPort = &*self.message;
-            &(*(ptr as *const dyn GenericInputPort as *const InputPort<MuxedMessage<TMessage>>))
-        };
-
         let status = self.get_status();
         if status >= ActorStatus::Draining {
             // if currently draining, stopping or stopped: reject messages directly.
@@ -213,18 +201,41 @@ impl ActorProperties {
         let boxed = message
             .box_message(&self.id)
             .map_err(|_e| MessagingErr::InvalidActorType)?;
-        // SAFETY:
-        // The type of the message is checked at line 153 so this should be safe
-        //let sender = unsafe {
-        //    let ptr: &dyn GenericInputPort = &*self.message;
-        //    &(*(ptr as *const dyn GenericInputPort as *const InputPort<MuxedMessage<TMessage>>))
-        //};
-        sender
-            .send(MuxedMessage::Message(boxed))
-            .map_err(|e| match e.0 {
-                MuxedMessage::Message(m) => MessagingErr::SendErr(TMessage::from_boxed(m).unwrap()),
-                _ => panic!("Expected a boxed message but got a drain message"),
-            })
+
+        match boxed {
+            #[cfg(feature = "cluster")]
+            BoxedMessage {
+                span: _,
+                msg: LocalOrSerialized::Serialized(m),
+            } => self.message.send_serialized(m).map_err(|e| match e {
+                MessagingErr::SendErr(m) => MessagingErr::SendErr(
+                    TMessage::from_boxed(BoxedMessage {
+                        span: None,
+                        msg: LocalOrSerialized::Serialized(m),
+                    })
+                    .unwrap(),
+                ),
+                MessagingErr::ChannelClosed => MessagingErr::ChannelClosed,
+                MessagingErr::InvalidActorType => MessagingErr::InvalidActorType,
+            }),
+            boxed => {
+                // SAFETY:
+                // The caller must ensure that self.type_id() == std::any::TypeId::of::<TMessage>
+                let sender = unsafe {
+                    let ptr: &dyn GenericInputPort = &*self.message;
+                    &(*(ptr as *const dyn GenericInputPort
+                        as *const InputPort<MuxedMessage<TMessage>>))
+                };
+                sender
+                    .send(MuxedMessage::Message(boxed))
+                    .map_err(|e| match e.0 {
+                        MuxedMessage::Message(m) => {
+                            MessagingErr::SendErr(TMessage::from_boxed(m).unwrap())
+                        }
+                        _ => panic!("Expected a boxed message but got a drain message"),
+                    })
+            }
+        }
     }
 
     pub(crate) fn drain(&self) -> Result<(), MessagingErr<()>> {
@@ -253,7 +264,7 @@ impl ActorProperties {
         &self,
         message: SerializedMessage,
     ) -> Result<(), Box<MessagingErr<SerializedMessage>>> {
-        self.message.send_serialized(message)
+        self.message.send_serialized(message).map_err(Box::new)
     }
 
     pub(crate) fn send_stop(
