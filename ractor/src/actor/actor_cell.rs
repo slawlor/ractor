@@ -20,11 +20,11 @@ use super::messages::Signal;
 use super::messages::StopMessage;
 use super::SupervisionEvent;
 use crate::actor::actor_properties::ActorProperties;
+use crate::actor::request_derived::OwnedRequest;
 use crate::concurrency::JoinHandle;
 use crate::concurrency::MpscUnboundedReceiver as InputPortReceiver;
 use crate::concurrency::OneshotReceiver;
 use crate::errors::MessagingErr;
-use crate::message::request_derived::OwnedRequest;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
 use crate::Actor;

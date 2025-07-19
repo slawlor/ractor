@@ -9,14 +9,14 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::actor::messages::StopMessage;
+use crate::actor::request_derived::DerivedProvider;
+use crate::actor::request_derived::DerivedProviderType;
 use crate::actor::supervision::SupervisionTree;
 use crate::concurrency as mpsc;
 use crate::concurrency::MpscUnboundedReceiver as InputPortReceiver;
 use crate::concurrency::MpscUnboundedSender as InputPort;
 use crate::concurrency::OneshotReceiver;
 use crate::concurrency::OneshotSender as OneshotInputPort;
-use crate::message::request_derived::DerivedProvider;
-use crate::message::request_derived::DerivedProviderType;
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;

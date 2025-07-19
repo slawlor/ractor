@@ -75,6 +75,12 @@ mod supervision;
 
 #[cfg(test)]
 mod supervision_tests;
+
+#[cfg(feature = "derived-actor-from-cell")]
+pub(crate) mod request_derived;
+#[cfg(feature = "derived-actor-from-cell")]
+pub use request_derived::RequestDerived;
+
 #[cfg(test)]
 mod tests;
 
@@ -87,8 +93,6 @@ use crate::errors::ActorErr;
 use crate::errors::ActorProcessingErr;
 use crate::errors::MessagingErr;
 use crate::errors::SpawnErr;
-#[cfg(feature = "derived-actor-from-cell")]
-use crate::message::RequestDerived;
 use crate::ActorName;
 use crate::Message;
 use crate::State;

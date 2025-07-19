@@ -11,9 +11,9 @@
 
 use std::future::Future;
 
-use crate::concurrency::JoinHandle;
 #[cfg(feature = "derived-actor-from-cell")]
-use crate::message::RequestDerived;
+use crate::actor::RequestDerived;
+use crate::concurrency::JoinHandle;
 use crate::Actor as SendActor;
 use crate::ActorCell;
 use crate::ActorName;

@@ -215,14 +215,14 @@ pub(crate) mod tags {
         type Reified = T;
     }
 
-    /// Type-based tag for reference types (`&'a T`, where T is represented by
-    /// `<I as MaybeSizedType<'a>>::Reified`.
-    #[derive(Debug)]
-    pub(crate) struct Ref<I>(PhantomData<I>);
+    ///// Type-based tag for reference types (`&'a T`, where T is represented by
+    ///// `<I as MaybeSizedType<'a>>::Reified`.
+    //#[derive(Debug)]
+    //pub(crate) struct Ref<I>(PhantomData<I>);
 
-    impl<'a, I: MaybeSizedType<'a>> Type<'a> for Ref<I> {
-        type Reified = &'a I::Reified;
-    }
+    //impl<'a, I: MaybeSizedType<'a>> Type<'a> for Ref<I> {
+    //    type Reified = &'a I::Reified;
+    //}
 }
 
 /// An `Option` with a type tag `I`.
@@ -289,5 +289,93 @@ impl<'a> Tagged<dyn Erased<'a> + 'a> {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{concurrency::MpscSender, Actor};
+
+    use super::Message;
+
+    struct TestActor;
+
+    #[derive(Debug, Eq, Clone, PartialEq)]
+    enum Msg {
+        I32(i32),
+        I64(i64),
+    }
+    impl From<i32> for Msg {
+        fn from(value: i32) -> Self {
+            Msg::I32(value)
+        }
+    }
+    impl From<i64> for Msg {
+        fn from(value: i64) -> Self {
+            Msg::I64(value)
+        }
+    }
+    impl TryFrom<Msg> for i32 {
+        type Error = ();
+        fn try_from(value: Msg) -> Result<Self, Self::Error> {
+            match value {
+                Msg::I32(v) => Ok(v),
+                _ => Err(()),
+            }
+        }
+    }
+    impl TryFrom<Msg> for i64 {
+        type Error = ();
+        fn try_from(value: Msg) -> Result<Self, Self::Error> {
+            match value {
+                Msg::I64(v) => Ok(v),
+                _ => Err(()),
+            }
+        }
+    }
+    #[cfg(feature = "cluster")]
+    impl Message for Msg {}
+    impl Actor for TestActor {
+        type Msg = Msg;
+
+        type State = MpscSender<Msg>;
+
+        type Arguments = MpscSender<Msg>;
+
+        async fn pre_start(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            args: Self::Arguments,
+        ) -> Result<Self::State, crate::ActorProcessingErr> {
+            Ok(args)
+        }
+        async fn handle(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            message: Self::Msg,
+            state: &mut Self::State,
+        ) -> Result<(), crate::ActorProcessingErr> {
+            state.send(message).await?;
+            Ok(())
+        }
+        fn provide_derived_actor_ref<'a>(
+            myself: crate::ActorRef<Msg>,
+            request: &mut super::RequestDerived<'a>,
+        ) {
+            request.provide_derived_actor(myself.get_derived::<i32>());
+            request.provide_derived_actor(myself.get_derived::<i64>());
+        }
+    }
+    #[tokio::test]
+    async fn derived_actor_from_cell() {
+        let (sx, mut rx) = crate::concurrency::mpsc_bounded(10);
+        let (ar, _) = Actor::spawn(None, TestActor, sx).await.unwrap();
+        let cell = ar.get_cell();
+        let dar = cell.provide_derived::<i32>().unwrap();
+        dar.send_message(42).unwrap();
+        assert_eq!(rx.recv().await.unwrap(), Msg::I32(42));
+        let dar = cell.provide_derived::<i64>().unwrap();
+        dar.send_message(33).unwrap();
+        assert_eq!(rx.recv().await.unwrap(), Msg::I64(33));
     }
 }
