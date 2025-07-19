@@ -87,6 +87,8 @@ use crate::errors::ActorErr;
 use crate::errors::ActorProcessingErr;
 use crate::errors::MessagingErr;
 use crate::errors::SpawnErr;
+#[cfg(feature = "derived-actor-from-cell")]
+use crate::message::RequestDerived;
 use crate::ActorName;
 use crate::Message;
 use crate::State;
@@ -442,6 +444,15 @@ pub trait Actor: Sized + Sync + Send + 'static {
         supervisor: ActorCell,
     ) -> Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr> {
         ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor).await
+    }
+
+    /// Provide to request derived actors that can be derived from actor_ref.
+    #[cfg(feature = "derived-actor-from-cell")]
+    #[allow(unused_variables)]
+    fn provide_derived_actor_ref<'a>(
+        myself: ActorRef<Self::Msg>,
+        request: &mut RequestDerived<'a>,
+    ) {
     }
 }
 

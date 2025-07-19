@@ -13,6 +13,9 @@ use crate::ActorId;
 #[cfg(feature = "cluster")]
 use crate::RpcReplyPort;
 
+#[cfg(feature = "derived-actor-from-cell")]
+use crate::ActorRef;
+
 /// An error downcasting a boxed item to a strong type
 #[derive(Debug, Eq, PartialEq)]
 pub struct BoxedDowncastErr;
@@ -23,6 +26,11 @@ impl std::fmt::Display for BoxedDowncastErr {
 }
 
 impl std::error::Error for BoxedDowncastErr {}
+
+#[cfg(feature = "derived-actor-from-cell")]
+pub(crate) mod request_derived;
+#[cfg(feature = "derived-actor-from-cell")]
+pub use request_derived::RequestDerived;
 
 /// Represents a serialized call or cast message
 #[cfg(feature = "cluster")]
@@ -228,5 +236,93 @@ impl<T: Any + Send + Sized + 'static + crate::serialization::BytesConvertable> M
             SerializedMessage::Cast { args, .. } => Ok(T::from_bytes(args)),
             _ => Err(BoxedDowncastErr),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{concurrency::MpscSender, Actor};
+
+    use super::Message;
+
+    struct TestActor;
+
+    #[derive(Debug, Eq, Clone, PartialEq)]
+    enum Msg {
+        I32(i32),
+        I64(i64),
+    }
+    impl From<i32> for Msg {
+        fn from(value: i32) -> Self {
+            Msg::I32(value)
+        }
+    }
+    impl From<i64> for Msg {
+        fn from(value: i64) -> Self {
+            Msg::I64(value)
+        }
+    }
+    impl TryFrom<Msg> for i32 {
+        type Error = ();
+        fn try_from(value: Msg) -> Result<Self, Self::Error> {
+            match value {
+                Msg::I32(v) => Ok(v),
+                _ => Err(()),
+            }
+        }
+    }
+    impl TryFrom<Msg> for i64 {
+        type Error = ();
+        fn try_from(value: Msg) -> Result<Self, Self::Error> {
+            match value {
+                Msg::I64(v) => Ok(v),
+                _ => Err(()),
+            }
+        }
+    }
+    #[cfg(feature = "cluster")]
+    impl Message for Msg {}
+    impl Actor for TestActor {
+        type Msg = Msg;
+
+        type State = MpscSender<Msg>;
+
+        type Arguments = MpscSender<Msg>;
+
+        async fn pre_start(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            args: Self::Arguments,
+        ) -> Result<Self::State, crate::ActorProcessingErr> {
+            Ok(args)
+        }
+        async fn handle(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            message: Self::Msg,
+            state: &mut Self::State,
+        ) -> Result<(), crate::ActorProcessingErr> {
+            state.send(message).await?;
+            Ok(())
+        }
+        fn provide_derived_actor_ref<'a>(
+            myself: crate::ActorRef<Msg>,
+            request: &mut super::RequestDerived<'a>,
+        ) {
+            request.provide_derived_actor(myself.get_derived::<i32>());
+            request.provide_derived_actor(myself.get_derived::<i64>());
+        }
+    }
+    #[tokio::test]
+    async fn derived_actor_from_cell() {
+        let (sx, mut rx) = crate::concurrency::mpsc_bounded(10);
+        let (ar, _) = Actor::spawn(None, TestActor, sx).await.unwrap();
+        let cell = ar.get_cell();
+        let dar = cell.provide_derived::<i32>().unwrap();
+        dar.send_message(42).unwrap();
+        assert_eq!(rx.recv().await.unwrap(), Msg::I32(42));
+        let dar = cell.provide_derived::<i64>().unwrap();
+        dar.send_message(33).unwrap();
+        assert_eq!(rx.recv().await.unwrap(), Msg::I64(33));
     }
 }

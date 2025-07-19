@@ -24,12 +24,14 @@ use crate::concurrency::JoinHandle;
 use crate::concurrency::MpscUnboundedReceiver as InputPortReceiver;
 use crate::concurrency::OneshotReceiver;
 use crate::errors::MessagingErr;
+use crate::message::request_derived::OwnedRequest;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
 use crate::Actor;
 use crate::ActorId;
 use crate::ActorName;
 use crate::ActorRef;
+use crate::DerivedActorRef;
 use crate::Message;
 use crate::RactorErr;
 use crate::SpawnErr;
@@ -312,6 +314,18 @@ impl ActorCell {
     /// Returns the [super::Actor]'s current [ActorStatus]
     pub fn get_status(&self) -> ActorStatus {
         self.inner.get_status()
+    }
+
+    /// Retrieve the current status of an [super::Actor]
+    ///
+    /// Returns the [super::Actor]'s current [ActorStatus]
+    #[cfg(feature = "derived-actor-from-cell")]
+    pub fn provide_derived<T: Message>(&self) -> Option<DerivedActorRef<T>> {
+        let mut owned_request = OwnedRequest::<T>::new();
+        self.inner
+            .derived_provider
+            .provide_derived_actor_ref(self.clone(), owned_request.as_request());
+        owned_request.extract()
     }
 
     /// Identifies if this actor supports remote (dist) communication

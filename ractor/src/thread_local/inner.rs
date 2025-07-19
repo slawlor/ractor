@@ -27,6 +27,7 @@ use crate::actor::ActorLoopResult;
 use crate::concurrency as mpsc;
 use crate::concurrency::JoinHandle;
 use crate::concurrency::OneshotReceiver;
+use crate::message::request_derived::DerivedProviderTypeLocal;
 use crate::message::Message;
 use crate::ActorCell;
 use crate::ActorErr;
@@ -109,6 +110,8 @@ impl ActorProperties {
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
+                #[cfg(feature = "derived-actor-from-cell")]
+                derived_provider: Box::new(DerivedProviderTypeLocal::<TActor>::new()),
             },
             rx_signal,
             rx_stop,

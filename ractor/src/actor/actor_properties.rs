@@ -15,6 +15,8 @@ use crate::concurrency::MpscUnboundedReceiver as InputPortReceiver;
 use crate::concurrency::MpscUnboundedSender as InputPort;
 use crate::concurrency::OneshotReceiver;
 use crate::concurrency::OneshotSender as OneshotInputPort;
+use crate::message::request_derived::DerivedProvider;
+use crate::message::request_derived::DerivedProviderType;
 use crate::message::BoxedMessage;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
@@ -48,6 +50,8 @@ pub(crate) struct ActorProperties {
     pub(crate) type_id: std::any::TypeId,
     #[cfg(feature = "cluster")]
     pub(crate) supports_remoting: bool,
+    #[cfg(feature = "derived-actor-from-cell")]
+    pub(crate) derived_provider: Box<dyn DerivedProvider>,
 }
 
 impl ActorProperties {
@@ -97,6 +101,8 @@ impl ActorProperties {
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
+                #[cfg(feature = "derived-actor-from-cell")]
+                derived_provider: Box::new(DerivedProviderType::<TActor>::new()),
             },
             rx_signal,
             rx_stop,

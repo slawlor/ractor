@@ -12,6 +12,8 @@
 use std::future::Future;
 
 use crate::concurrency::JoinHandle;
+#[cfg(feature = "derived-actor-from-cell")]
+use crate::message::RequestDerived;
 use crate::Actor as SendActor;
 use crate::ActorCell;
 use crate::ActorName;
@@ -275,6 +277,14 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
             spawner,
             supervisor,
         )
+    }
+    /// Provide to request derived actors that can be derived from actor_ref.
+    #[cfg(feature = "derived-actor-from-cell")]
+    #[allow(unused_variables)]
+    fn provide_derived_actor_ref<'a>(
+        my_self: ActorRef<Self::Msg>,
+        request: &mut RequestDerived<'a>,
+    ) {
     }
 }
 
