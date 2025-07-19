@@ -16,6 +16,7 @@ use crate::concurrency::MpscUnboundedSender as InputPort;
 use crate::concurrency::OneshotReceiver;
 use crate::concurrency::OneshotSender as OneshotInputPort;
 use crate::message::BoxedMessage;
+use crate::message::LocalOrSerialized;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
 use crate::Actor;
@@ -52,14 +53,13 @@ impl<T: Any + Send> GenericInputPort for InputPort<MuxedMessage<T>> {
         message: SerializedMessage,
     ) -> Result<(), Box<MessagingErr<SerializedMessage>>> {
         let boxed = BoxedMessage {
-            msg: None,
-            serialized_msg: Some(message),
+            msg: LocalOrSerialized::Serialized(message),
             span: None,
         };
         Ok(self
             .send(MuxedMessage::Message(boxed))
             .map_err(|e| match e.0 {
-                MuxedMessage::Message(m) => MessagingErr::SendErr(m.serialized_msg.unwrap()),
+                MuxedMessage::Message(m) => MessagingErr::SendErr(m.msg.into_serialized().unwrap()),
                 _ => panic!("Expected a boxed message but got a drain message"),
             })?)
     }

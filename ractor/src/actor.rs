@@ -966,7 +966,7 @@ where
             // to the remote system for decoding + handling by the real implementation. Therefore `RemoteActor`s
             // can be thought of as a "shim" to a real actor on a remote system
             if !myself.get_id().is_local() {
-                match msg.serialized_msg {
+                match msg.msg.into_serialized() {
                     Some(serialized_msg) => {
                         return handler
                             .handle_serialized(myself, serialized_msg, state)

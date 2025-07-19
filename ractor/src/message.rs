@@ -60,16 +60,35 @@ pub enum SerializedMessage {
 /// but generic so it can be passed around without type
 /// constraints
 pub struct BoxedMessage<T: Any + Send> {
-    pub(crate) msg: Option<T>,
-    /// A serialized message for a remote actor, accessed only by the `RemoteActorRuntime`
-    #[cfg(feature = "cluster")]
-    pub serialized_msg: Option<SerializedMessage>,
+    pub(crate) msg: LocalOrSerialized<T>,
     pub(crate) span: Option<tracing::Span>,
+}
+pub(crate) enum LocalOrSerialized<T: Any + Send> {
+    Local(T),
+    #[cfg(feature = "cluster")]
+    /// A serialized message for a remote actor, accessed only by the `RemoteActorRuntime`
+    Serialized(SerializedMessage),
+}
+impl<T: Any + Send> LocalOrSerialized<T> {
+    pub fn into_local(self) -> Option<T> {
+        match self {
+            LocalOrSerialized::Local(msg) => Some(msg),
+            #[cfg(feature = "cluster")]
+            LocalOrSerialized::Serialized(_) => None,
+        }
+    }
+    pub fn into_serialized(self) -> Option<SerializedMessage> {
+        match self {
+            LocalOrSerialized::Local(_) => None,
+            #[cfg(feature = "cluster")]
+            LocalOrSerialized::Serialized(msg) => Some(msg),
+        }
+    }
 }
 
 impl<T: Any + Send> std::fmt::Debug for BoxedMessage<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.msg.is_some() {
+        if matches!(self.msg, LocalOrSerialized::Local(_)) {
             write!(f, "BoxedMessage(Local)")
         } else {
             write!(f, "BoxedMessage(Serialized)")
@@ -95,12 +114,11 @@ pub trait Message: Any + Send + Sized + 'static {
     /// Convert a [BoxedMessage] to this concrete type
     #[cfg(feature = "cluster")]
     fn from_boxed(m: BoxedMessage<Self>) -> Result<Self, BoxedDowncastErr> {
-        if let Some(msg) = m.msg {
-            Ok(msg)
-        } else if let Some(msg) = m.serialized_msg {
-            Self::deserialize(msg)
-        } else {
-            Err(BoxedDowncastErr)
+        match m.msg {
+            LocalOrSerialized::Local(m) => Ok(m),
+            LocalOrSerialized::Serialized(serialized_message) => {
+                Self::deserialize(serialized_message)
+            }
         }
     }
 
@@ -126,14 +144,12 @@ pub trait Message: Any + Send + Sized + 'static {
         if Self::serializable() && !pid.is_local() {
             // it's a message to a remote actor, serialize it and send it over the wire!
             Ok(BoxedMessage {
-                msg: None,
-                serialized_msg: Some(self.serialize()?),
+                msg: LocalOrSerialized::Serialized(self.serialize()?),
                 span: None,
             })
         } else if pid.is_local() {
             Ok(BoxedMessage {
-                msg: Some(self),
-                serialized_msg: None,
+                msg: LocalOrSerialized::Local(self),
                 span,
             })
         } else {
