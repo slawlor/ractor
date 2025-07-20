@@ -9,7 +9,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::actor::messages::StopMessage;
+#[cfg(feature = "derived-actor-from-cell")]
 use crate::actor::request_derived::DerivedProvider;
+#[cfg(feature = "derived-actor-from-cell")]
 use crate::actor::request_derived::DerivedProviderType;
 use crate::actor::supervision::SupervisionTree;
 use crate::concurrency as mpsc;

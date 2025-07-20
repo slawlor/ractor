@@ -32,7 +32,6 @@ async-trait = ["dep:async-trait"]
 default = [
     "tokio_runtime",
     "message_span_propogation",
-    "derived-actor-from-cell",
 ]
 
 [dependencies]

@@ -20,6 +20,7 @@ use super::messages::Signal;
 use super::messages::StopMessage;
 use super::SupervisionEvent;
 use crate::actor::actor_properties::ActorProperties;
+#[cfg(feature = "derived-actor-from-cell")]
 use crate::actor::request_derived::OwnedRequest;
 use crate::concurrency::JoinHandle;
 use crate::concurrency::MpscUnboundedReceiver as InputPortReceiver;
@@ -31,6 +32,7 @@ use crate::Actor;
 use crate::ActorId;
 use crate::ActorName;
 use crate::ActorRef;
+#[cfg(feature = "derived-actor-from-cell")]
 use crate::DerivedActorRef;
 use crate::Message;
 use crate::RactorErr;
