@@ -324,9 +324,10 @@ impl ActorCell {
     #[cfg(feature = "derived-actor-from-cell")]
     pub fn provide_derived<T: Message>(&self) -> Option<DerivedActorRef<T>> {
         let mut owned_request = OwnedRequest::<T>::new();
+        let request = owned_request.as_request();
         self.inner
             .derived_provider
-            .provide_derived_actor_ref(self.clone(), owned_request.as_request());
+            .provide_derived_actor_ref(self.clone(), request);
         owned_request.extract()
     }
 
