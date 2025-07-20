@@ -16,6 +16,7 @@ use crate::concurrency::MpscUnboundedSender as InputPort;
 use crate::concurrency::OneshotReceiver;
 use crate::concurrency::OneshotSender as OneshotInputPort;
 use crate::message::BoxedMessage;
+#[cfg(feature = "cluster")]
 use crate::message::LocalOrSerialized;
 #[cfg(feature = "cluster")]
 use crate::message::SerializedMessage;
@@ -176,22 +177,6 @@ impl ActorProperties {
     where
         TMessage: Message,
     {
-        //// Only type-check messages of local actors, remote actors send serialized
-        //// payloads
-        if self.id.is_local() && self.type_id != std::any::TypeId::of::<TMessage>() {
-            return Err(MessagingErr::InvalidActorType);
-        }
-        unsafe { self.send_message_unchecked(message) }
-    }
-    /// ## Safety
-    /// This should only be called if self.type_id() == std::any::TypeId::of::<TMessage>
-    pub(crate) unsafe fn send_message_unchecked<TMessage>(
-        &self,
-        message: TMessage,
-    ) -> Result<(), MessagingErr<TMessage>>
-    where
-        TMessage: Message,
-    {
         let status = self.get_status();
         if status >= ActorStatus::Draining {
             // if currently draining, stopping or stopped: reject messages directly.
@@ -219,12 +204,9 @@ impl ActorProperties {
                 MessagingErr::InvalidActorType => MessagingErr::InvalidActorType,
             }),
             boxed => {
-                // SAFETY:
-                // The caller must ensure that self.type_id() == std::any::TypeId::of::<TMessage>
-                let sender = unsafe {
-                    let ptr: &dyn GenericInputPort = &*self.message;
-                    &(*(ptr as *const dyn GenericInputPort
-                        as *const InputPort<MuxedMessage<TMessage>>))
+                let sender: &InputPort<MuxedMessage<TMessage>> = {
+                    let ptr: &dyn Any = &*self.message;
+                    ptr.downcast_ref().ok_or(MessagingErr::InvalidActorType)?
                 };
                 sender
                     .send(MuxedMessage::Message(boxed))

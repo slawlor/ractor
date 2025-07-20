@@ -70,7 +70,8 @@ pub(crate) enum LocalOrSerialized<T: Any + Send> {
     Serialized(SerializedMessage),
 }
 impl<T: Any + Send> LocalOrSerialized<T> {
-    pub fn into_local(self) -> Option<T> {
+    #[cfg(not(feature = "cluster"))]
+    pub(crate) fn into_local(self) -> Option<T> {
         match self {
             LocalOrSerialized::Local(msg) => Some(msg),
             #[cfg(feature = "cluster")]
@@ -78,18 +79,11 @@ impl<T: Any + Send> LocalOrSerialized<T> {
         }
     }
     #[cfg(feature = "cluster")]
-    pub fn into_serialized(self) -> Option<SerializedMessage> {
+    pub(crate) fn into_serialized(self) -> Option<SerializedMessage> {
         match self {
             LocalOrSerialized::Local(_) => None,
             LocalOrSerialized::Serialized(msg) => Some(msg),
         }
-    }
-    pub fn is_local(&self) -> bool {
-        matches!(self, LocalOrSerialized::Local(_))
-    }
-    #[cfg(feature = "cluster")]
-    pub fn is_serialized(&self) -> bool {
-        matches!(self, LocalOrSerialized::Serialized(_))
     }
 }
 
