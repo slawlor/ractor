@@ -455,8 +455,9 @@ pub trait Actor: Sized + Sync + Send + 'static {
     #[allow(unused_variables)]
     fn provide_derived_actor_ref<'a>(
         myself: ActorRef<Self::Msg>,
-        request: &mut RequestDerived<'a>,
-    ) {
+        request: RequestDerived<'a>,
+    ) -> RequestDerived<'a> {
+        request
     }
 }
 

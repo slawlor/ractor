@@ -2,7 +2,12 @@
 
 use std::{any::Any, marker::PhantomData};
 
-use crate::{thread_local::ThreadLocalActor, Actor, ActorCell, ActorRef, DerivedActorRef};
+#[cfg(all(
+    feature = "tokio_runtime",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
+use crate::thread_local::ThreadLocalActor;
+use crate::{Actor, ActorCell, ActorRef, DerivedActorRef};
 
 use super::Message;
 
@@ -12,7 +17,15 @@ impl<T> DerivedProviderType<T> {
         DerivedProviderType(PhantomData)
     }
 }
+#[cfg(all(
+    feature = "tokio_runtime",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
 pub(crate) struct DerivedProviderTypeLocal<TActor>(PhantomData<fn() -> TActor>);
+#[cfg(all(
+    feature = "tokio_runtime",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
 impl<T> DerivedProviderTypeLocal<T> {
     pub(crate) fn new() -> Self {
         DerivedProviderTypeLocal(PhantomData)
@@ -35,6 +48,10 @@ impl<TActor: Actor> DerivedProvider for DerivedProviderType<TActor> {
         TActor::provide_derived_actor_ref(ActorRef::<TActor::Msg>::from(actor_cell), request)
     }
 }
+#[cfg(all(
+    feature = "tokio_runtime",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
 impl<TActor: ThreadLocalActor> DerivedProvider for DerivedProviderTypeLocal<TActor> {
     fn provide_derived_actor_ref<'a>(
         &self,

@@ -283,8 +283,9 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     #[allow(unused_variables)]
     fn provide_derived_actor_ref<'a>(
         my_self: ActorRef<Self::Msg>,
-        request: &mut RequestDerived<'a>,
-    ) {
+        request: RequestDerived<'a>,
+    ) -> RequestDerived<'a> {
+        request
     }
 }
 
