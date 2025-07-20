@@ -271,7 +271,7 @@ fn process_messages(c: &mut Criterion) {
         async fn handle(
             &self,
             myself: ActorRef<Self::Msg>,
-            message: Self::Msg,
+            _message: Self::Msg,
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             *state += 1;
