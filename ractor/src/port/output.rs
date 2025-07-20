@@ -246,6 +246,7 @@ mod inner {
     //use crate::concurrency::{mpsc_unbounded, oneshot, MpscUnboundedSender, OneshotSender};
     use crate::{ActorId, ActorRef, DerivedActorRef, Message};
 
+    #[cfg(feature = "tokio_runtime")]
     const CONSUME_BUDGET_FACTOR: usize = 32;
 
     enum OutportMessage<Id, TMsg> {
@@ -277,7 +278,7 @@ mod inner {
         pub(super) fn new(allow_duplicate_subscription: bool) -> Self {
             let (tx, mut rx) = mpsc_unbounded::<OutportMessage<Id, TMsg>>();
 
-            tokio::spawn(async move {
+            crate::concurrency::spawn(async move {
                 let mut subscribers = Vec::<(Id, Box<dyn Subscriber<Id, TMsg>>)>::new();
 
                 while let Some(msg) = rx.recv().await {
@@ -302,6 +303,7 @@ mod inner {
                                 //
                                 // NB: every task get a budget of 128, this budget is decreased by one
                                 // at each rx.recv() call and at each CONSUME_BUDGET_FACTOR call to subscriber.send
+                                #[cfg(feature = "tokio_runtime")]
                                 if i % CONSUME_BUDGET_FACTOR == 0 {
                                     tokio::task::consume_budget().await;
                                 }
