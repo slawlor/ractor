@@ -247,11 +247,17 @@ mod inner {
     use crate::{ActorId, ActorRef, DerivedActorRef, Message};
 
     #[cfg(feature = "tokio_runtime")]
-    const CONSUME_BUDGET_FACTOR: usize = 32;
+    /// As we do a lot of iteratio without calling async
+    /// method while dispatching message, we consume 1 tokio
+    /// task budget unit every CONSUMBE_BUDGET_FACTOR message sent
+    const CONSUME_BUDGET_FACTOR: u32 = 32;
+    /// Each subscriber may receive a batch of MAX_BATCH_SIZE
+    /// before another batch is sent to an other subscriber
+    const MAX_BATCH_SIZE: usize = 32;
 
     enum OutportMessage<Id, TMsg> {
         Data(TMsg),
-        SetSubscriber(Box<dyn Subscriber<Id, TMsg>>),
+        SetSubscriber(Option<Box<dyn Subscriber<Id, TMsg>>>),
         //RemoveSubscriber(Id),
         //Subscribers(OneshotSender<Vec<Id>>),
     }
@@ -280,66 +286,141 @@ mod inner {
 
             crate::concurrency::spawn(async move {
                 let mut subscribers = Vec::<(Id, Box<dyn Subscriber<Id, TMsg>>)>::new();
+                let mut batch = Vec::new();
+                //NB: This algorithm may look overcomplicated but it enhances the OuputPort benchmark
+                // by 70%!!! compared to a trivial algorith... the duration of sending message to the
+                // output port is divided by 3.
+                loop {
+                    let l = rx.len().clamp(1, MAX_BATCH_SIZE);
+                    if rx.recv_many(&mut batch, l).await == 0 {
+                        break;
+                    }
 
-                while let Some(msg) = rx.recv().await {
-                    match msg {
-                        OutportMessage::Data(v) => {
-                            // We do not want to hold a reference to dyn Subscriber
-                            // to cross an await, otherwise, Subscriber would need to be Sync.
-                            // So we iterate by index. This also simplify extraction
-                            // of subscribers.
-                            let mut i = 0;
-                            while i < subscribers.len() {
-                                if !subscribers[i].1.send(&v) {
-                                    subscribers.remove(i);
-                                } else {
-                                    i += 1;
+                    let mut i = 0;
+                    let mut coop_count = 0u32;
+                    // First we iterate on subscribers already present
+                    // and send to ech all messages in the batch
+                    'subs: while i < subscribers.len() {
+                        // We processes the messages but only
+                        // apply change to subscribers that do affact
+                        // the current subscriber. The aim is to preserve
+                        // the sequentiality a process that would send to
+                        // the output port my expect.
+                        for msg in batch.iter_mut() {
+                            match msg {
+                                OutportMessage::Data(v) => {
+                                    if !subscribers[i].1.send(v) {
+                                        subscribers.remove(i);
+                                        continue 'subs;
+                                    } else {
+                                        coop_count = coop_count.wrapping_add(1);
+                                        #[cfg(feature = "tokio_runtime")]
+                                        if coop_count % CONSUME_BUDGET_FACTOR == 0 {
+                                            tokio::task::coop::consume_budget().await
+                                        }
+                                    }
                                 }
-                                // In case there is a very large number of subscribers and subscribers[i].1.send(&v) is heavy
-                                // the execution of this loop iteration could be unfair.
-                                //
-                                // So every CONSUME_BUDGET_FACTOR send we consume budget for the task
-                                // so that the tokio runtime can take when necessary.
-                                //
-                                // NB: every task get a budget of 128, this budget is decreased by one
-                                // at each rx.recv() call and at each CONSUME_BUDGET_FACTOR call to subscriber.send
-                                #[cfg(feature = "tokio_runtime")]
-                                if i % CONSUME_BUDGET_FACTOR == 0 {
-                                    tokio::task::consume_budget().await;
-                                }
+                                OutportMessage::SetSubscriber(opt_subscriber) => {
+                                    let sid = if let Some(subscriber) = opt_subscriber {
+                                        let sid = subscriber.id();
+                                        if sid != subscribers[i].0 {
+                                            continue;
+                                        }
+                                        sid
+                                    } else {
+                                        continue;
+                                    };
+                                    let subscriber = opt_subscriber.take().unwrap();
+
+                                    // We ensure there is no duplicate subscription
+                                    if !allow_duplicate_subscription {
+                                        if let Some((_, prev_subscriber)) =
+                                            subscribers.iter_mut().find(|(id, _)| id == &sid)
+                                        {
+                                            // In case of duplication, previous subscription is overrided
+                                            *prev_subscriber = subscriber;
+                                        } else {
+                                            subscribers.push((subscriber.id(), subscriber));
+                                        }
+                                    } else {
+                                        subscribers.push((subscriber.id(), subscriber));
+                                    }
+                                } //OutportMessage::RemoveSubscriber(id) => {
+                                  //    if *id != subscribers[i].0 {
+                                  //        continue;
+                                  //    }
+                                  //    subscribers.remove(i);
+                                  //    continue 'subs;
+                                  //}
+                                  //OutportMessage::Subscribers(_) => (),
                             }
                         }
-                        OutportMessage::SetSubscriber(subscriber) => {
-                            let sid = subscriber.id();
+                        i += 1;
+                    }
 
-                            // We ensure there is no duplicate subscription
-                            if !allow_duplicate_subscription {
-                                if let Some((_, prev_subscriber)) =
-                                    subscribers.iter_mut().find(|(id, _)| id == &sid)
-                                {
-                                    // In case of duplication, previous subscription is overrided
-                                    *prev_subscriber = subscriber;
+                    let i0 = i;
+                    // The for the new subscribers we switch back
+                    // to a less efficient algrorithm we iterate first by messages
+                    // then by subscribers to ensure expected sequentiality.
+                    for msg in batch.drain(..) {
+                        match msg {
+                            OutportMessage::Data(v) => {
+                                // We do not want to hold a reference to dyn Subscriber
+                                // to cross an await, otherwise, Subscriber would need to be Sync.
+                                // So we iterate by index. This also simplify extraction
+                                // of subscribers.
+                                let mut i = i0;
+                                while i < subscribers.len() {
+                                    if !subscribers[i].1.send(&v) {
+                                        subscribers.remove(i);
+                                    } else {
+                                        i += 1;
+                                        #[cfg(feature = "tokio_runtime")]
+                                        if coop_count % CONSUME_BUDGET_FACTOR == 0 {
+                                            tokio::task::coop::consume_budget().await
+                                        }
+                                        coop_count = coop_count.wrapping_add(1);
+                                    }
+                                }
+                            }
+                            OutportMessage::SetSubscriber(Some(subscriber)) => {
+                                let sid = subscriber.id();
+
+                                // We ensure there is no duplicate subscription
+                                if !allow_duplicate_subscription {
+                                    if let Some((_, prev_subscriber)) =
+                                        subscribers.iter_mut().find(|(id, _)| id == &sid)
+                                    {
+                                        // In case of duplication, previous subscription is overrided
+                                        *prev_subscriber = subscriber;
+                                    } else {
+                                        subscribers.push((subscriber.id(), subscriber));
+                                    }
                                 } else {
                                     subscribers.push((subscriber.id(), subscriber));
                                 }
-                            } else {
-                                subscribers.push((subscriber.id(), subscriber));
-                            }
-                        } //OutportMessage::RemoveSubscriber(id) => {
-                          //    if allow_duplicate_subscription {
-                          //        subscribers.retain(|(sid, _)| sid != &id);
-                          //    } else {
-                          //        // As we ensure there is only 1 id in the vector, we can only
-                          //        // remove the first find subscriber which has the right id.
-                          //        if let Some(i) = subscribers.iter().position(|(sid, _)| sid == &id)
-                          //        {
-                          //            subscribers.remove(i);
-                          //        }
-                          //    }
-                          //}
-                          //OutportMessage::Subscribers(sender) => {
-                          //    _ = sender.send(subscribers.iter().map(|(id, _)| id.clone()).collect());
-                          //}
+                            } //OutportMessage::RemoveSubscriber(id) => {
+                            //    if allow_duplicate_subscription {
+                            //        subscribers.retain(|(sid, _)| sid != &id);
+                            //    } else {
+                            //        // As we ensure there is only 1 id in the vector, we can only
+                            //        // remove the first find subscriber which has the right id.
+                            //        if let Some(i) =
+                            //            subscribers.iter().position(|(sid, _)| sid == &id)
+                            //        {
+                            //            subscribers.remove(i);
+                            //        }
+                            //    }
+                            //}
+                            OutportMessage::SetSubscriber(None) => (),
+                            //OutportMessage::Subscribers(sender) => {
+                            //    // Finaly the observed subscriber list
+                            //    // may not reflect what may be expected
+                            //    // by sequentiality of message sent.
+                            //    _ = sender
+                            //        .send(subscribers.iter().map(|(id, _)| id.clone()).collect());
+                            //}
+                        }
                     }
                 }
             });
@@ -391,10 +472,10 @@ mod inner {
         ) {
             _ = self
                 .0
-                .send(OutportMessage::SetSubscriber(Box::new(Filtering {
+                .send(OutportMessage::SetSubscriber(Some(Box::new(Filtering {
                     actor_ref,
                     filter,
-                })));
+                }))));
         }
     }
 
