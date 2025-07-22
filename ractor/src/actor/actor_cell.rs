@@ -10,6 +10,8 @@
 //! for references to a given actor and its communication channels
 
 use std::any::TypeId;
+use std::borrow::Borrow;
+use std::hash::Hash;
 use std::sync::Arc;
 
 #[cfg(feature = "async-std")]
@@ -225,6 +227,12 @@ impl PartialEq for ActorCell {
 
 impl Eq for ActorCell {}
 
+impl Borrow<ActorId> for ActorCell {
+    fn borrow(&self) -> &ActorId {
+        &self.inner.id
+    }
+}
+
 impl std::hash::Hash for ActorCell {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.get_id().hash(state)
@@ -315,10 +323,39 @@ impl ActorCell {
     pub fn get_status(&self) -> ActorStatus {
         self.inner.get_status()
     }
-
-    /// if false, the actor should not be added to monitors
     pub(crate) fn can_monitor(&self) -> bool {
         self.inner.can_monitor()
+    }
+
+    /// Declare removal of listening to scope/group.
+    pub(crate) fn remove_listen_group<S, G>(&self, scope: &S, group: &G)
+    where
+        S: Hash + Eq + ?Sized,
+        G: Hash + Eq + ?Sized,
+        ScopeName: Borrow<S>,
+        GroupName: Borrow<G>,
+    {
+        self.inner.remove_listen_group(scope, group);
+    }
+    /// Declare listening scope/group.
+    /// If it return false, the insertion should be abandonned.
+    #[must_use]
+    pub(crate) fn add_listen_group(&self, scope: ScopeName, group: GroupName) -> bool {
+        self.inner.add_listen_group(scope, group)
+    }
+    /// Declare removal of listening to scope.
+    pub(crate) fn remove_listen_scope<S>(&self, scope: &S)
+    where
+        S: Hash + Eq + ?Sized,
+        ScopeName: Borrow<S>,
+    {
+        self.inner.remove_listen_scope(scope);
+    }
+    /// Declare listening scope.
+    /// If it return false, the insertion should be abandonned.
+    #[must_use]
+    pub(crate) fn add_listen_scope(&self, scope: ScopeName) -> bool {
+        self.inner.add_listen_scope(scope)
     }
 
     /// Declare membership to scope/group.
@@ -362,8 +399,7 @@ impl ActorCell {
             }
 
             let member_ship = self.inner.remove_member_ship_ability();
-            crate::pg::demonitor_all(self);
-            crate::pg::leave_all(self.clone(), member_ship);
+            crate::pg::leave_and_demonitor_all(self.clone(), member_ship);
         }
 
         // Fix for #254. We should only notify the stop listener AFTER post_stop
