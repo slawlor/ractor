@@ -575,13 +575,25 @@ pub fn monitor_scoped(scope: ScopeName, group: GroupName, actor: ActorCell) {
     }
 }
 
-/// Remove from world monitoring
+/// Monitor any modification in any group of any scope.
+///
+/// `monitor_scoped(ALL_SCOPE_NOTIFICATION.to_owned(), ALL_ACTOR_NOTIFICATIONS.to_owned(), actor)`
+/// would register the actor for all groups of all scopes that exists at the time of call.
+///
+/// This function register the actor for every group and every scope that exist or will
+/// be created.
 pub fn monitor_world(actor: &ActorCell) {
     let monitor = get_monitor();
     _ = add_to_listeners(&monitor.world_listeners, actor);
 }
 
-/// Subscribes the provided [crate::Actor] to the scope for updates
+/// Monitor the scope for update
+///
+/// `monitor_scoped(scope, ALL_ACTOR_NOTIFICATIONS.to_owned(), actor)`
+/// register the actor for the groups that are actualy present in the scope.
+///
+/// This function register the actor for all the groups present in the scope and
+/// any new group that may be added to the scope in the future.
 ///
 /// * `scope` - the scope to monitor
 /// * `actor` - The [ActorCell] representing who will receive updates
@@ -632,6 +644,14 @@ where
     }
 }
 /// Remove from world monitoring
+///
+/// This does the oposite of monitor_world.
+/// Any registration of this actor in specific scope and specific group
+/// will not be removed.
+///
+/// To remove the actor from any registration it shall also be called:
+/// - `demonitor_scope(ALL_SCOPES_NOTIFICATION.to_owned())`
+/// - `demonitor_scoped(ALL_SCOPES_NOTIFICATION.to_owned(), ALL_GROUPS_NOTIFICATION.to_owned())`
 pub fn demonitor_world(actor: &ActorCell) {
     let monitor = get_monitor();
     monitor.world_listeners.remove(&actor);
@@ -676,6 +696,11 @@ where
 }
 
 /// Unsubscribes the provided [crate::Actor] from the scope for updates
+///
+/// Note that this call does this opposite of `monitor_scope`. If the actor
+/// has been registered for update in a group of this scope with `monito_scoped`
+/// this registration will still exist. To unregister the actor of all the groups
+/// inside the scope, one shall also call `demonitor_scoped(scope, ALL_GROUP_NOTIFICATION.to_owned(), actor)`
 ///
 /// * `scope` - The scope to demonitor
 /// * `actor` - The [ActorCell] representing who will no longer receive updates
