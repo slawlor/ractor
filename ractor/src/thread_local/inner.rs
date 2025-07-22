@@ -99,9 +99,9 @@ impl ActorProperties {
             Self {
                 id,
                 name,
-                status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
+                status: AtomicU8::new(ActorStatus::Unstarted as u8),
                 signal: Mutex::new(Some(tx_signal)),
-                wait_handler: Arc::new(mpsc::Notify::new()),
+                wait_handler: mpsc::Notify::new(),
                 stop: Mutex::new(Some(tx_stop)),
                 supervision: tx_supervision,
                 message: tx_message,
