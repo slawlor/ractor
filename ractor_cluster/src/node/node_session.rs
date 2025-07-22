@@ -726,9 +726,15 @@ impl NodeSession {
         }
 
         // setup scope monitoring
-        ractor::pg::monitor_scope(ractor::pg::ALL_SCOPES_NOTIFICATION, myself.get_cell());
+        ractor::pg::monitor_scope(
+            ractor::pg::ALL_SCOPES_NOTIFICATION.to_owned(),
+            myself.get_cell(),
+        );
         // setup PG monitoring
-        ractor::pg::monitor(ractor::pg::ALL_GROUPS_NOTIFICATION, myself.get_cell());
+        ractor::pg::monitor(
+            ractor::pg::ALL_GROUPS_NOTIFICATION.to_owned(),
+            myself.get_cell(),
+        );
 
         // Scan all scopes with their PG groups + synchronize them
         let scopes_and_groups = which_scopes_and_groups();

@@ -270,7 +270,28 @@ pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
 }
 
 #[must_use]
-// return true if the group should be removed
+/// return true if the scope may be cleaned
+fn clean_up_group<G>(sd: &ScopeData, group: &G) -> bool
+where
+    G: Hash + Eq + ?Sized,
+    GroupName: Borrow<G>,
+{
+    sd.groups
+        .remove_if(group, |_, gd| {
+            gd.members.is_empty() && gd.listeners.is_empty()
+        })
+        .is_some()
+}
+fn clean_up_scope<S>(monitor: &PgState, scope: &S)
+where
+    S: Hash + Eq + ?Sized,
+    ScopeName: Borrow<S>,
+{
+    monitor.scopes.remove_if(scope, |_, sd| {
+        sd.groups.is_empty() && sd.listeners.is_empty()
+    });
+}
+
 fn leave_actors_from_group(
     monitor: &PgState,
     sd: &ScopeData,
@@ -278,7 +299,7 @@ fn leave_actors_from_group(
     mut actors: Vec<ActorCell>,
     scope: ScopeName,
     group: GroupName,
-) -> bool {
+) {
     let mut garbadge = Vec::new();
     actors.retain(|actor| {
         if gd.members.remove(actor).is_some() {
@@ -292,26 +313,19 @@ fn leave_actors_from_group(
     notify_listeners(&gd.listeners, &notif, &mut garbadge);
     notify_listeners(&sd.listeners, &notif, &mut garbadge);
     notify_listeners(&monitor.world_listeners, &notif, &mut garbadge);
-    gd.members.is_empty()
+    if clean_up_group(sd, &group) {
+        clean_up_scope(monitor, &scope)
+    }
 }
-#[must_use]
-/// return true if the scope shall be removed
 fn leave_actors_from_scope(
     monitor: &PgState,
     sd: &ScopeData,
     actors: Vec<ActorCell>,
     scope: ScopeName,
     group: GroupName,
-) -> bool {
+) {
     if let Some(gd) = sd.groups.get(&group).map(|r| (*r).clone()) {
-        if leave_actors_from_group(monitor, &sd, &gd, actors, scope, group.clone()) {
-            sd.groups.remove(&group);
-            sd.groups.is_empty()
-        } else {
-            false
-        }
-    } else {
-        false
+        leave_actors_from_group(monitor, &sd, &gd, actors, scope, group.clone())
     }
 }
 
@@ -332,9 +346,7 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
     let monitor = get_monitor();
 
     if let Some(sd) = monitor.scopes.get(&scope).map(|r| (*r).clone()) {
-        if leave_actors_from_scope(&monitor, &sd, actors, scope.clone(), group) {
-            monitor.scopes.remove(&scope);
-        }
+        leave_actors_from_scope(&monitor, &sd, actors, scope.clone(), group);
     }
 }
 
@@ -490,55 +502,103 @@ pub fn which_scopes() -> Vec<ScopeName> {
 
     monitor.scopes.iter().map(|r| r.key().clone()).collect()
 }
-/// Subscribes the provided [crate::Actor] to the group in the specified scope
-/// for updates
-pub fn monitor<G>(group: &G, actor: ActorCell)
-where
-    G: Hash + Eq + ?Sized + AsRef<str>,
-    GroupName: Borrow<G>,
-{
-    monitor_scoped::<str, G>(DEFAULT_SCOPE, group, actor);
+
+#[must_use]
+// return true if cleanup shall be done
+fn add_to_listeners(listeners: &DashSet<ActorCell>, actor: &ActorCell) -> bool {
+    if actor.can_monitor() {
+        listeners.insert(actor.clone());
+        if !actor.can_monitor() {
+            listeners.remove(&actor);
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+#[must_use]
+// return true if monitor may be cleaned from the scope
+fn add_listener_to_group(sd: &ScopeData, actor: &ActorCell, group: GroupName) -> bool {
+    if let Some(gd) = sd.groups.get(&group).map(|r| (*r).clone()) {
+        if add_to_listeners(&gd.listeners, actor) {
+            clean_up_group(sd, &group)
+        } else {
+            false
+        }
+    } else {
+        let gd = match sd.groups.entry(group.to_owned()) {
+            Occupied(oent) => oent.get().clone(),
+            Vacant(vent) => vent.insert(Arc::new(GroupData::default())).clone(),
+        };
+        if add_to_listeners(&gd.listeners, actor) {
+            clean_up_group(sd, &group)
+        } else {
+            false
+        }
+    }
 }
 
 /// Subscribes the provided [crate::Actor] to the group in the specified scope
 /// for updates
-pub fn monitor_scoped<S, G>(scope: &S, group: &G, actor: ActorCell)
-where
-    S: Hash + Eq + ?Sized,
-    G: Hash + Eq + ?Sized,
-    ScopeName: Borrow<S>,
-    GroupName: Borrow<G>,
-{
+pub fn monitor(group: GroupName, actor: ActorCell) {
+    monitor_scoped(DEFAULT_SCOPE.to_string(), group, actor);
+}
+
+/// Subscribes the provided [crate::Actor] to the group in the specified scope
+/// for updates
+pub fn monitor_scoped(scope: ScopeName, group: GroupName, actor: ActorCell) {
     if scope == all_scopes_notification().borrow() {
         which_scopes()
             .into_iter()
-            .for_each(|scope| monitor_scoped(&scope, group, actor.clone()));
+            .for_each(|scope| monitor_scoped(scope, group.clone(), actor.clone()));
     } else if group == all_groups_notification().borrow() {
-        which_scoped_groups(scope)
+        which_scoped_groups(&scope)
             .into_iter()
-            .for_each(|group| monitor_scoped(scope, &group, actor.clone()));
+            .for_each(|group| monitor_scoped(scope.clone(), group, actor.clone()));
     } else {
         let monitor = get_monitor();
-        if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
-            if let Some(gd) = sd.groups.get(group).map(|r| (*r).clone()) {
-                gd.listeners.insert(actor);
+        if let Some(sd) = monitor.scopes.get(&scope).map(|r| (*r).clone()) {
+            if add_listener_to_group(&sd, &actor, group) {
+                clean_up_scope(monitor, &scope)
+            }
+        } else {
+            let sd = match monitor.scopes.entry(scope.to_owned()) {
+                Occupied(oent) => oent.get().clone(),
+                Vacant(vent) => vent.insert(Arc::new(ScopeData::default())).clone(),
+            };
+            if add_listener_to_group(&sd, &actor, group) {
+                clean_up_scope(monitor, &scope)
             }
         }
     }
+}
+
+/// Remove from world monitoring
+pub fn monitor_world(actor: &ActorCell) {
+    let monitor = get_monitor();
+    _ = add_to_listeners(&monitor.world_listeners, actor);
 }
 
 /// Subscribes the provided [crate::Actor] to the scope for updates
 ///
 /// * `scope` - the scope to monitor
 /// * `actor` - The [ActorCell] representing who will receive updates
-pub fn monitor_scope<S>(scope: &S, actor: ActorCell)
-where
-    S: Hash + Eq + ?Sized,
-    ScopeName: Borrow<S>,
-{
+pub fn monitor_scope(scope: ScopeName, actor: ActorCell) {
     let monitor = get_monitor();
-    if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
-        sd.listeners.insert(actor);
+    if let Some(sd) = monitor.scopes.get(&scope).map(|r| (*r).clone()) {
+        if add_to_listeners(&sd.listeners, &actor) {
+            clean_up_scope(monitor, &scope)
+        }
+    } else {
+        let sd = match monitor.scopes.entry(scope.to_owned()) {
+            Occupied(oent) => oent.get().clone(),
+            Vacant(vent) => vent.insert(Arc::new(ScopeData::default())).clone(),
+        };
+        if add_to_listeners(&sd.listeners, &actor) {
+            clean_up_scope(monitor, &scope)
+        }
     }
 }
 /// Unsubscribes the provided [crate::Actor] for updates from the group
@@ -565,7 +625,40 @@ where
     } else if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
         if let Some(gd) = sd.groups.get(group).map(|r| (*r).clone()) {
             gd.listeners.retain(|cell| cell.get_id() != actor);
+            if clean_up_group(&sd, group) {
+                clean_up_scope(monitor, scope)
+            }
         }
+    }
+}
+/// Remove from world monitoring
+pub fn demonitor_world(actor: &ActorCell) {
+    let monitor = get_monitor();
+    monitor.world_listeners.remove(&actor);
+}
+
+pub(crate) fn demonitor_all(actor: &ActorCell) {
+    demonitor_world(actor);
+    let monitor = get_monitor();
+    let mut s_to_clean = Vec::new();
+    let mut g_to_clean = Vec::new();
+    for sd in monitor.scopes.iter() {
+        let mut shall_check_removal = sd.listeners.remove(actor).is_some();
+        for gd in sd.groups.iter() {
+            if gd.listeners.remove(actor).is_some() {
+                g_to_clean.push(gd.key().clone());
+            }
+        }
+        for group in g_to_clean.iter() {
+            shall_check_removal |= clean_up_group(&sd, group);
+        }
+        g_to_clean.clear();
+        if shall_check_removal {
+            s_to_clean.push(sd.key().clone());
+        }
+    }
+    for scope in s_to_clean {
+        clean_up_scope(monitor, &scope)
     }
 }
 
@@ -598,5 +691,6 @@ where
             .for_each(|scope| demonitor_scope::<str>(&scope, actor));
     } else if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
         sd.listeners.retain(|cell| cell.get_id() != actor);
+        clean_up_scope(monitor, &scope);
     }
 }

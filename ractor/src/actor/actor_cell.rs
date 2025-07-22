@@ -316,6 +316,11 @@ impl ActorCell {
         self.inner.get_status()
     }
 
+    /// if false, the actor should not be added to monitors
+    pub(crate) fn can_monitor(&self) -> bool {
+        self.inner.can_monitor()
+    }
+
     /// Declare membership to scope/group.
     /// If it return false, the insertion should be abandonned.
     #[must_use]
@@ -357,6 +362,7 @@ impl ActorCell {
             }
 
             let member_ship = self.inner.remove_member_ship_ability();
+            crate::pg::demonitor_all(self);
             crate::pg::leave_all(self.clone(), member_ship);
         }
 

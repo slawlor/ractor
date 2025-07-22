@@ -215,6 +215,7 @@ async fn test_multiple_members_in_scoped_group() {
 }
 
 #[named]
+#[serial]
 #[crate::concurrency::test]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_os = "unknown")),
@@ -573,7 +574,7 @@ async fn test_pg_monitoring() {
             myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
-            pg::monitor(&self.pg_group.clone(), myself.into());
+            pg::monitor(self.pg_group.clone(), myself.into());
             Ok(())
         }
 
@@ -620,6 +621,7 @@ async fn test_pg_monitoring() {
     .await;
 
     // kill the pg member
+    println!("close pg test actor");
     test_actor.stop(None);
     test_handle.await.expect("Actor cleanup failed");
     // it should have notified that it's unsubscribed
@@ -630,6 +632,7 @@ async fn test_pg_monitoring() {
     .await;
 
     // cleanup
+    println!("close pg monitor");
     monitor_actor.stop(None);
     monitor_handle.await.expect("Actor cleanup failed");
 }
@@ -688,7 +691,7 @@ async fn test_scope_monitoring() {
             myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
-            pg::monitor_scope(&self.scope.clone(), myself.into());
+            pg::monitor_scope(self.scope.clone(), myself.into());
             Ok(())
         }
 
@@ -699,7 +702,6 @@ async fn test_scope_monitoring() {
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             if let SupervisionEvent::ProcessGroupChanged(change) = message {
-                dbg!(&change);
                 match change {
                     pg::GroupChangeMessage::Join(scope_name, _which, who) => {
                         // ensure this test can run concurrently to others

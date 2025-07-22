@@ -131,6 +131,12 @@ impl ActorProperties {
             false
         }
     }
+    pub(crate) fn can_monitor(&self) -> bool {
+        let Ok(lk) = self.member_ship.lock() else {
+            return false;
+        };
+        lk.is_some()
+    }
     pub(crate) fn remove_member_ship_ability(&self) -> Vec<(ScopeName, GroupName)> {
         let Ok(mut lk) = self.member_ship.lock() else {
             return Vec::new();
