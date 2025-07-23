@@ -219,8 +219,7 @@ impl Actor for MidLevelActor {
                 tracing::info!("MidLevelActor: {dead_actor:?} panicked with '{panic_msg}'");
 
                 panic!(
-                    "MidLevelActor: Mid-level actor panicking because Leaf actor panicked with '{}'",
-                    panic_msg
+                    "MidLevelActor: Mid-level actor panicking because Leaf actor panicked with '{panic_msg}'"
                 );
             }
             other => {
