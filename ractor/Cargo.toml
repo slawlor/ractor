@@ -24,11 +24,16 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 cluster = []
 monitors = []
 message_span_propogation = []
+derived-actor-from-cell = []
 tokio_runtime = ["tokio/time", "tokio/rt", "tokio/macros", "tokio/tracing"]
 blanket_serde = ["serde", "pot", "cluster"]
 async-trait = ["dep:async-trait"]
 
-default = ["tokio_runtime", "message_span_propogation"]
+default = [
+    "tokio_runtime",
+    "message_span_propogation",
+    "derived-actor-from-cell",
+]
 
 [dependencies]
 ## Required dependencies

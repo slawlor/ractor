@@ -20,6 +20,8 @@ use super::messages::Signal;
 use super::messages::StopMessage;
 use super::SupervisionEvent;
 use crate::actor::actor_properties::ActorProperties;
+#[cfg(feature = "derived-actor-from-cell")]
+use crate::actor::request_derived::OwnedRequest;
 use crate::concurrency::JoinHandle;
 use crate::concurrency::MpscUnboundedReceiver as InputPortReceiver;
 use crate::concurrency::OneshotReceiver;
@@ -30,6 +32,8 @@ use crate::Actor;
 use crate::ActorId;
 use crate::ActorName;
 use crate::ActorRef;
+#[cfg(feature = "derived-actor-from-cell")]
+use crate::DerivedActorRef;
 use crate::Message;
 use crate::RactorErr;
 use crate::SpawnErr;
@@ -312,6 +316,19 @@ impl ActorCell {
     /// Returns the [super::Actor]'s current [ActorStatus]
     pub fn get_status(&self) -> ActorStatus {
         self.inner.get_status()
+    }
+
+    /// Retrieve the current status of an [super::Actor]
+    ///
+    /// Returns the [super::Actor]'s current [ActorStatus]
+    #[cfg(feature = "derived-actor-from-cell")]
+    pub fn provide_derived<T: Message>(&self) -> Option<DerivedActorRef<T>> {
+        let mut owned_request = OwnedRequest::<T>::new();
+        let request = owned_request.as_request();
+        self.inner
+            .derived_provider
+            .provide_derived_actor_ref(self.clone(), request);
+        owned_request.extract()
     }
 
     /// Identifies if this actor supports remote (dist) communication

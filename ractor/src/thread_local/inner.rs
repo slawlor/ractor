@@ -23,6 +23,8 @@ use crate::actor::actor_properties::ActorProperties;
 use crate::actor::actor_properties::MuxedMessage;
 use crate::actor::get_panic_string;
 use crate::actor::messages::StopMessage;
+#[cfg(feature = "derived-actor-from-cell")]
+use crate::actor::request_derived::DerivedProviderTypeLocal;
 use crate::actor::ActorLoopResult;
 use crate::concurrency as mpsc;
 use crate::concurrency::JoinHandle;
@@ -109,6 +111,8 @@ impl ActorProperties {
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
+                #[cfg(feature = "derived-actor-from-cell")]
+                derived_provider: Box::new(DerivedProviderTypeLocal::<TActor>::new()),
             },
             rx_signal,
             rx_stop,
