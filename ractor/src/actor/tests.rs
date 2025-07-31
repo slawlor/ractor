@@ -1345,6 +1345,13 @@ async fn derived_actor_ref() {
         .send_message(u16_message)
         .expect("Failed to send message to actor");
 
+    // timer
+    actor.get_derived()
+        .send_after(Duration::from_millis(100), move || u16_message)
+        .await
+        .expect("Failed to await the join handle")
+        .expect("Failed to send message to actor");
+
     actor
         .drain_and_wait(None)
         .await
