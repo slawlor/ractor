@@ -28,8 +28,6 @@ use super::WorkerId;
 use crate::concurrency::Duration;
 use crate::concurrency::Instant;
 use crate::concurrency::JoinHandle;
-#[cfg(not(feature = "async-trait"))]
-use crate::concurrency::MaybeSend;
 use crate::Actor;
 use crate::ActorCell;
 use crate::ActorId;
@@ -96,7 +94,7 @@ pub trait Worker: Send + Sync + 'static {
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         args: Self::Arguments,
-    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + MaybeSend;
+    ) -> impl Future<Output = Result<Self::State, ActorProcessingErr>> + Send;
 
     /// Invoked when a worker is being started by the system.
     ///
@@ -138,7 +136,7 @@ pub trait Worker: Send + Sync + 'static {
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
         async { Ok(()) }
     }
     /// Invoked after an actor has started.
@@ -178,7 +176,7 @@ pub trait Worker: Send + Sync + 'static {
         wid: WorkerId,
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
         async { Ok(()) }
     }
     /// Invoked after an actor has been stopped to perform final cleanup. In the
@@ -218,7 +216,7 @@ pub trait Worker: Send + Sync + 'static {
         factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
         job: Job<Self::Key, Self::Message>,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<Self::Key, ActorProcessingErr>> + MaybeSend {
+    ) -> impl Future<Output = Result<Self::Key, ActorProcessingErr>> + Send {
         async { Ok(job.key) }
     }
 
@@ -257,7 +255,7 @@ pub trait Worker: Send + Sync + 'static {
         myself: ActorCell,
         message: SupervisionEvent,
         state: &mut Self::State,
-    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + MaybeSend {
+    ) -> impl Future<Output = Result<(), ActorProcessingErr>> + Send {
         async move {
             match message {
                 SupervisionEvent::ActorTerminated(who, _, _)

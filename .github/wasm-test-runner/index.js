@@ -7,7 +7,13 @@ import { spawn } from "child_process";
         console.error("Set `WORKING_DIR` to the directory of ractor");
         return;
     }
-    const cargoRunner = spawn("wasm-pack test --chrome ./ractor", { cwd: workingDir, stdio: "pipe", shell: true });
+    var command;
+    if (process.env.FEATURES_ASYNC_TRAIT == true) {
+        command = "wasm-pack test --chrome ./ractor --features async-trait";
+    } else {
+        command = "wasm-pack test --chrome ./ractor";
+    }
+    const cargoRunner = spawn(command, { cwd: workingDir, stdio: "pipe", shell: true });
     cargoRunner.stdout.setEncoding("utf-8");
     cargoRunner.stderr.setEncoding("utf-8");
     const flagPromise = new Promise((resolve) => {
@@ -71,7 +77,7 @@ import { spawn } from "child_process";
         })(),
         new Promise((_, rej) => setTimeout(() => {
             rej(new Error("Timed out when running tests.."))
-        }, 5 * 60 * 1000))
+        }, 20 * 60 * 1000))
     ]);
 
     await page.close();

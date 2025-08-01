@@ -181,10 +181,6 @@ pub mod registry;
 pub mod rpc;
 #[cfg(feature = "cluster")]
 pub mod serialization;
-#[cfg(all(
-    feature = "tokio_runtime",
-    not(all(target_arch = "wasm32", target_os = "unknown"))
-))]
 pub mod thread_local;
 pub mod time;
 
@@ -267,10 +263,6 @@ pub async fn spawn<T: Actor + Default>(
 /// * `spawner` - The thread-local spawner ([thread_local::ThreadLocalActorSpawner]) used to spawn thread-local actors
 ///
 /// Returns [Ok((ActorRef, JoinHandle<()>))] upon successful actor startup, [Err(SpawnErr)] otherwise
-#[cfg(all(
-    feature = "tokio_runtime",
-    not(all(target_arch = "wasm32", target_os = "unknown"))
-))]
 pub async fn spawn_local<T: thread_local::ThreadLocalActor>(
     args: T::Arguments,
     spawner: thread_local::ThreadLocalActorSpawner,

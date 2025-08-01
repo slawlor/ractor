@@ -1363,3 +1363,94 @@ async fn derived_actor_ref() {
         panic!("Invalid error type");
     }
 }
+
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+async fn can_use_call_in_actor() {
+    enum TestActorMessage {
+        Call(crate::RpcReplyPort<u32>),
+    }
+
+    #[cfg(feature = "cluster")]
+    impl crate::Message for TestActorMessage {}
+
+    struct TestActor1;
+
+    struct TestActor2;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor1 {
+        type Msg = TestActorMessage;
+        type Arguments = ();
+        type State = ActorRef<TestActorMessage>;
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            let child_actor = Actor::spawn(None, TestActor2, ())
+                .await
+                .expect("Failed to spawn child actor");
+            Ok(child_actor.0)
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            match message {
+                TestActorMessage::Call(reply_port) => {
+                    let result = crate::call!(state, TestActorMessage::Call)?;
+                    reply_port.send(result).expect("Failed to send response");
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor2 {
+        type Msg = TestActorMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            match message {
+                TestActorMessage::Call(reply_port) => {
+                    reply_port.send(42).expect("Failed to send response");
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    // spawn the first actor, which will internally spawn the second actor
+    let (actor1, _) = Actor::spawn(None, TestActor1, ())
+        .await
+        .expect("Failed to spawn actor");
+
+    let result = crate::call!(actor1, TestActorMessage::Call).expect("Failed to call actor");
+
+    assert!(result == 42);
+}

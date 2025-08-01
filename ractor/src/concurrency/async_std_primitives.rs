@@ -173,6 +173,26 @@ where
     spawn_named(None, future)
 }
 
+/// Spawn a task on the executor runtime which will not be moved to other threads
+pub fn spawn_local<F>(future: F) -> JoinHandle<F::Output>
+where
+    F: Future + 'static,
+{
+    let signal = Arc::new(AtomicBool::new(false));
+    let inner_signal = signal.clone();
+
+    let jh = async_std::task::spawn_local(async move {
+        let r = future.await;
+        inner_signal.fetch_or(true, Ordering::Relaxed);
+        r
+    });
+
+    JoinHandle {
+        handle: Some(jh),
+        is_done: signal,
+    }
+}
+
 /// Spawn a (possibly) named task on the executor runtime
 pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
 where

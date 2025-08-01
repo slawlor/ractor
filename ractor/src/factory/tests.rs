@@ -14,4 +14,5 @@ mod lifecycle;
 mod priority_queueing;
 mod ratelim;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+/// these tests use panic and are not supported on wasm because wasm is panic=abort
 mod worker_lifecycle;
