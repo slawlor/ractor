@@ -73,6 +73,12 @@ mod supervision;
 
 #[cfg(test)]
 mod supervision_tests;
+
+#[cfg(feature = "derived-actor-from-cell")]
+pub(crate) mod request_derived;
+#[cfg(feature = "derived-actor-from-cell")]
+pub use request_derived::RequestDerived;
+
 #[cfg(test)]
 mod tests;
 
@@ -438,6 +444,16 @@ pub trait Actor: Sized + Sync + Send + 'static {
         supervisor: ActorCell,
     ) -> Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr> {
         ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor).await
+    }
+
+    /// Provide to request derived actors that can be derived from actor_ref.
+    #[cfg(feature = "derived-actor-from-cell")]
+    #[allow(unused_variables)]
+    fn provide_derived_actor_ref<'a>(
+        myself: ActorRef<Self::Msg>,
+        request: RequestDerived<'a>,
+    ) -> RequestDerived<'a> {
+        request
     }
 }
 

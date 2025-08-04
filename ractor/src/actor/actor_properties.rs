@@ -8,6 +8,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 
 use crate::actor::messages::StopMessage;
+#[cfg(feature = "derived-actor-from-cell")]
+use crate::actor::request_derived::DerivedProvider;
+#[cfg(feature = "derived-actor-from-cell")]
+use crate::actor::request_derived::DerivedProviderType;
 use crate::actor::supervision::SupervisionTree;
 use crate::concurrency as mpsc;
 use crate::concurrency::MpscUnboundedReceiver as InputPortReceiver;
@@ -47,6 +51,8 @@ pub(crate) struct ActorProperties {
     pub(crate) type_id: std::any::TypeId,
     #[cfg(feature = "cluster")]
     pub(crate) supports_remoting: bool,
+    #[cfg(feature = "derived-actor-from-cell")]
+    pub(crate) derived_provider: Box<dyn DerivedProvider>,
 }
 
 impl ActorProperties {
@@ -96,6 +102,8 @@ impl ActorProperties {
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
+                #[cfg(feature = "derived-actor-from-cell")]
+                derived_provider: Box::new(DerivedProviderType::<TActor>::new()),
             },
             rx_signal,
             rx_stop,
