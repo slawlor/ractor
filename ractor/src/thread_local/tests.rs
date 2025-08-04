@@ -39,7 +39,10 @@ struct EmptyMessage;
 impl crate::Message for EmptyMessage {}
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 async fn test_panic_on_start_captured() {
     #[derive(Default)]
@@ -64,7 +67,10 @@ async fn test_panic_on_start_captured() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_error_on_start_captured() {
     #[derive(Default)]
     struct TestActor;
@@ -88,7 +94,10 @@ async fn test_error_on_start_captured() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_stop_higher_priority_over_messages() {
     let message_counter = Arc::new(AtomicU8::new(0u8));
 
@@ -159,7 +168,10 @@ async fn test_stop_higher_priority_over_messages() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_kill_terminates_work() {
     #[derive(Default)]
     struct TestActor;
@@ -205,7 +217,10 @@ async fn test_kill_terminates_work() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_stop_does_not_terminate_async_work() {
     #[derive(Default)]
     struct TestActor;
@@ -260,7 +275,10 @@ async fn test_stop_does_not_terminate_async_work() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_kill_terminates_supervision_work() {
     #[derive(Default)]
     struct TestActor;
@@ -308,7 +326,10 @@ async fn test_kill_terminates_supervision_work() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_sending_message_to_invalid_actor_type() {
     #[derive(Default)]
     struct TestActor1;
@@ -368,7 +389,10 @@ async fn test_sending_message_to_invalid_actor_type() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_sending_message_to_dead_actor() {
     #[derive(Default)]
     struct TestActor;
@@ -403,7 +427,10 @@ async fn test_sending_message_to_dead_actor() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn stop_and_wait() {
     #[derive(Default)]
     struct SlowActor;
@@ -433,7 +460,10 @@ async fn stop_and_wait() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn kill_and_wait() {
     #[derive(Default)]
     struct SlowActor;
@@ -464,7 +494,10 @@ async fn kill_and_wait() {
 
 /// https://github.com/slawlor/ractor/issues/254
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn actor_post_stop_executed_before_stop_and_wait_returns() {
     #[derive(Default)]
     struct TestActor;
@@ -509,7 +542,10 @@ async fn actor_post_stop_executed_before_stop_and_wait_returns() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn actor_drain_messages() {
     #[derive(Default)]
     struct TestActor;
@@ -564,7 +600,10 @@ async fn actor_drain_messages() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn wait_for_death() {
     #[derive(Default)]
     struct TestActor;
@@ -605,7 +644,10 @@ async fn wait_for_death() {
 }
 
 #[crate::concurrency::test]
-#[tracing_test::traced_test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn derived_actor_ref() {
     let result_counter = Arc::new(AtomicU32::new(0));
 
