@@ -415,6 +415,7 @@ impl ThreadLocalActorSpawner {
     }
 
     #[cfg(all(feature = "async-std", not(target_arch = "wasm32")))]
+    /// Create a new [ThreadLocalActorSpawner] on the current thread.
     pub fn new() -> Self {
         let (send, mut recv) = crate::concurrency::mpsc_unbounded();
 

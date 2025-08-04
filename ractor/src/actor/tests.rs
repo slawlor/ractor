@@ -1345,6 +1345,18 @@ async fn derived_actor_ref() {
         .send_message(u16_message)
         .expect("Failed to send message to actor");
 
+    // timer
+    actor
+        .get_derived()
+        .send_after(Duration::from_millis(10), move || u16_message)
+        .await
+        .expect("Failed to await the join handle")
+        .expect("Failed to send message to actor");
+
+    sum += u16_message as u32;
+
+    // Make sure delayed send is received
+    crate::concurrency::sleep(Duration::from_millis(50)).await;
     actor
         .drain_and_wait(None)
         .await
