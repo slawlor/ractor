@@ -89,8 +89,8 @@ async fn test_error_message_extraction() {
     let bad_message_actor: ActorRef<u32> = cell.into();
 
     let err = crate::cast!(bad_message_actor, 0u32).expect_err("Not an error!");
-    assert!(!err.has_message());
-    assert!(err.try_get_message().is_none());
+    assert!(err.has_message()); //actor status is checked before message type_id;
+    assert!(err.try_get_message().is_some());
 }
 
 #[crate::concurrency::test]
