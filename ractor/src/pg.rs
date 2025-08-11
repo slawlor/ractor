@@ -70,13 +70,16 @@
 //! }
 //! ```
 
-use std::collections::HashMap;
+use std::borrow::Borrow;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use dashmap::mapref::entry::Entry::Occupied;
 use dashmap::mapref::entry::Entry::Vacant;
 use dashmap::DashMap;
+use dashmap::DashSet;
 use once_cell::sync::OnceCell;
+use std::hash::Hash;
 
 use crate::ActorCell;
 use crate::ActorId;
@@ -92,6 +95,15 @@ pub const ALL_SCOPES_NOTIFICATION: &str = "__world_scope__";
 
 /// Key to monitor all of the groups in a scope
 pub const ALL_GROUPS_NOTIFICATION: &str = "__world_group_";
+
+static ALL_SCOPES_NOTIFICATION_OWNED: OnceLock<ScopeName> = OnceLock::new();
+fn all_scopes_notification() -> &'static ScopeName {
+    ALL_SCOPES_NOTIFICATION_OWNED.get_or_init(|| ALL_SCOPES_NOTIFICATION.to_owned())
+}
+static ALL_GROUPS_NOTIFICATION_OWNED: OnceLock<ScopeName> = OnceLock::new();
+fn all_groups_notification() -> &'static ScopeName {
+    ALL_GROUPS_NOTIFICATION_OWNED.get_or_init(|| ALL_GROUPS_NOTIFICATION.to_owned())
+}
 
 #[cfg(test)]
 mod tests;
@@ -144,19 +156,27 @@ impl ScopeGroupKey {
     }
 }
 
-struct PgState {
-    map: Arc<DashMap<ScopeGroupKey, HashMap<ActorId, ActorCell>>>,
-    index: Arc<DashMap<ScopeName, Vec<GroupName>>>,
-    listeners: Arc<DashMap<ScopeGroupKey, Vec<ActorCell>>>,
+#[derive(Default)]
+struct ScopeData {
+    listeners: DashSet<ActorCell>,
+    groups: DashMap<GroupName, Arc<GroupData>>,
+}
+#[derive(Default)]
+struct GroupData {
+    listeners: DashSet<ActorCell>,
+    members: DashSet<ActorCell>,
 }
 
+struct PgState {
+    world_listeners: Arc<DashSet<ActorCell>>,
+    scopes: Arc<DashMap<ScopeName, Arc<ScopeData>>>,
+}
 static PG_MONITOR: OnceCell<PgState> = OnceCell::new();
 
 fn get_monitor<'a>() -> &'a PgState {
     PG_MONITOR.get_or_init(|| PgState {
-        map: Arc::new(DashMap::new()),
-        index: Arc::new(DashMap::new()),
-        listeners: Arc::new(DashMap::new()),
+        world_listeners: Arc::new(DashSet::new()),
+        scopes: Arc::new(DashMap::new()),
     })
 }
 
@@ -168,79 +188,130 @@ pub fn join(group: GroupName, actors: Vec<ActorCell>) {
     join_scoped(DEFAULT_SCOPE.to_owned(), group, actors);
 }
 
+fn notify_listeners(
+    listeners: &DashSet<ActorCell>,
+    notification: &GroupChangeMessage,
+    garbadge: &mut Vec<ActorCell>,
+) {
+    garbadge.clear();
+    for listener in listeners.iter() {
+        if listener
+            .send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(notification.clone()))
+            .is_err()
+        {
+            garbadge.push(listener.clone())
+        }
+    }
+    for l in garbadge.iter() {
+        listeners.remove(l);
+    }
+}
+fn join_actors_to_group(
+    monitor: &PgState,
+    sd: &ScopeData,
+    gd: &GroupData,
+    mut actors: Vec<ActorCell>,
+    scope: ScopeName,
+    group: GroupName,
+) {
+    let mut garbadge = Vec::new();
+    actors.retain(|actor| {
+        if gd.members.insert(actor.clone()) {
+            if !actor.add_member_ship(scope.to_owned(), group.to_owned()) {
+                gd.members.remove(actor);
+                false
+            } else {
+                true
+            }
+        } else {
+            false
+        }
+    });
+    let notif = GroupChangeMessage::Join(scope.to_owned(), group.clone(), actors);
+    notify_listeners(&gd.listeners, &notif, &mut garbadge);
+    notify_listeners(&sd.listeners, &notif, &mut garbadge);
+    notify_listeners(&monitor.world_listeners, &notif, &mut garbadge);
+}
+fn join_actors_to_scope(
+    monitor: &PgState,
+    sd: &ScopeData,
+    actors: Vec<ActorCell>,
+    scope: ScopeName,
+    group: GroupName,
+) {
+    if let Some(gd) = sd.groups.get(&group).map(|r| (*r).clone()) {
+        join_actors_to_group(monitor, &sd, &gd, actors, scope, group)
+    } else {
+        let gd = match sd.groups.entry(group.to_owned()) {
+            Occupied(oent) => oent.get().clone(),
+            Vacant(vent) => vent.insert(Arc::new(GroupData::default())).clone(),
+        };
+        join_actors_to_group(monitor, &sd, &*gd, actors, scope, group)
+    }
+}
+
 /// Join actors to the group `group` within the scope `scope`
 ///
 /// * `scope` - The named scope. Will be created if first actors to join
 /// * `group` - The named group. Will be created if first actors to join
 /// * `actors` - The list of [crate::Actor]s to add to the group
 pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
-    let key = ScopeGroupKey {
-        scope: scope.to_owned(),
-        group: group.to_owned(),
-    };
     let monitor = get_monitor();
 
-    // lock the `PgState`'s `map` and `index` DashMaps.
-    let monitor_map = monitor.map.entry(key.to_owned());
-    let monitor_idx = monitor.index.entry(scope.to_owned());
-
-    // insert into the monitor group
-    match monitor_map {
-        Occupied(mut occupied_map) => {
-            let oref = occupied_map.get_mut();
-            for actor in actors.iter() {
-                oref.insert(actor.get_id(), actor.clone());
-            }
-            match monitor_idx {
-                Occupied(mut occupied_idx) => {
-                    let oref = occupied_idx.get_mut();
-                    if !oref.contains(&group) {
-                        oref.push(group.to_owned());
-                    }
-                }
-                Vacant(vacancy) => {
-                    vacancy.insert(vec![group.to_owned()]);
-                }
-            }
-        }
-        Vacant(vacancy) => {
-            let map = actors
-                .iter()
-                .map(|a| (a.get_id(), a.clone()))
-                .collect::<HashMap<_, _>>();
-            vacancy.insert(map);
-            match monitor_idx {
-                Occupied(mut occupied_idx) => {
-                    let oref = occupied_idx.get_mut();
-                    if !oref.contains(&group) {
-                        oref.push(group.to_owned());
-                    }
-                }
-                Vacant(vacancy) => {
-                    vacancy.insert(vec![group.to_owned()]);
-                }
-            }
-        }
+    if let Some(sd) = monitor.scopes.get(&scope).map(|r| (*r).clone()) {
+        join_actors_to_scope(&monitor, &sd, actors, scope, group)
+    } else {
+        let sd = match monitor.scopes.entry(scope.to_owned()) {
+            Occupied(oent) => oent.get().clone(),
+            Vacant(vent) => vent.insert(Arc::new(ScopeData::default())).clone(),
+        };
+        join_actors_to_scope(monitor, &sd, actors, scope, group)
     }
+}
 
-    // notify supervisors
-    if let Some(listeners) = monitor.listeners.get(&key) {
-        for listener in listeners.value() {
-            let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                GroupChangeMessage::Join(scope.to_owned(), group.clone(), actors.clone()),
-            ));
+#[must_use]
+// return true if the group should be removed
+fn leave_actors_from_group(
+    monitor: &PgState,
+    sd: &ScopeData,
+    gd: &GroupData,
+    mut actors: Vec<ActorCell>,
+    scope: ScopeName,
+    group: GroupName,
+) -> bool {
+    let mut garbadge = Vec::new();
+    actors.retain(|actor| {
+        if gd.members.remove(actor).is_some() {
+            actor.remove_member_ship(scope.to_owned(), group.to_owned());
+            true
+        } else {
+            false
         }
-    }
-    // notify the world monitors
-    let world_monitor_keys = get_world_monitor_keys();
-    for key in world_monitor_keys {
-        if let Some(listeners) = monitor.listeners.get(&key) {
-            for listener in listeners.value() {
-                let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                    GroupChangeMessage::Join(scope.to_owned(), group.clone(), actors.clone()),
-                ));
-            }
+    });
+    let notif = GroupChangeMessage::Leave(scope.to_owned(), group.clone(), actors);
+    notify_listeners(&gd.listeners, &notif, &mut garbadge);
+    notify_listeners(&sd.listeners, &notif, &mut garbadge);
+    notify_listeners(&monitor.world_listeners, &notif, &mut garbadge);
+    gd.members.is_empty()
+}
+#[must_use]
+/// return true if the scope shall be removed
+fn leave_actors_from_scope(
+    monitor: &PgState,
+    sd: &ScopeData,
+    actors: Vec<ActorCell>,
+    scope: ScopeName,
+    group: GroupName,
+) -> bool {
+    if let Some(gd) = sd.groups.get(&group).map(|r| (*r).clone()) {
+        if leave_actors_from_group(monitor, &sd, &gd, actors, scope, group.clone()) {
+            sd.groups.remove(&group);
+            sd.groups.is_empty()
+        } else {
+            false
         }
+    } else {
+        false
     }
 }
 
@@ -258,121 +329,20 @@ pub fn leave(group: GroupName, actors: Vec<ActorCell>) {
 /// * `group` - A named group
 /// * `actors` - The list of actors to remove from the group
 pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
-    let key = ScopeGroupKey {
-        scope: scope.to_owned(),
-        group: group.to_owned(),
-    };
     let monitor = get_monitor();
 
-    // lock the `PgState`'s `map` and `index` DashMaps.
-    let monitor_map = monitor.map.entry(key.to_owned());
-    let monitor_idx = monitor.index.get_mut(&scope);
-
-    match monitor_map {
-        Vacant(_) => {}
-        Occupied(mut occupied_map) => {
-            let mut_ref = occupied_map.get_mut();
-            for actor in actors.iter() {
-                mut_ref.remove(&actor.get_id());
-            }
-
-            // if the scope and group tuple is empty, remove it
-            if mut_ref.is_empty() {
-                occupied_map.remove();
-            }
-
-            // remove the group and possibly the scope from the monitor's index
-            if let Some(mut groups_in_scope) = monitor_idx {
-                groups_in_scope.retain(|group_name| group_name != &group);
-                if groups_in_scope.is_empty() {
-                    // drop the `RefMut` to prevent a `DashMap` deadlock
-                    drop(groups_in_scope);
-                    monitor.index.remove(&scope);
-                }
-            }
-
-            if let Some(listeners) = monitor.listeners.get(&key) {
-                for listener in listeners.value() {
-                    let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                        GroupChangeMessage::Leave(scope.to_owned(), group.clone(), actors.clone()),
-                    ));
-                }
-            }
-            // notify the world monitors
-            let world_monitor_keys = get_world_monitor_keys();
-            for key in world_monitor_keys {
-                if let Some(listeners) = monitor.listeners.get(&key) {
-                    for listener in listeners.value() {
-                        let _ = listener.send_supervisor_evt(
-                            SupervisionEvent::ProcessGroupChanged(GroupChangeMessage::Leave(
-                                scope.to_owned(),
-                                group.clone(),
-                                actors.clone(),
-                            )),
-                        );
-                    }
-                }
-            }
+    if let Some(sd) = monitor.scopes.get(&scope).map(|r| (*r).clone()) {
+        if leave_actors_from_scope(&monitor, &sd, actors, scope.clone(), group) {
+            monitor.scopes.remove(&scope);
         }
     }
 }
 
 /// Leave all groups for a specific [ActorId].
 /// Used only during actor shutdown
-pub(crate) fn leave_all(actor: ActorId) {
-    let pg_monitor = get_monitor();
-    let map = pg_monitor.map.clone();
-
-    let mut empty_scope_group_keys = vec![];
-    let mut removal_events = HashMap::new();
-
-    for mut kv in map.iter_mut() {
-        if let Some(actor_cell) = kv.value_mut().remove(&actor) {
-            removal_events.insert(kv.key().clone(), actor_cell);
-        }
-        if kv.value().is_empty() {
-            empty_scope_group_keys.push(kv.key().clone());
-        }
-    }
-
-    // notify the listeners
-    let all_listeners = pg_monitor.listeners.clone();
-    for (scope_and_group, cell) in removal_events.into_iter() {
-        if let Some(this_listeners) = all_listeners.get(&scope_and_group) {
-            this_listeners.iter().for_each(|listener| {
-                let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                    GroupChangeMessage::Leave(
-                        scope_and_group.scope.clone(),
-                        scope_and_group.group.clone(),
-                        vec![cell.clone()],
-                    ),
-                ));
-            });
-        }
-        // notify the world monitors
-        let world_monitor_scoped = ScopeGroupKey {
-            scope: scope_and_group.scope,
-            group: ALL_GROUPS_NOTIFICATION.to_owned(),
-        };
-        if let Some(listeners) = all_listeners.get(&world_monitor_scoped) {
-            for listener in listeners.value() {
-                let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-                    GroupChangeMessage::Leave(
-                        world_monitor_scoped.scope.clone(),
-                        world_monitor_scoped.group.clone(),
-                        vec![cell.clone()],
-                    ),
-                ));
-            }
-        }
-    }
-
-    // Cleanup empty groups
-    for scope_group_key in empty_scope_group_keys {
-        map.remove(&scope_group_key);
-        if let Some(mut groups_in_scope) = pg_monitor.index.get_mut(&scope_group_key.scope) {
-            groups_in_scope.retain(|group| group != &scope_group_key.group);
-        }
+pub(crate) fn leave_all(actor: ActorCell, member_ship: Vec<(ScopeName, GroupName)>) {
+    for (scope, group) in member_ship {
+        leave_scoped(scope, group, vec![actor.clone()])
     }
 }
 
@@ -394,20 +364,25 @@ pub fn get_local_members(group: &GroupName) -> Vec<ActorCell> {
 ///
 /// Returns a [`Vec<ActorCell>`] representing the members of this paging group
 pub fn get_scoped_local_members(scope: &ScopeName, group: &GroupName) -> Vec<ActorCell> {
-    let key = ScopeGroupKey {
-        scope: scope.to_owned(),
-        group: group.to_owned(),
-    };
     let monitor = get_monitor();
-    if let Some(actors) = monitor.map.get(&key) {
-        actors
-            .value()
-            .values()
-            .filter(|a| a.get_id().is_local())
-            .cloned()
-            .collect::<Vec<_>>()
+
+    if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
+        if let Some(gd) = sd.groups.get(group).map(|r| (*r).clone()) {
+            gd.members
+                .iter()
+                .filter_map(|member| {
+                    if member.get_id().is_local() {
+                        Some(member.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
     } else {
-        vec![]
+        Vec::new()
     }
 }
 
@@ -417,8 +392,12 @@ pub fn get_scoped_local_members(scope: &ScopeName, group: &GroupName) -> Vec<Act
 /// * `group_name` - A named group
 ///
 /// Returns a [`Vec<ActorCell>`] with the member actors
-pub fn get_members(group_name: &GroupName) -> Vec<ActorCell> {
-    get_scoped_members(&DEFAULT_SCOPE.to_owned(), group_name)
+pub fn get_members<G>(group_name: &G) -> Vec<ActorCell>
+where
+    G: Hash + Eq + ?Sized,
+    GroupName: Borrow<G>,
+{
+    get_scoped_members::<str, G>(DEFAULT_SCOPE, group_name)
 }
 
 /// Returns all the actors running on any node in the group `group`
@@ -428,16 +407,23 @@ pub fn get_members(group_name: &GroupName) -> Vec<ActorCell> {
 /// * `group` - A named group
 ///
 /// Returns a [`Vec<ActorCell>`] with the member actors
-pub fn get_scoped_members(scope: &ScopeName, group: &GroupName) -> Vec<ActorCell> {
-    let key = ScopeGroupKey {
-        scope: scope.to_owned(),
-        group: group.to_owned(),
-    };
+pub fn get_scoped_members<S, G>(scope: &S, group: &G) -> Vec<ActorCell>
+where
+    S: Hash + Eq + ?Sized,
+    ScopeName: Borrow<S>,
+    G: Hash + Eq + ?Sized,
+    GroupName: Borrow<G>,
+{
     let monitor = get_monitor();
-    if let Some(actors) = monitor.map.get(&key) {
-        actors.value().values().cloned().collect::<Vec<_>>()
+
+    if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
+        if let Some(gd) = sd.groups.get(group).map(|r| (*r).clone()) {
+            gd.members.iter().map(|member| member.clone()).collect()
+        } else {
+            Vec::new()
+        }
     } else {
-        vec![]
+        Vec::new()
     }
 }
 
@@ -445,12 +431,16 @@ pub fn get_scoped_members(scope: &ScopeName, group: &GroupName) -> Vec<ActorCell
 ///
 /// Returns a [`Vec<GroupName>`] representing all the registered group names
 pub fn which_groups() -> Vec<GroupName> {
-    let monitor = get_monitor();
-    let mut groups = monitor
-        .map
+    let Some(mut groups) = which_scopes()
         .iter()
-        .map(|kvp| kvp.key().group.to_owned())
-        .collect::<Vec<_>>();
+        .map(|scope| which_scoped_groups(scope))
+        .reduce(|mut collected, gs| {
+            collected.extend(gs);
+            collected
+        })
+    else {
+        return Vec::new();
+    };
     groups.sort_unstable();
     groups.dedup();
     groups
@@ -462,11 +452,16 @@ pub fn which_groups() -> Vec<GroupName> {
 ///
 /// Returns a [`Vec<GroupName>`] representing all the registered group names
 /// in `scope`
-pub fn which_scoped_groups(scope: &ScopeName) -> Vec<GroupName> {
+pub fn which_scoped_groups<S>(scope: &S) -> Vec<GroupName>
+where
+    S: Hash + Eq + ?Sized,
+    ScopeName: Borrow<S>,
+{
     let monitor = get_monitor();
-    match monitor.index.get(scope) {
-        Some(groups) => groups.to_owned(),
-        None => vec![],
+    if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
+        sd.groups.iter().map(|r| r.key().clone()).collect()
+    } else {
+        Vec::new()
     }
 }
 
@@ -475,12 +470,16 @@ pub fn which_scoped_groups(scope: &ScopeName) -> Vec<GroupName> {
 /// Returns a [`Vec<ScopeGroupKey>`] representing all the registered
 /// combinations that form an identifying tuple
 pub fn which_scopes_and_groups() -> Vec<ScopeGroupKey> {
-    let monitor = get_monitor();
-    monitor
-        .map
-        .iter()
-        .map(|kvp| kvp.key().clone())
-        .collect::<Vec<_>>()
+    which_scopes()
+        .into_iter()
+        .map(|scope| (which_scoped_groups(&scope), scope.clone()))
+        .fold(Vec::new(), |mut collected, (groups, scope)| {
+            collected.extend(groups.into_iter().map(|g| ScopeGroupKey {
+                scope: scope.clone(),
+                group: g,
+            }));
+            collected
+        })
 }
 
 /// Returns a list of all known scopes
@@ -488,31 +487,42 @@ pub fn which_scopes_and_groups() -> Vec<ScopeGroupKey> {
 /// Returns a [`Vec<ScopeName>`] representing all the registered scopes
 pub fn which_scopes() -> Vec<ScopeName> {
     let monitor = get_monitor();
-    monitor
-        .map
-        .iter()
-        .map(|kvp| {
-            let key = kvp.key();
-            key.scope.to_owned()
-        })
-        .collect::<Vec<_>>()
+
+    monitor.scopes.iter().map(|r| r.key().clone()).collect()
+}
+/// Subscribes the provided [crate::Actor] to the group in the specified scope
+/// for updates
+pub fn monitor<G>(group: &G, actor: ActorCell)
+where
+    G: Hash + Eq + ?Sized + AsRef<str>,
+    GroupName: Borrow<G>,
+{
+    monitor_scoped::<str, G>(DEFAULT_SCOPE, group, actor);
 }
 
-/// Subscribes the provided [crate::Actor] to the group in the default scope
+/// Subscribes the provided [crate::Actor] to the group in the specified scope
 /// for updates
-///
-/// * `group_name` - The group to monitor
-/// * `actor` - The [ActorCell] representing who will receive updates
-pub fn monitor(group: GroupName, actor: ActorCell) {
-    let key = ScopeGroupKey {
-        scope: DEFAULT_SCOPE.to_owned(),
-        group,
-    };
-    let monitor = get_monitor();
-    match monitor.listeners.entry(key) {
-        Occupied(mut occupied) => occupied.get_mut().push(actor),
-        Vacant(vacancy) => {
-            vacancy.insert(vec![actor]);
+pub fn monitor_scoped<S, G>(scope: &S, group: &G, actor: ActorCell)
+where
+    S: Hash + Eq + ?Sized,
+    G: Hash + Eq + ?Sized,
+    ScopeName: Borrow<S>,
+    GroupName: Borrow<G>,
+{
+    if scope == all_scopes_notification().borrow() {
+        which_scopes()
+            .into_iter()
+            .for_each(|scope| monitor_scoped(&scope, group, actor.clone()));
+    } else if group == all_groups_notification().borrow() {
+        which_scoped_groups(scope)
+            .into_iter()
+            .for_each(|group| monitor_scoped(scope, &group, actor.clone()));
+    } else {
+        let monitor = get_monitor();
+        if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
+            if let Some(gd) = sd.groups.get(group).map(|r| (*r).clone()) {
+                gd.listeners.insert(actor);
+            }
         }
     }
 }
@@ -521,32 +531,40 @@ pub fn monitor(group: GroupName, actor: ActorCell) {
 ///
 /// * `scope` - the scope to monitor
 /// * `actor` - The [ActorCell] representing who will receive updates
-pub fn monitor_scope(scope: ScopeName, actor: ActorCell) {
-    let key = ScopeGroupKey {
-        scope: scope.to_owned(),
-        group: ALL_GROUPS_NOTIFICATION.to_owned(),
-    };
+pub fn monitor_scope<S>(scope: &S, actor: ActorCell)
+where
+    S: Hash + Eq + ?Sized,
+    ScopeName: Borrow<S>,
+{
     let monitor = get_monitor();
-
-    // Register at world monitor first
-    match monitor.listeners.entry(key) {
-        Occupied(mut occupied) => occupied.get_mut().push(actor.clone()),
-        Vacant(vacancy) => {
-            vacancy.insert(vec![actor.clone()]);
-        }
+    if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
+        sd.listeners.insert(actor);
     }
-
-    let groups_in_scope = which_scoped_groups(&scope);
-    for group in groups_in_scope {
-        let key = ScopeGroupKey {
-            scope: scope.to_owned(),
-            group,
-        };
-        match monitor.listeners.entry(key) {
-            Occupied(mut occupied) => occupied.get_mut().push(actor.clone()),
-            Vacant(vacancy) => {
-                vacancy.insert(vec![actor.clone()]);
-            }
+}
+/// Unsubscribes the provided [crate::Actor] for updates from the group
+/// in default scope
+///
+/// * `group_name` - The group to demonitor
+/// * `actor` - The [ActorCell] representing who will no longer receive updates
+pub fn demonitor_scoped<S, G>(scope: &S, group: &G, actor: ActorId)
+where
+    S: Hash + Eq + ?Sized,
+    G: Hash + Eq + ?Sized,
+    ScopeName: Borrow<S>,
+    GroupName: Borrow<G>,
+{
+    let monitor = get_monitor();
+    if scope == all_scopes_notification().borrow() {
+        which_scopes()
+            .into_iter()
+            .for_each(|scope| demonitor_scoped(&scope, group, actor));
+    } else if group == all_groups_notification().borrow() {
+        which_scoped_groups(scope)
+            .into_iter()
+            .for_each(|group| demonitor_scoped(scope, &group, actor));
+    } else if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
+        if let Some(gd) = sd.groups.get(group).map(|r| (*r).clone()) {
+            gd.listeners.retain(|cell| cell.get_id() != actor);
         }
     }
 }
@@ -556,82 +574,29 @@ pub fn monitor_scope(scope: ScopeName, actor: ActorCell) {
 ///
 /// * `group_name` - The group to demonitor
 /// * `actor` - The [ActorCell] representing who will no longer receive updates
-pub fn demonitor(group_name: GroupName, actor: ActorId) {
-    let key = ScopeGroupKey {
-        scope: DEFAULT_SCOPE.to_owned(),
-        group: group_name,
-    };
-    let monitor = get_monitor();
-    if let Occupied(mut entry) = monitor.listeners.entry(key) {
-        let mut_ref = entry.get_mut();
-        mut_ref.retain(|a| a.get_id() != actor);
-        if mut_ref.is_empty() {
-            entry.remove();
-        }
-    }
+pub fn demonitor<G>(group_name: &G, actor: ActorId)
+where
+    G: Hash + Eq + ?Sized,
+    GroupName: Borrow<G>,
+{
+    demonitor_scoped::<str, G>(DEFAULT_SCOPE, group_name, actor)
 }
 
 /// Unsubscribes the provided [crate::Actor] from the scope for updates
 ///
 /// * `scope` - The scope to demonitor
 /// * `actor` - The [ActorCell] representing who will no longer receive updates
-pub fn demonitor_scope(scope: ScopeName, actor: ActorId) {
+pub fn demonitor_scope<S>(scope: &S, actor: ActorId)
+where
+    S: Hash + Eq + ?Sized,
+    ScopeName: Borrow<S>,
+{
     let monitor = get_monitor();
-    let groups_in_scope = which_scoped_groups(&scope);
-    for group in groups_in_scope {
-        let key = ScopeGroupKey {
-            scope: scope.to_owned(),
-            group,
-        };
-        if let Occupied(mut entry) = monitor.listeners.entry(key) {
-            let mut_ref = entry.get_mut();
-            mut_ref.retain(|a| a.get_id() != actor);
-            if mut_ref.is_empty() {
-                entry.remove();
-            }
-        }
+    if scope == all_scopes_notification().borrow() {
+        which_scopes()
+            .into_iter()
+            .for_each(|scope| demonitor_scope::<str>(&scope, actor));
+    } else if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
+        sd.listeners.retain(|cell| cell.get_id() != actor);
     }
-}
-
-/// Remove the specified [ActorId] from monitoring all groups it might be in.
-/// Used only during actor shutdown
-pub(crate) fn demonitor_all(actor: ActorId) {
-    let monitor = get_monitor();
-    let mut empty_groups = vec![];
-
-    for mut kvp in monitor.listeners.iter_mut() {
-        let v = kvp.value_mut();
-        v.retain(|v| v.get_id() != actor);
-        if v.is_empty() {
-            empty_groups.push(kvp.key().clone());
-        }
-    }
-
-    // cleanup empty listener groups
-    for empty_group in empty_groups {
-        monitor.listeners.remove(&empty_group);
-    }
-}
-
-/// Gets the keys for the world monitors.
-///
-/// Returns a `Vec<ScopeGroupKey>` represending all registered tuples
-/// for which ane of the values is equivalent to one of the world_monitor_keys
-fn get_world_monitor_keys() -> Vec<ScopeGroupKey> {
-    let monitor = get_monitor();
-    let mut world_monitor_keys = monitor
-        .listeners
-        .iter()
-        .filter_map(|kvp| {
-            let key = kvp.key().clone();
-            if key.scope == ALL_SCOPES_NOTIFICATION || key.group == ALL_GROUPS_NOTIFICATION {
-                Some(key)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<ScopeGroupKey>>();
-    world_monitor_keys.sort_unstable();
-    world_monitor_keys.dedup();
-    world_monitor_keys
 }

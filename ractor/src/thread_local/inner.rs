@@ -109,6 +109,7 @@ impl ActorProperties {
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
+                member_ship: Mutex::new(Some(Vec::new())),
             },
             rx_signal,
             rx_stop,

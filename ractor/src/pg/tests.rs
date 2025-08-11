@@ -117,7 +117,12 @@ async fn test_which_scopes_and_groups() {
 
     let scopes_and_groups = pg::which_scopes_and_groups();
     // println!("Scopes and groups are: {:#?}", scopes_and_groups);
-    assert_eq!(4, scopes_and_groups.len());
+    assert_eq!(
+        4,
+        scopes_and_groups.len(),
+        "expected 4 scopes but got {:?}",
+        scopes_and_groups
+    );
 
     // Cleanup
     actor.stop(None);
@@ -568,7 +573,7 @@ async fn test_pg_monitoring() {
             myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
-            pg::monitor(self.pg_group.clone(), myself.into());
+            pg::monitor(&self.pg_group.clone(), myself.into());
             Ok(())
         }
 
@@ -683,7 +688,7 @@ async fn test_scope_monitoring() {
             myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
-            pg::monitor_scope(self.scope.clone(), myself.into());
+            pg::monitor_scope(&self.scope.clone(), myself.into());
             Ok(())
         }
 
@@ -694,6 +699,7 @@ async fn test_scope_monitoring() {
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             if let SupervisionEvent::ProcessGroupChanged(change) = message {
+                dbg!(&change);
                 match change {
                     pg::GroupChangeMessage::Join(scope_name, _which, who) => {
                         // ensure this test can run concurrently to others

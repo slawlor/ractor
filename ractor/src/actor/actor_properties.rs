@@ -21,8 +21,10 @@ use crate::Actor;
 use crate::ActorId;
 use crate::ActorName;
 use crate::ActorStatus;
+use crate::GroupName;
 use crate::Message;
 use crate::MessagingErr;
+use crate::ScopeName;
 use crate::Signal;
 use crate::SupervisionEvent;
 
@@ -47,6 +49,7 @@ pub(crate) struct ActorProperties {
     pub(crate) type_id: std::any::TypeId,
     #[cfg(feature = "cluster")]
     pub(crate) supports_remoting: bool,
+    pub(crate) member_ship: Mutex<Option<Vec<(ScopeName, GroupName)>>>,
 }
 
 impl ActorProperties {
@@ -96,12 +99,47 @@ impl ActorProperties {
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
+                member_ship: Mutex::new(Some(Vec::new())),
             },
             rx_signal,
             rx_stop,
             rx_supervision,
             rx_message,
         )
+    }
+    /// Declare removal of membership to scope/group.
+    pub(crate) fn remove_member_ship(&self, scope: ScopeName, group: GroupName) {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return;
+        };
+        if let Some(v) = &mut *lk {
+            v.retain(|(s, g)| *s != scope || *g != group);
+        }
+    }
+    /// Declare membership to scope/group.
+    /// If it return false, the insertion should be abandonned.
+    pub(crate) fn add_member_ship(&self, scope: ScopeName, group: GroupName) -> bool {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return false;
+        };
+        if let Some(v) = &mut *lk {
+            if !v.iter().any(|(s, g)| *s == scope && *g == group) {
+                v.push((scope, group))
+            }
+            true
+        } else {
+            false
+        }
+    }
+    pub(crate) fn remove_member_ship_ability(&self) -> Vec<(ScopeName, GroupName)> {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return Vec::new();
+        };
+        if let Some(v) = &mut *lk {
+            std::mem::take(v)
+        } else {
+            Vec::new()
+        }
     }
 
     pub(crate) fn get_status(&self) -> ActorStatus {

@@ -30,8 +30,10 @@ use crate::Actor;
 use crate::ActorId;
 use crate::ActorName;
 use crate::ActorRef;
+use crate::GroupName;
 use crate::Message;
 use crate::RactorErr;
+use crate::ScopeName;
 use crate::SpawnErr;
 
 /// [ActorStatus] represents the status of an actor's lifecycle
@@ -314,6 +316,17 @@ impl ActorCell {
         self.inner.get_status()
     }
 
+    /// Declare membership to scope/group.
+    /// If it return false, the insertion should be abandonned.
+    #[must_use]
+    pub(crate) fn add_member_ship(&self, scope: ScopeName, group: GroupName) -> bool {
+        self.inner.add_member_ship(scope, group)
+    }
+    /// Remove membership from scope/group.
+    pub(crate) fn remove_member_ship(&self, scope: ScopeName, group: GroupName) {
+        self.inner.remove_member_ship(scope, group)
+    }
+
     /// Identifies if this actor supports remote (dist) communication
     ///
     /// Returns [true] if the actor's messaging protocols support remote calls, [false] otherwise
@@ -342,9 +355,9 @@ impl ActorCell {
             if let Some(name) = self.get_name() {
                 crate::registry::unregister(name);
             }
-            // Leave all + stop monitoring pg groups (if any)
-            crate::pg::demonitor_all(self.get_id());
-            crate::pg::leave_all(self.get_id());
+
+            let member_ship = self.inner.remove_member_ship_ability();
+            crate::pg::leave_all(self.clone(), member_ship);
         }
 
         // Fix for #254. We should only notify the stop listener AFTER post_stop
