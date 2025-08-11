@@ -62,6 +62,20 @@ impl<TMessage> std::fmt::Debug for ActorRef<TMessage> {
     }
 }
 
+impl<TMessage> PartialEq for ActorRef<TMessage> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl<TMessage> Eq for ActorRef<TMessage> {}
+
+impl<TMessage> std::hash::Hash for ActorRef<TMessage> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
+}
+
 impl<TMessage> ActorRef<TMessage> {
     /// Retrieve a cloned [ActorCell] representing this [ActorRef]
     pub fn get_cell(&self) -> ActorCell {

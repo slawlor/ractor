@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.15.6"
+version = "0.15.7"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -41,7 +41,8 @@ strum = { version = "0.26", features = ["derive"] }
 
 ## Configurable dependencies
 # Tracing feature requires --cfg=tokio_unstable
-async-std = { version = "1", features = ["attributes"], optional = true }
+# async-std feature 'unstable' is required for spawn_local: https://docs.rs/async-std/latest/async_std/task/fn.spawn_local.html
+async-std = { version = "1", features = ["attributes", "unstable"], optional = true }
 async-trait = { version = "0.1", optional = true }
 tokio = { version = "1.30", features = ["sync"] }
 tracing = { version = "0.1", features = ["attributes"] }
@@ -52,12 +53,15 @@ pot = { version = "3.0", optional = true }
 
 
 [target.'cfg(all(target_arch = "wasm32",target_os = "unknown"))'.dependencies]
+js-sys = "0.3.77"
 tokio_with_wasm = { version = "0.8.2", features = [
     "macros",
     "sync",
     "rt",
     "time",
 ] }
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"
 web-time = "1.1.0"
 
 [dev-dependencies]
@@ -87,7 +91,10 @@ tracing-test = "0.2"
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
 tokio = { version = "1.30", features = ["rt", "time", "sync", "macros"] }
 wasm-bindgen-test = "0.3.50"
-getrandom = { version = "0.2.15", features = ["js"] }
+# 'getrandom' isn't used directly, but it's used by a dependency, and, for WASM, we need to enable the feature 'js'.
+#   https://docs.rs/getrandom/latest/getrandom/#webassembly-support
+#
+getrandom = { version = "0.2", features = ["js"] }
 criterion = { version = "0.5", default-features = false }
 
 [[bench]]

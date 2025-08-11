@@ -5,7 +5,6 @@
 
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::actor::messages::StopMessage;
@@ -38,8 +37,8 @@ pub(crate) enum MuxedMessage {
 pub(crate) struct ActorProperties {
     pub(crate) id: ActorId,
     pub(crate) name: Option<ActorName>,
-    pub(crate) status: Arc<AtomicU8>,
-    pub(crate) wait_handler: Arc<mpsc::Notify>,
+    pub(crate) status: AtomicU8,
+    pub(crate) wait_handler: mpsc::Notify,
     pub(crate) signal: Mutex<Option<OneshotInputPort<Signal>>>,
     pub(crate) stop: Mutex<Option<OneshotInputPort<StopMessage>>>,
     pub(crate) supervision: InputPort<SupervisionEvent>,
@@ -87,9 +86,9 @@ impl ActorProperties {
             Self {
                 id,
                 name,
-                status: Arc::new(AtomicU8::new(ActorStatus::Unstarted as u8)),
+                status: AtomicU8::new(ActorStatus::Unstarted as u8),
                 signal: Mutex::new(Some(tx_signal)),
-                wait_handler: Arc::new(mpsc::Notify::new()),
+                wait_handler: mpsc::Notify::new(),
                 stop: Mutex::new(Some(tx_stop)),
                 supervision: tx_supervision,
                 message: tx_message,
