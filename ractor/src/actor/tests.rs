@@ -11,6 +11,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::actor::derived_actor::DerivedActorRef;
+use crate::actor::RequestDerived;
 use crate::common_test::periodic_check;
 use crate::concurrency::sleep;
 use crate::concurrency::Duration;
@@ -1339,6 +1340,114 @@ async fn derived_actor_ref() {
     .await;
 
     let from_u16: DerivedActorRef<u16> = actor.get_derived();
+    let u16_message: u16 = 2;
+    sum += u16_message as u32;
+    from_u16
+        .send_message(u16_message)
+        .expect("Failed to send message to actor");
+
+    actor
+        .drain_and_wait(None)
+        .await
+        .expect("Failed to drain actor");
+    handle.await.unwrap();
+
+    assert_eq!(result_counter.load(Ordering::Relaxed), sum);
+
+    // trying to send the message to a dead actor to verify reverse conversion in SendError handling
+    let message: u16 = 3;
+    let res = from_u16.send_message(message);
+    assert!(res.is_err());
+    if let Err(MessagingErr::SendErr(failed_message)) = res {
+        assert_eq!(failed_message, message);
+    } else {
+        panic!("Invalid error type");
+    }
+}
+
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+async fn provide_derived_actor() {
+    let result_counter = Arc::new(AtomicU32::new(0));
+
+    struct TestActor {
+        counter: Arc<AtomicU32>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = u32;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            self.counter.fetch_add(message, Ordering::Relaxed);
+            Ok(())
+        }
+        fn provide_derived_actor_ref<'a>(
+            myself: ActorRef<Self::Msg>,
+            mut request: RequestDerived<'a>,
+        ) -> RequestDerived<'a> {
+            let a_u8: DerivedActorRef<u8> = myself.get_derived();
+            request.provide_derived_actor(a_u8);
+
+            let a_u16: DerivedActorRef<u16> = myself.get_derived();
+            request.provide_derived_actor(a_u16);
+
+            request
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(
+        None,
+        TestActor {
+            counter: result_counter.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Actor failed to start");
+
+    let mut sum: u32 = 0;
+
+    let a_cell = actor.get_cell();
+
+    assert!(a_cell.provide_derived::<i32>().is_none());
+
+    let from_u8 = a_cell
+        .provide_derived::<u8>()
+        .expect("Failed to provide u8 DerivedActorRef");
+    let u8_message: u8 = 1;
+    sum += u8_message as u32;
+    from_u8
+        .send_message(u8_message)
+        .expect("Failed to send message to actor");
+
+    periodic_check(
+        || result_counter.load(Ordering::Relaxed) == sum,
+        Duration::from_millis(500),
+    )
+    .await;
+
+    let from_u16 = actor
+        .provide_derived::<u16>()
+        .expect("Failed to provide u16 DerivedActorRef");
     let u16_message: u16 = 2;
     sum += u16_message as u32;
     from_u16

@@ -318,9 +318,62 @@ impl ActorCell {
         self.inner.get_status()
     }
 
-    /// Retrieve the current status of an [super::Actor]
+    /// Return a [DerivedActorRef<T>] from an [ActorCell].
     ///
-    /// Returns the [super::Actor]'s current [ActorStatus]
+    /// This is usefull in scenario where the actual actor message type is unknown
+    /// but it is known that a [DerivedActorRef] can be obtained from the actor.
+    ///
+    /// This function will call [Actor::provide_derived_actor_ref] of the target
+    /// actor in order to get a derived actor ref. If the default implementation
+    /// of [Actor::provide_derived_actor_ref] or if the actual implementation does
+    /// not provide this specific [DerivedActorRef] then this function will return
+    /// [None].
+    ///
+    /// # Exemple
+    /// ```
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async move{
+    ///
+    /// use ractor::*;
+    /// use ractor::actor::*;
+    ///
+    /// struct MyActor;
+    ///
+    /// impl Actor for MyActor {
+    ///     type Msg = u32;
+    ///     type Arguments = ();
+    ///     type State = ();
+    ///     async fn pre_start(
+    ///         &self,
+    ///         _this_actor: ActorRef<Self::Msg>,
+    ///         _: (),
+    ///     ) -> Result<Self::State, ActorProcessingErr> {
+    ///         Ok(())
+    ///     }
+    ///
+    ///     fn provide_derived_actor_ref<'a>(
+    ///         myself: ActorRef<Self::Msg>,
+    ///         mut request: RequestDerived<'a>,
+    ///     ) -> RequestDerived<'a> {
+    ///         let a_u8: DerivedActorRef<u8> = myself.get_derived();
+    ///         request.provide_derived_actor(a_u8);
+    ///
+    ///         let a_u16: DerivedActorRef<u16> = myself.get_derived();
+    ///         request.provide_derived_actor(a_u16);
+    ///
+    ///         request
+    ///     }
+    /// }
+    ///
+    /// let (actor, _) = Actor::spawn(None, MyActor, ()).await.unwrap();
+    ///
+    /// let a_cell = actor.get_cell();
+    ///
+    /// assert!(a_cell.provide_derived::<u8>().is_some());
+    /// assert!(a_cell.provide_derived::<u16>().is_some());
+    /// assert!(a_cell.provide_derived::<i32>().is_none());
+    /// # });
+    /// ```
+    ///
     #[cfg(feature = "derived-actor-from-cell")]
     pub fn provide_derived<T: Message>(&self) -> Option<DerivedActorRef<T>> {
         let mut owned_request = OwnedRequest::<T>::new();

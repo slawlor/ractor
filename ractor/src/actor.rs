@@ -450,7 +450,9 @@ pub trait Actor: Sized + Sync + Send + 'static {
         ActorRuntime::<Self>::spawn_linked(name, handler, startup_args, supervisor).await
     }
 
-    /// Provide to request derived actors that can be derived from actor_ref.
+    /// Provide [DerivedActorRef] to the `request` object that may be retrived with [ActorCell::provide_derived].
+    ///
+    /// See the documentation of [ActorCell::provide_derived].
     #[cfg(feature = "derived-actor-from-cell")]
     #[allow(unused_variables)]
     fn provide_derived_actor_ref<'a>(
