@@ -237,3 +237,6 @@ macro_rules! forward {
         }
     }};
 }
+
+#[cfg(test)]
+mod tests;
