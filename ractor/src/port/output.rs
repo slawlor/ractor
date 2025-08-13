@@ -9,6 +9,14 @@
 //! mechanism we've added in `ractor`. Output ports are ports which can have messages published
 //! to them which are automatically forwarded to downstream actors waiting for inputs. They optionally
 //! have a message transformer attached to them to convert them to the appropriate message type
+//!
+//! There are two different implementation. If the feature `output-port-v2` is not specified
+//! the implementation use a broadcast channel that is limited to 10 messages successively sent
+//! for each susbscribed actor. That means that if 10 messages are sent to the output port successively
+//! there is a high probably that any subscriber receive all messages.
+//!
+//! The new implementation that is accessible using `output-port-v2` use a fan-out task that distributes
+//! message to all subscriber ensuring that all messages are received by all subscribers
 
 use crate::ActorRef;
 use crate::Message;
