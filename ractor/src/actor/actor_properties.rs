@@ -203,13 +203,13 @@ impl ActorProperties {
                 MessagingErr::ChannelClosed => MessagingErr::ChannelClosed,
                 MessagingErr::InvalidActorType => MessagingErr::InvalidActorType,
             }),
-            boxed => {
+            local => {
                 let sender: &InputPort<MuxedMessage<TMessage>> = {
                     let ptr: &dyn Any = &*self.message;
                     ptr.downcast_ref().ok_or(MessagingErr::InvalidActorType)?
                 };
                 sender
-                    .send(MuxedMessage::Message(boxed))
+                    .send(MuxedMessage::Message(local))
                     .map_err(|e| match e.0 {
                         MuxedMessage::Message(m) => {
                             MessagingErr::SendErr(TMessage::from_boxed(m).unwrap())

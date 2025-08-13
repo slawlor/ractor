@@ -212,6 +212,9 @@ async fn test_kill_terminates_work() {
     crate::concurrency::sleep(Duration::from_millis(10)).await;
 
     assert_eq!(ActorStatus::Stopped, actor.get_status());
+
+    assert!(actor.send_message(EmptyMessage).is_err());
+
     assert!(handle.is_finished());
 }
 
@@ -508,6 +511,9 @@ async fn test_serialized_cast() {
     // cleanup
     actor.stop(None);
     handle.await.unwrap();
+
+    let serialized = (TestMessage).serialize().unwrap();
+    assert!(actor.send_serialized(serialized).is_err());
 }
 
 #[cfg(feature = "cluster")]

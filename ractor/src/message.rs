@@ -71,11 +71,9 @@ pub(crate) enum LocalOrSerialized<T: Any + Send> {
 }
 impl<T: Any + Send> LocalOrSerialized<T> {
     #[cfg(not(feature = "cluster"))]
-    pub(crate) fn into_local(self) -> Option<T> {
+    pub(crate) fn into_local(self) -> T {
         match self {
-            LocalOrSerialized::Local(msg) => Some(msg),
-            #[cfg(feature = "cluster")]
-            LocalOrSerialized::Serialized(_) => None,
+            LocalOrSerialized::Local(msg) => msg,
         }
     }
     #[cfg(feature = "cluster")]
@@ -89,6 +87,11 @@ impl<T: Any + Send> LocalOrSerialized<T> {
 
 impl<T: Any + Send> std::fmt::Debug for BoxedMessage<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #[cfg(not(feature = "cluster"))]
+        {
+            write!(f, "BoxedMessage(Local)")
+        }
+        #[cfg(feature = "cluster")]
         if matches!(self.msg, LocalOrSerialized::Local(_)) {
             write!(f, "BoxedMessage(Local)")
         } else {
@@ -126,7 +129,7 @@ pub trait Message: Any + Send + Sized + 'static {
     /// Convert a [BoxedMessage] to this concrete type
     #[cfg(not(feature = "cluster"))]
     fn from_boxed(m: BoxedMessage<Self>) -> Result<Self, BoxedDowncastErr> {
-        m.msg.into_local().ok_or(BoxedDowncastErr)
+        Ok(m.msg.into_local())
     }
 
     /// Convert this message to a [BoxedMessage]
