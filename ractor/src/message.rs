@@ -59,17 +59,40 @@ pub enum SerializedMessage {
 /// A "boxed" message denoting a strong-type message
 /// but generic so it can be passed around without type
 /// constraints
-pub struct BoxedMessage {
-    pub(crate) msg: Option<Box<dyn Any + Send>>,
-    /// A serialized message for a remote actor, accessed only by the `RemoteActorRuntime`
-    #[cfg(feature = "cluster")]
-    pub serialized_msg: Option<SerializedMessage>,
+pub struct BoxedMessage<T: Any + Send> {
+    pub(crate) msg: LocalOrSerialized<T>,
     pub(crate) span: Option<tracing::Span>,
 }
+pub(crate) enum LocalOrSerialized<T: Any + Send> {
+    Local(T),
+    #[cfg(feature = "cluster")]
+    /// A serialized message for a remote actor, accessed only by the `RemoteActorRuntime`
+    Serialized(SerializedMessage),
+}
+impl<T: Any + Send> LocalOrSerialized<T> {
+    #[cfg(not(feature = "cluster"))]
+    pub(crate) fn into_local(self) -> T {
+        match self {
+            LocalOrSerialized::Local(msg) => msg,
+        }
+    }
+    #[cfg(feature = "cluster")]
+    pub(crate) fn into_serialized(self) -> Option<SerializedMessage> {
+        match self {
+            LocalOrSerialized::Local(_) => None,
+            LocalOrSerialized::Serialized(msg) => Some(msg),
+        }
+    }
+}
 
-impl std::fmt::Debug for BoxedMessage {
+impl<T: Any + Send> std::fmt::Debug for BoxedMessage<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.msg.is_some() {
+        #[cfg(not(feature = "cluster"))]
+        {
+            write!(f, "BoxedMessage(Local)")
+        }
+        #[cfg(feature = "cluster")]
+        if matches!(self.msg, LocalOrSerialized::Local(_)) {
             write!(f, "BoxedMessage(Local)")
         } else {
             write!(f, "BoxedMessage(Serialized)")
@@ -94,46 +117,24 @@ impl std::fmt::Debug for BoxedMessage {
 pub trait Message: Any + Send + Sized + 'static {
     /// Convert a [BoxedMessage] to this concrete type
     #[cfg(feature = "cluster")]
-    fn from_boxed(mut m: BoxedMessage) -> Result<Self, BoxedDowncastErr> {
-        if m.msg.is_some() {
-            match m.msg.take() {
-                Some(m) => {
-                    if m.is::<Self>() {
-                        Ok(*m.downcast::<Self>().unwrap())
-                    } else {
-                        Err(BoxedDowncastErr)
-                    }
-                }
-                _ => Err(BoxedDowncastErr),
+    fn from_boxed(m: BoxedMessage<Self>) -> Result<Self, BoxedDowncastErr> {
+        match m.msg {
+            LocalOrSerialized::Local(m) => Ok(m),
+            LocalOrSerialized::Serialized(serialized_message) => {
+                Self::deserialize(serialized_message)
             }
-        } else if m.serialized_msg.is_some() {
-            match m.serialized_msg.take() {
-                Some(m) => Self::deserialize(m),
-                _ => Err(BoxedDowncastErr),
-            }
-        } else {
-            Err(BoxedDowncastErr)
         }
     }
 
     /// Convert a [BoxedMessage] to this concrete type
     #[cfg(not(feature = "cluster"))]
-    fn from_boxed(mut m: BoxedMessage) -> Result<Self, BoxedDowncastErr> {
-        match m.msg.take() {
-            Some(m) => {
-                if m.is::<Self>() {
-                    Ok(*m.downcast::<Self>().unwrap())
-                } else {
-                    Err(BoxedDowncastErr)
-                }
-            }
-            _ => Err(BoxedDowncastErr),
-        }
+    fn from_boxed(m: BoxedMessage<Self>) -> Result<Self, BoxedDowncastErr> {
+        Ok(m.msg.into_local())
     }
 
     /// Convert this message to a [BoxedMessage]
     #[cfg(feature = "cluster")]
-    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
+    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage<Self>, BoxedDowncastErr> {
         let span = {
             #[cfg(feature = "message_span_propogation")]
             {
@@ -147,17 +148,16 @@ pub trait Message: Any + Send + Sized + 'static {
         if Self::serializable() && !pid.is_local() {
             // it's a message to a remote actor, serialize it and send it over the wire!
             Ok(BoxedMessage {
-                msg: None,
-                serialized_msg: Some(self.serialize()?),
+                msg: LocalOrSerialized::Serialized(self.serialize()?),
                 span: None,
             })
         } else if pid.is_local() {
             Ok(BoxedMessage {
-                msg: Some(Box::new(self)),
-                serialized_msg: None,
+                msg: LocalOrSerialized::Local(self),
                 span,
             })
         } else {
+            //TODO: this error is not express the right thing
             Err(BoxedDowncastErr)
         }
     }
@@ -165,7 +165,7 @@ pub trait Message: Any + Send + Sized + 'static {
     /// Convert this message to a [BoxedMessage]
     #[cfg(not(feature = "cluster"))]
     #[allow(unused_variables)]
-    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
+    fn box_message(self, pid: &ActorId) -> Result<BoxedMessage<Self>, BoxedDowncastErr> {
         let span = {
             #[cfg(feature = "message_span_propogation")]
             {
@@ -177,7 +177,7 @@ pub trait Message: Any + Send + Sized + 'static {
             }
         };
         Ok(BoxedMessage {
-            msg: Some(Box::new(self)),
+            msg: LocalOrSerialized::Local(self),
             span,
         })
     }
