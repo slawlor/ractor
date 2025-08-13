@@ -83,13 +83,16 @@ impl Actor for HelloActor {
                     message,
                     remote_actors.len()
                 );
-                for act in remote_actors {
-                    act.cast(HelloActorMessage::Hey(message.clone()))?;
-                }
+
                 state.count += 1;
 
                 if state.count > NUM_HELLOS {
                     state.done = true;
+                } else {
+                    // Only reply if we haven't reached the limit yet
+                    for act in remote_actors {
+                        act.cast(HelloActorMessage::Hey(message.clone()))?;
+                    }
                 }
             }
             Self::Msg::IsDone(reply) => {
