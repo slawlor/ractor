@@ -196,8 +196,39 @@ fn notify_listeners(
 ) {
     garbadge.clear();
     for listener in listeners.iter() {
+        let filtered_notification = if listener.get_id().is_local() {
+            // Local listeners get all actors (local and remote)
+            notification.clone()
+        } else {
+            // Remote listeners only get local actors to prevent infinite loops
+            match notification {
+                GroupChangeMessage::Join(scope, group, actors) => {
+                    let local_actors = actors
+                        .iter()
+                        .filter(|actor| actor.get_id().is_local())
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if local_actors.is_empty() {
+                        continue; // Skip if no local actors to notify about
+                    }
+                    GroupChangeMessage::Join(scope.clone(), group.clone(), local_actors)
+                }
+                GroupChangeMessage::Leave(scope, group, actors) => {
+                    let local_actors = actors
+                        .iter()
+                        .filter(|actor| actor.get_id().is_local())
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if local_actors.is_empty() {
+                        continue; // Skip if no local actors to notify about
+                    }
+                    GroupChangeMessage::Leave(scope.clone(), group.clone(), local_actors)
+                }
+            }
+        };
+
         if listener
-            .send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(notification.clone()))
+            .send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(filtered_notification))
             .is_err()
         {
             garbadge.push(listener.clone())
@@ -632,18 +663,28 @@ pub fn monitor_world(actor: &ActorCell) {
 /// * `scope` - the scope to monitor
 /// * `actor` - The [ActorCell] representing who will receive updates
 pub fn monitor_scope(scope: ScopeName, actor: ActorCell) {
-    let monitor = get_monitor();
-    if let Some(sd) = monitor.scopes.get(&scope).map(|r| (*r).clone()) {
-        if add_listener_scope(&sd.listeners, &actor, scope.clone()) {
-            clean_up_scope(monitor, &scope)
-        }
+    if scope == all_scopes_notification().borrow() {
+        // Special case: monitor all existing scopes and any future scopes
+        which_scopes()
+            .into_iter()
+            .for_each(|existing_scope| monitor_scope(existing_scope, actor.clone()));
+        //// Also add to world listeners to get notifications for new scopes
+        //let monitor = get_monitor();
+        //monitor.world_listeners.insert(actor);
     } else {
-        let sd = match monitor.scopes.entry(scope.to_owned()) {
-            Occupied(oent) => oent.get().clone(),
-            Vacant(vent) => vent.insert(Arc::new(ScopeData::default())).clone(),
-        };
-        if add_listener_scope(&sd.listeners, &actor, scope.clone()) {
-            clean_up_scope(monitor, &scope)
+        let monitor = get_monitor();
+        if let Some(sd) = monitor.scopes.get(&scope).map(|r| (*r).clone()) {
+            if add_listener_scope(&sd.listeners, &actor, scope.clone()) {
+                clean_up_scope(monitor, &scope)
+            }
+        } else {
+            let sd = match monitor.scopes.entry(scope.to_owned()) {
+                Occupied(oent) => oent.get().clone(),
+                Vacant(vent) => vent.insert(Arc::new(ScopeData::default())).clone(),
+            };
+            if add_listener_scope(&sd.listeners, &actor, scope.clone()) {
+                clean_up_scope(monitor, &scope)
+            }
         }
     }
 }
@@ -667,6 +708,7 @@ where
     } else if group == all_groups_notification().borrow() {
         which_scoped_groups(scope)
             .into_iter()
+            .filter(|g| g != all_groups_notification())
             .for_each(|group| demonitor_scoped(scope, &group, actor));
     } else if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
         if let Some(gd) = sd.groups.get(group).map(|r| (*r).clone()) {
@@ -722,8 +764,12 @@ where
 {
     let monitor = get_monitor();
     if scope == all_scopes_notification().borrow() {
+        // Special case: remove from world listeners (for new scope notifications)
+        // and demonitor all existing scopes (excluding special notification scopes)
+        monitor.world_listeners.remove(&actor);
         which_scopes()
             .into_iter()
+            .filter(|s| s != all_scopes_notification())
             .for_each(|scope| demonitor_scope::<str>(&scope, actor));
     } else if let Some(sd) = monitor.scopes.get(scope).map(|r| (*r).clone()) {
         if let Some(actor) = sd.listeners.remove(&actor) {
