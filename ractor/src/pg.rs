@@ -56,7 +56,7 @@
 //!
 //! // Cleanup
 //! actor.stop(None);
-//! handle.await?;
+//! handle.await;
 //! # Ok(())
 //! # }
 //! ```
@@ -92,7 +92,7 @@
 //!
 //! // Cleanup
 //! worker.stop(None);
-//! handle.await?;
+//! handle.await;
 //! # Ok(())
 //! # }
 //! ```
@@ -287,7 +287,7 @@ fn get_monitor() -> &'static PgState {
 /// pg::join("worker_pool", vec![worker.get_cell()]);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -401,7 +401,7 @@ fn join_actors_to_scope(
 /// pg::join_scoped("production", "worker_pool", vec![worker.get_cell()]);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -526,7 +526,7 @@ fn leave_actors_from_scope(
 /// pg::leave("worker_pool", vec![worker.get_cell()]);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -577,7 +577,7 @@ where
 /// pg::leave_scoped("production", "worker_pool", vec![worker.get_cell()]);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -658,7 +658,7 @@ pub(crate) fn leave_and_demonitor_all(actor: ActorCell, membership: MemberShip) 
 /// assert_eq!(local_workers.len(), 1);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -711,7 +711,7 @@ where
 /// assert_eq!(local_workers.len(), 1);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -783,7 +783,7 @@ where
 /// assert_eq!(all_workers.len(), 1);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -902,7 +902,7 @@ where
 /// assert!(all_groups.len() >= 2);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -962,7 +962,7 @@ pub fn which_groups() -> Vec<GroupName> {
 /// assert_eq!(staging_groups.len(), 1);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1016,7 +1016,7 @@ where
 /// assert!(all_combinations.len() >= 2);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1068,7 +1068,7 @@ pub fn which_scopes_and_groups() -> Vec<ScopeGroupKey> {
 /// assert!(all_scopes.len() >= 2);
 ///
 /// worker.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1164,7 +1164,7 @@ fn add_listener_to_group(sd: &ScopeData, actor: &ActorCell, scope: &str, group: 
 /// pg::monitor("worker_pool", monitor_actor.get_cell());
 ///
 /// monitor_actor.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1222,7 +1222,7 @@ where
 /// pg::monitor_scoped("production", pg::ALL_GROUPS_NOTIFICATION, monitor_actor.get_cell());
 ///
 /// monitor_actor.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1296,7 +1296,7 @@ where
 /// pg::monitor_world(&monitor_actor.get_cell());
 ///
 /// monitor_actor.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1355,7 +1355,7 @@ pub fn monitor_world(actor: &ActorCell) {
 /// pg::monitor_scope(pg::ALL_SCOPES_NOTIFICATION, monitor_actor.get_cell());
 ///
 /// monitor_actor.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1431,7 +1431,7 @@ where
 /// pg::demonitor_scoped("production", "worker_pool", actor_id);
 ///
 /// actor.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1508,7 +1508,7 @@ where
 /// pg::demonitor_world(&actor.get_cell());
 ///
 /// actor.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1556,7 +1556,7 @@ pub fn demonitor_world(actor: &ActorCell) {
 /// pg::demonitor("worker_pool", actor_id);
 ///
 /// actor.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
@@ -1615,7 +1615,7 @@ where
 /// pg::demonitor_scope("production", actor_id);
 ///
 /// actor.stop(None);
-/// handle.await?;
+/// handle.await;
 /// # Ok(())
 /// # }
 /// ```
