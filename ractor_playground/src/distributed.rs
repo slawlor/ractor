@@ -89,7 +89,7 @@ impl Actor for PingPongActor {
         myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
-        ractor::pg::join("test".to_string(), vec![myself.get_cell()]);
+        ractor::pg::join("test", vec![myself.get_cell()]);
         Ok(())
     }
 
