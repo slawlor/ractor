@@ -731,7 +731,7 @@ impl NodeSession {
         // Scan all scopes with their PG groups + synchronize them
         let scopes_and_groups = which_scopes_and_groups();
         for key in scopes_and_groups {
-            let local_members = get_scoped_local_members(&key.get_scope(), &key.get_group())
+            let local_members = get_scoped_local_members(key.get_scope(), &key.get_group())
                 .into_iter()
                 .filter(|v| v.supports_remoting())
                 .map(|act| control_protocol::Actor {

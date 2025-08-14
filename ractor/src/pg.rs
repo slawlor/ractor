@@ -840,8 +840,8 @@ where
 ///
 /// worker1.stop(None);
 /// worker2.stop(None);
-/// handle1.await?;
-/// handle2.await?;
+/// handle1.await;
+/// handle2.await;
 /// # Ok(())
 /// # }
 /// ```
