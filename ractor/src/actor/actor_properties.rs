@@ -208,7 +208,7 @@ impl ActorProperties {
             return false;
         };
         if let Some(v) = &mut *lk {
-            if !v.listened_scopes.iter().any(|s| *s == scope) {
+            if !v.listened_scopes.contains(&scope) {
                 v.listened_scopes.push(scope)
             }
             true

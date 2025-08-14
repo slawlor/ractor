@@ -339,10 +339,8 @@ fn join_actors_to_group(
             false
         }
     });
-    if shall_clean_group {
-        if clean_up_group(sd, group) {
-            clean_up_scope(monitor, scope)
-        }
+    if shall_clean_group && clean_up_group(sd, group) {
+        clean_up_scope(monitor, scope)
     }
     let notif = GroupChangeMessage::Join(scope.to_owned(), group.to_owned(), actors);
     notify_listeners(&gd.listeners, &notif, &mut garbage);
