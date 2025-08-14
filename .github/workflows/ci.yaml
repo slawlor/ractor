@@ -69,19 +69,8 @@ jobs:
           command: test
 
   clippy:
-    name: Clippy - ${{matrix.package}}
+    name: Clippy
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - ractor
-          - ractor_cluster
-          - ractor_cluster_derive
-          - ractor_playground
-          - ractor_cluster_integration_tests
-          - ractor_example_entry_proc
-          - xtask
     steps:
       - uses: actions/checkout@main
       - name: Install minimal stable with clippy
@@ -92,11 +81,11 @@ jobs:
           components: clippy
           override: true
 
-      - name: Run Clippy on ${{matrix.package}}
+      - name: Run Clippy on all crates
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --package ${{matrix.package}} --all-targets -- -D clippy::all -D warnings
+          args: --workspace --keep-going --all-targets -- -D clippy::all -D warnings
 
   rustfmt:
     name: rustfmt
