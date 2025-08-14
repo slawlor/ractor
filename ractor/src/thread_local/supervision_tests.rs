@@ -54,12 +54,13 @@ async fn test_thread_local_child() {
         ) -> Result<Self::State, ActorProcessingErr> {
             Ok(())
         }
-        async fn post_start(
+        async fn handle(
             &self,
             _this_actor: ActorRef<Self::Msg>,
+            _message: Self::Msg,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            panic!("Boom");
+            panic!("Boom")
         }
     }
 
@@ -115,6 +116,8 @@ async fn test_thread_local_child() {
     let maybe_sup = child_ref.try_get_supervisor();
     assert!(maybe_sup.is_some());
     assert_eq!(maybe_sup.map(|a| a.get_id()), Some(supervisor_ref.get_id()));
+
+    assert!(child_ref.send_message(()).is_ok());
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
