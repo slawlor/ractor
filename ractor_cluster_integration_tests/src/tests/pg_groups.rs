@@ -53,7 +53,7 @@ impl Actor for HelloActor {
         myself: ActorRef<Self::Msg>,
         _: (),
     ) -> Result<Self::State, ActorProcessingErr> {
-        ractor::pg::join("test".to_string(), vec![myself.get_cell()]);
+        ractor::pg::join("test", vec![myself.get_cell()]);
         Ok(HelloActorState {
             count: 0,
             done: false,
@@ -83,13 +83,16 @@ impl Actor for HelloActor {
                     message,
                     remote_actors.len()
                 );
-                for act in remote_actors {
-                    act.cast(HelloActorMessage::Hey(message.clone()))?;
-                }
+
                 state.count += 1;
 
                 if state.count > NUM_HELLOS {
                     state.done = true;
+                } else {
+                    // Only reply if we haven't reached the limit yet
+                    for act in remote_actors {
+                        act.cast(HelloActorMessage::Hey(message.clone()))?;
+                    }
                 }
             }
             Self::Msg::IsDone(reply) => {

@@ -726,20 +726,12 @@ impl NodeSession {
         }
 
         // setup scope monitoring
-        ractor::pg::monitor_scope(
-            ractor::pg::ALL_SCOPES_NOTIFICATION.to_string(),
-            myself.get_cell(),
-        );
-        // setup PG monitoring
-        ractor::pg::monitor(
-            ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
-            myself.get_cell(),
-        );
+        ractor::pg::monitor_world(&myself.get_cell());
 
         // Scan all scopes with their PG groups + synchronize them
         let scopes_and_groups = which_scopes_and_groups();
         for key in scopes_and_groups {
-            let local_members = get_scoped_local_members(&key.get_scope(), &key.get_group())
+            let local_members = get_scoped_local_members(key.get_scope(), key.get_group())
                 .into_iter()
                 .filter(|v| v.supports_remoting())
                 .map(|act| control_protocol::Actor {
@@ -940,14 +932,7 @@ impl Actor for NodeSession {
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         // unhook monitoring sessions
-        ractor::pg::demonitor_scope(
-            ractor::pg::ALL_SCOPES_NOTIFICATION.to_string(),
-            myself.get_id(),
-        );
-        ractor::pg::demonitor(
-            ractor::pg::ALL_GROUPS_NOTIFICATION.to_string(),
-            myself.get_id(),
-        );
+        ractor::pg::demonitor_world(&myself);
         ractor::registry::pid_registry::demonitor(myself.get_id());
 
         Ok(())

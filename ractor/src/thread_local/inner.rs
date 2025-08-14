@@ -20,6 +20,7 @@ use super::ThreadLocalActorSpawner;
 use crate::actor::actor_cell;
 use crate::actor::actor_cell::ActorPortSet;
 use crate::actor::actor_properties::ActorProperties;
+use crate::actor::actor_properties::MemberShip;
 use crate::actor::actor_properties::MuxedMessage;
 use crate::actor::get_panic_string;
 use crate::actor::messages::StopMessage;
@@ -109,6 +110,7 @@ impl ActorProperties {
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
+                member_ship: Mutex::new(Some(MemberShip::default())),
             },
             rx_signal,
             rx_stop,

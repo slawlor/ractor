@@ -3,6 +3,8 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
+use std::borrow::Borrow;
+use std::hash::Hash;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -21,8 +23,10 @@ use crate::Actor;
 use crate::ActorId;
 use crate::ActorName;
 use crate::ActorStatus;
+use crate::GroupName;
 use crate::Message;
 use crate::MessagingErr;
+use crate::ScopeName;
 use crate::Signal;
 use crate::SupervisionEvent;
 
@@ -31,6 +35,13 @@ use crate::SupervisionEvent;
 pub(crate) enum MuxedMessage {
     Drain,
     Message(BoxedMessage),
+}
+
+#[derive(Default)]
+pub(crate) struct MemberShip {
+    pub(crate) scope_groups: Vec<(ScopeName, GroupName)>,
+    pub(crate) listened_groups: Vec<(ScopeName, GroupName)>,
+    pub(crate) listened_scopes: Vec<ScopeName>,
 }
 
 // The inner-properties of an Actor
@@ -47,6 +58,7 @@ pub(crate) struct ActorProperties {
     pub(crate) type_id: std::any::TypeId,
     #[cfg(feature = "cluster")]
     pub(crate) supports_remoting: bool,
+    pub(crate) member_ship: Mutex<Option<MemberShip>>,
 }
 
 impl ActorProperties {
@@ -96,12 +108,123 @@ impl ActorProperties {
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
                 supports_remoting: TActor::Msg::serializable(),
+                member_ship: Mutex::new(Some(MemberShip::default())),
             },
             rx_signal,
             rx_stop,
             rx_supervision,
             rx_message,
         )
+    }
+    /// Declare removal of membership to scope/group.
+    pub(crate) fn can_monitor(&self) -> bool {
+        let Ok(lk) = self.member_ship.lock() else {
+            return false;
+        };
+        lk.is_some()
+    }
+    /// Declare removal of membership to scope/group.
+    pub(crate) fn remove_member_ship(&self, scope: ScopeName, group: GroupName) {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return;
+        };
+        if let Some(v) = &mut *lk {
+            v.scope_groups.retain(|(s, g)| *s != scope || *g != group);
+        }
+    }
+    /// Declare membership to scope/group.
+    /// If it return false, the insertion should be abandonned.
+    pub(crate) fn add_member_ship(&self, scope: ScopeName, group: GroupName) -> bool {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return false;
+        };
+        if let Some(v) = &mut *lk {
+            if !v
+                .scope_groups
+                .iter()
+                .any(|(s, g)| *s == scope && *g == group)
+            {
+                v.scope_groups.push((scope, group))
+            }
+            true
+        } else {
+            false
+        }
+    }
+    /// Declare removal of listening to scope/group.
+    pub(crate) fn remove_listen_group<S, G>(&self, scope: &S, group: &G)
+    where
+        S: Hash + Eq + ?Sized,
+        G: Hash + Eq + ?Sized,
+        ScopeName: Borrow<S>,
+        GroupName: Borrow<G>,
+    {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return;
+        };
+        if let Some(v) = &mut *lk {
+            v.listened_groups.retain(|(s, g)| {
+                <ScopeName as Borrow<S>>::borrow(s) != scope
+                    || <GroupName as Borrow<G>>::borrow(g) != group
+            });
+        }
+    }
+    /// Declare listening scope/group.
+    /// If it return false, the insertion should be abandonned.
+    pub(crate) fn add_listen_group(&self, scope: ScopeName, group: GroupName) -> bool {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return false;
+        };
+        if let Some(v) = &mut *lk {
+            if !v
+                .listened_groups
+                .iter()
+                .any(|(s, g)| *s == scope && *g == group)
+            {
+                v.listened_groups.push((scope, group))
+            }
+            true
+        } else {
+            false
+        }
+    }
+    /// Declare removal of listening to scope.
+    pub(crate) fn remove_listen_scope<S>(&self, scope: &S)
+    where
+        S: Hash + Eq + ?Sized,
+        ScopeName: Borrow<S>,
+    {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return;
+        };
+        if let Some(v) = &mut *lk {
+            v.listened_scopes.retain(|s| s.borrow() != scope);
+        }
+    }
+    // Declare listening scope.
+    // If it return false, the insertion should be abandonned.
+    pub(crate) fn add_listen_scope(&self, scope: ScopeName) -> bool {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return false;
+        };
+        if let Some(v) = &mut *lk {
+            if !v.listened_scopes.contains(&scope) {
+                v.listened_scopes.push(scope)
+            }
+            true
+        } else {
+            false
+        }
+    }
+    pub(crate) fn remove_member_ship_ability(&self) -> MemberShip {
+        let Ok(mut lk) = self.member_ship.lock() else {
+            return MemberShip::default();
+        };
+        if let Some(v) = &mut *lk {
+            std::mem::take(v)
+        } else {
+            MemberShip::default()
+        }
     }
 
     pub(crate) fn get_status(&self) -> ActorStatus {

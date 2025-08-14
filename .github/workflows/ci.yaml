@@ -16,7 +16,7 @@ jobs:
         include:
           - name: Run the default tests
             package: ractor
-            # flags: 
+            # flags:
           - name: Test ractor with async-trait
             package: ractor
             flags: -F async-trait
@@ -40,14 +40,14 @@ jobs:
             flags: --no-default-features -F async-std,async-trait
           - name: Test ractor_cluster with native async traits
             package: ractor_cluster
-            # flags: 
+            # flags:
           - name: Test ractor_cluster with async_trait
             package: ractor_cluster
             flags: -F async-trait
           - name: Test ractor with the monitor API
             package: ractor
             flags: -F monitors
-            
+
     steps:
       - uses: actions/checkout@main
 
@@ -81,11 +81,11 @@ jobs:
           components: clippy
           override: true
 
-      - name: Run Clippy
+      - name: Run Clippy on all crates
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all -- -D clippy::all -D warnings
+          args: --workspace --keep-going --all-targets -- -D clippy::all -D warnings
 
   rustfmt:
     name: rustfmt
@@ -141,4 +141,3 @@ jobs:
         with:
           command: bench
           args: --no-run
-          
