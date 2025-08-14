@@ -1253,7 +1253,7 @@ async fn test_monitor_world() {
     pg::join_scoped(&scope1, &group2, vec![actor4.clone().into()]);
 
     // Wait a bit to ensure no new notifications
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     assert_eq!(counter.load(Ordering::Relaxed), 3); // Should still be 3
 
     // Cleanup
@@ -1365,7 +1365,7 @@ async fn test_monitor_scope_with_future_groups() {
     pg::join_scoped(&scope, &group1, vec![actor3.clone().into()]);
 
     // Wait a bit to ensure no new notifications
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     assert_eq!(counter.load(Ordering::Relaxed), 2); // Should still be 2
 
     // Cleanup
@@ -1739,7 +1739,7 @@ async fn test_demonitor_functions() {
     pg::join_scoped(&scope, &group, vec![actor2.clone().into()]);
 
     // Wait for notifications
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     let notifications_after_partial = counter.load(Ordering::Relaxed);
     assert!(notifications_after_partial > 0); // Should still get some notifications
 
@@ -1757,7 +1757,7 @@ async fn test_demonitor_functions() {
     pg::join_scoped(&scope, &group, vec![actor3.clone().into()]);
 
     // Wait a bit and ensure no notifications
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     assert_eq!(counter.load(Ordering::Relaxed), 0);
 
     // Cleanup
@@ -1963,7 +1963,7 @@ async fn test_demonitor_scope_all_scopes_special_case() {
     pg::join_scoped(&scope1, &group, vec![actor4.clone().into()]);
 
     // Wait and verify no notifications
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     assert_eq!(counter.load(Ordering::Relaxed), 0);
 
     // Cleanup
@@ -2353,7 +2353,7 @@ async fn test_demonitor_all_groups_in_scope() {
     pg::join_scoped(&scope, &group1, vec![actor5.clone().into()]);
 
     // Wait and verify no notifications
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     assert_eq!(counter.load(Ordering::Relaxed), 0);
 
     // Cleanup
@@ -2767,7 +2767,7 @@ async fn test_concurrent_join_leave_operations() {
             let group = group.clone();
             let scope = scope.clone();
             let actor = actor.clone();
-            tokio::spawn(async move {
+            crate::concurrency::spawn(async move {
                 if i % 2 == 0 {
                     pg::join(&group, vec![actor.into()]);
                 } else {
@@ -2797,7 +2797,7 @@ async fn test_concurrent_join_leave_operations() {
             let group = group.clone();
             let scope = scope.clone();
             let actor = actor.clone();
-            tokio::spawn(async move {
+            crate::concurrency::spawn(async move {
                 if i % 2 == 0 {
                     pg::leave(&group, vec![actor.into()]);
                 } else {
@@ -2911,7 +2911,7 @@ async fn test_monitor_then_demonitor_cycles() {
 
     // Rejoin after demonitoring (should not receive notification)
     pg::join_scoped(&scope, &group, vec![actor.clone().into()]);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::concurrency::sleep(Duration::from_millis(100)).await;
     assert_eq!(counter.load(Ordering::Relaxed), 1); // Should still be 1
 
     // Monitor again and verify notifications work

@@ -362,7 +362,7 @@ fn join_actors_to_scope(
             Occupied(oent) => oent.get().clone(),
             Vacant(vent) => vent.insert(Arc::new(GroupData::default())).clone(),
         };
-        join_actors_to_group(monitor, sd, &*gd, actors, scope, group)
+        join_actors_to_group(monitor, sd, &gd, actors, scope, group)
     }
 }
 
