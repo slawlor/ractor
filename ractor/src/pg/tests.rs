@@ -2077,17 +2077,17 @@ async fn test_automatic_cleanup_on_actor_shutdown() {
             message: SupervisionEvent,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
-            if let SupervisionEvent::ProcessGroupChanged(change) = message {
-                match change {
-                    pg::GroupChangeMessage::Leave(scope, group, who) => {
-                        println!(
-                            "Leave event: scope={}, group={}, who={:?}",
-                            scope, group, who
-                        );
-                        self.counter.fetch_add(who.len() as u8, Ordering::Relaxed);
-                    }
-                    _ => {}
-                }
+            if let SupervisionEvent::ProcessGroupChanged(pg::GroupChangeMessage::Leave(
+                scope,
+                group,
+                who,
+            )) = message
+            {
+                println!(
+                    "Leave event: scope={}, group={}, who={:?}",
+                    scope, group, who
+                );
+                self.counter.fetch_add(who.len() as u8, Ordering::Relaxed);
             }
             Ok(())
         }
@@ -2147,10 +2147,10 @@ async fn test_automatic_cleanup_on_actor_shutdown() {
     .expect("Failed to spawn multi-group actor");
 
     // Verify the actor is in all expected groups
-    assert!(pg::get_members(&group1).len() > 0);
-    assert!(pg::get_scoped_members(&scope1, &group1).len() > 0);
-    assert!(pg::get_scoped_members(&scope1, &group2).len() > 0);
-    assert!(pg::get_scoped_members(&scope2, &group1).len() > 0);
+    assert!(!pg::get_members(&group1).is_empty());
+    assert!(!pg::get_scoped_members(&scope1, &group1).is_empty());
+    assert!(!pg::get_scoped_members(&scope1, &group2).is_empty());
+    assert!(!pg::get_scoped_members(&scope2, &group1).is_empty());
 
     // Stop the actor (should trigger automatic cleanup via leave_and_demonitor_all)
     multi_actor.stop(None);
