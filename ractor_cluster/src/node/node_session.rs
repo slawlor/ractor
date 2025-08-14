@@ -1065,7 +1065,7 @@ impl Actor for NodeSession {
                 GroupChangeMessage::Join(scope, group, actors) => {
                     let filtered = actors
                         .into_iter()
-                        .filter(|act| act.supports_remoting() && act.get_id().is_local())
+                        .filter(|act| act.supports_remoting())
                         .map(|act| control_protocol::Actor {
                             name: act.get_name(),
                             pid: act.get_id().pid(),
@@ -1087,7 +1087,7 @@ impl Actor for NodeSession {
                 GroupChangeMessage::Leave(scope, group, actors) => {
                     let filtered = actors
                         .into_iter()
-                        .filter(|act| act.supports_remoting() && act.get_id().is_local())
+                        .filter(|act| act.supports_remoting())
                         .map(|act| control_protocol::Actor {
                             name: act.get_name(),
                             pid: act.get_id().pid(),

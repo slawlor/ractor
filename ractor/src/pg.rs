@@ -305,39 +305,8 @@ fn notify_listeners(
 ) {
     garbage.clear();
     for listener in listeners.iter() {
-        let filtered_notification = if listener.get_id().is_local() {
-            // Local listeners get all actors (local and remote)
-            notification.clone()
-        } else {
-            // Remote listeners only get local actors to prevent infinite loops
-            match notification {
-                GroupChangeMessage::Join(scope, group, actors) => {
-                    let local_actors = actors
-                        .iter()
-                        .filter(|actor| actor.get_id().is_local())
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    if local_actors.is_empty() {
-                        continue; // Skip if no local actors to notify about
-                    }
-                    GroupChangeMessage::Join(scope.clone(), group.clone(), local_actors)
-                }
-                GroupChangeMessage::Leave(scope, group, actors) => {
-                    let local_actors = actors
-                        .iter()
-                        .filter(|actor| actor.get_id().is_local())
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    if local_actors.is_empty() {
-                        continue; // Skip if no local actors to notify about
-                    }
-                    GroupChangeMessage::Leave(scope.clone(), group.clone(), local_actors)
-                }
-            }
-        };
-
         if listener
-            .send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(filtered_notification))
+            .send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(notification.clone()))
             .is_err()
         {
             garbage.push(listener.clone())
