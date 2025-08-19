@@ -40,13 +40,11 @@ pub struct EncryptionConfig {
     client_host: Option<String>,
 }
 
-#[allow(mismatched_lifetime_syntaxes)]
-fn load_certs(path_str: &'static str) -> Result<Vec<CertificateDer>, ActorProcessingErr> {
+fn load_certs(path_str: &'static str) -> Result<Vec<CertificateDer<'static>>, ActorProcessingErr> {
     Ok(CertificateDer::pem_file_iter(path_str)?.collect::<Result<Vec<_>, _>>()?)
 }
 
-#[allow(mismatched_lifetime_syntaxes)]
-fn load_key(path_str: &'static str) -> Result<PrivateKeyDer, ActorProcessingErr> {
+fn load_key(path_str: &'static str) -> Result<PrivateKeyDer<'static>, ActorProcessingErr> {
     Ok(PrivateKeyDer::from_pem_file(path_str)?)
 }
 
