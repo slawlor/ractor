@@ -16,7 +16,7 @@ jobs:
         include:
           - name: Run the default tests
             package: ractor
-            # flags: 
+            # flags:
           - name: Test ractor with async-trait
             package: ractor
             flags: -F async-trait
@@ -40,14 +40,20 @@ jobs:
             flags: --no-default-features -F async-std,async-trait
           - name: Test ractor_cluster with native async traits
             package: ractor_cluster
-            # flags: 
+            # flags:
           - name: Test ractor_cluster with async_trait
             package: ractor_cluster
             flags: -F async-trait
           - name: Test ractor with the monitor API
             package: ractor
             flags: -F monitors
-            
+          - name: Test ractor with output-port-v2 feature
+            package: ractor
+            flags: -F output-port-v2
+          - name: Test ractor without output-port-v2 feature (explicit)
+            package: ractor
+            flags: --no-default-features -F tokio_runtime,message_span_propogation
+
     steps:
       - uses: actions/checkout@main
 
@@ -141,4 +147,3 @@ jobs:
         with:
           command: bench
           args: --no-run
-          

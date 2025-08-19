@@ -24,6 +24,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 cluster = []
 monitors = []
 message_span_propogation = []
+output-port-v2 = []
 tokio_runtime = ["tokio/time", "tokio/rt", "tokio/macros", "tokio/tracing"]
 blanket_serde = ["serde", "pot", "cluster"]
 async-trait = ["dep:async-trait"]
