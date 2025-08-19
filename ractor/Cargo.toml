@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.15.7"
+version = "0.15.8"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -44,7 +44,7 @@ strum = { version = "0.26", features = ["derive"] }
 # async-std feature 'unstable' is required for spawn_local: https://docs.rs/async-std/latest/async_std/task/fn.spawn_local.html
 async-std = { version = "1", features = ["attributes", "unstable"], optional = true }
 async-trait = { version = "0.1", optional = true }
-tokio = { version = "1.30", features = ["sync"] }
+tokio = { version = "1", features = ["sync"] }
 tracing = { version = "0.1", features = ["attributes"] }
 
 ## Blanket Serde

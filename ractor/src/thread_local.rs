@@ -365,7 +365,7 @@ impl Default for ThreadLocalActorSpawner {
 // note: it's not great that we have multiple implementations depending on the async backend in here
 // - ideally this would be moved to ./concurrency/*
 impl ThreadLocalActorSpawner {
-    #[cfg(all(feature = "tokio_runtime", not(target_arch = "wasm32")))]
+    #[cfg(all(not(feature = "async-std"), not(target_arch = "wasm32")))]
     /// Create a new [ThreadLocalActorSpawner] on the current thread.
     pub fn new() -> Self {
         let (send, mut recv) = crate::concurrency::mpsc_unbounded();
@@ -378,7 +378,7 @@ impl ThreadLocalActorSpawner {
         std::thread::spawn(move || {
             let local = tokio::task::LocalSet::new();
 
-            // TODO (seanlawlor): Supported named spawn
+            // TODO (seanlawlor): Support named spawn
             local.spawn_local(async move {
                 while let Some(SpawnArgs {
                     builder,
@@ -420,7 +420,7 @@ impl ThreadLocalActorSpawner {
         let (send, mut recv) = crate::concurrency::mpsc_unbounded();
 
         std::thread::spawn(move || {
-            // TODO (seanlawlor): Supported named spawn
+            // TODO (seanlawlor): Support named spawn
             async_std::task::block_on(async_std::task::spawn_local(async move {
                 while let Some(SpawnArgs {
                     builder,
