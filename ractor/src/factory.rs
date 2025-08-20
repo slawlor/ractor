@@ -166,7 +166,7 @@ use std::sync::Arc;
 use crate::concurrency::Duration;
 use crate::concurrency::Instant;
 #[cfg(feature = "cluster")]
-use crate::message::BoxedDowncastErr;
+use crate::message::DowncastErr;
 use crate::Message;
 use crate::RpcReplyPort;
 
@@ -342,15 +342,13 @@ where
     fn serializable() -> bool {
         TMsg::serializable()
     }
-    fn serialize(
-        self,
-    ) -> Result<crate::message::SerializedMessage, crate::message::BoxedDowncastErr> {
+    fn serialize(self) -> Result<crate::message::SerializedMessage, crate::message::DowncastErr> {
         match self {
             Self::Dispatch(job) => job.serialize(),
-            _ => Err(BoxedDowncastErr),
+            _ => Err(DowncastErr),
         }
     }
-    fn deserialize(bytes: crate::message::SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+    fn deserialize(bytes: crate::message::SerializedMessage) -> Result<Self, DowncastErr> {
         Ok(Self::Dispatch(Job::<TKey, TMsg>::deserialize(bytes)?))
     }
 }
