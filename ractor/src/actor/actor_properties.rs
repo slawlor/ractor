@@ -305,7 +305,6 @@ fn convert_muxed_message_to_messaging_error<TMessage: Message>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::DowncastErr;
 
     #[cfg(feature = "cluster")]
     #[test]
@@ -316,10 +315,10 @@ mod tests {
             fn serializable() -> bool {
                 true
             }
-            fn deserialize(_bytes: SerializedMessage) -> Result<Self, DowncastErr> {
+            fn deserialize(_bytes: SerializedMessage) -> Result<Self, crate::message::DowncastErr> {
                 Ok(TestRemoteMessage)
             }
-            fn serialize(self) -> Result<SerializedMessage, DowncastErr> {
+            fn serialize(self) -> Result<SerializedMessage, crate::message::DowncastErr> {
                 Ok(crate::message::SerializedMessage::Cast {
                     args: vec![],
                     variant: "Cast".to_string(),

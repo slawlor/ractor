@@ -106,3 +106,8 @@ required-features = []
 name = "async_traits"
 harness = false
 required-features = []
+
+[[bench]]
+name = "output_ports"
+harness = false
+required-features = []
