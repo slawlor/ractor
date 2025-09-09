@@ -85,6 +85,7 @@ use crate::errors::ActorErr;
 use crate::errors::ActorProcessingErr;
 use crate::errors::MessagingErr;
 use crate::errors::SpawnErr;
+use crate::message::RactorMessage;
 use crate::ActorName;
 use crate::Message;
 use crate::State;
@@ -694,7 +695,10 @@ where
     /// * `handler` The [Actor] defining the logic for this actor
     ///
     /// Returns A tuple [(Actor, ActorPortSet)] to be passed to the `start` function of [Actor]
-    fn new(name: Option<ActorName>, handler: TActor) -> Result<(Self, ActorPortSet), SpawnErr> {
+    fn new(
+        name: Option<ActorName>,
+        handler: TActor,
+    ) -> Result<(Self, ActorPortSet<TActor::Msg>), SpawnErr> {
         let (actor_cell, ports) = actor_cell::ActorCell::new::<TActor>(name)?;
         let id = actor_cell.get_id();
         let name = actor_cell.get_name();
@@ -724,7 +728,7 @@ where
     #[tracing::instrument(name = "Actor", skip(self, ports, startup_args, supervisor), fields(id = self.id.to_string(), name = self.name))]
     async fn start(
         self,
-        ports: ActorPortSet,
+        ports: ActorPortSet<TActor::Msg>,
         startup_args: TActor::Arguments,
         supervisor: Option<ActorCell>,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
@@ -796,7 +800,7 @@ where
 
     #[tracing::instrument(name = "Actor", skip(ports, state, handler, myself, _id, _name), fields(id = _id.to_string(), name = _name))]
     async fn processing_loop(
-        mut ports: ActorPortSet,
+        mut ports: ActorPortSet<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
         myself: ActorRef<TActor::Msg>,
@@ -865,7 +869,7 @@ where
         myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
-        ports: &mut ActorPortSet,
+        ports: &mut ActorPortSet<TActor::Msg>,
     ) -> Result<ActorLoopResult, ActorProcessingErr> {
         match ports.listen_in_priority().await {
             Ok(actor_port_message) => match actor_port_message {
@@ -950,7 +954,7 @@ where
         myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
-        mut msg: crate::message::BoxedMessage,
+        mut msg: crate::message::LocalOrSerialized<TActor::Msg>,
     ) -> Result<(), ActorProcessingErr> {
         // panic in order to kill the actor
         #[cfg(feature = "cluster")]
@@ -959,7 +963,7 @@ where
             // to the remote system for decoding + handling by the real implementation. Therefore `RemoteActor`s
             // can be thought of as a "shim" to a real actor on a remote system
             if !myself.get_id().is_local() {
-                match msg.serialized_msg {
+                match msg.into_serialized() {
                     Some(serialized_msg) => {
                         return handler
                             .handle_serialized(myself, serialized_msg, state)
@@ -977,10 +981,10 @@ where
         // The current [tracing::Span] is retrieved, boxed, and included in every
         // `BoxedMessage` during the conversion of this `TActor::Msg`. It is used
         // to automatically continue tracing span nesting when sending messages to Actors.
-        let current_span_when_message_was_sent = msg.span.take();
+        let current_span_when_message_was_sent = msg.take_span();
 
         // An error here will bubble up to terminate the actor
-        let typed_msg = TActor::Msg::from_boxed(msg)?;
+        let typed_msg = TActor::Msg::decode(msg)?;
 
         if let Some(span) = current_span_when_message_was_sent {
             handler
