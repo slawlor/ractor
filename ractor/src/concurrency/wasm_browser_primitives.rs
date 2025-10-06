@@ -22,15 +22,15 @@ impl super::ConcurrencyBackend for WasmBrowserBackend {
     type Instant = web_time::Instant;
     type Interval = time::Interval;
     type JoinSet<T> = tokio::task::JoinSet<T>;
-    
+
     fn sleep(dur: Self::Duration) -> impl Future<Output = ()> + Send {
         time::sleep(dur)
     }
-    
+
     fn interval(dur: Self::Duration) -> Self::Interval {
         time::interval(dur)
     }
-    
+
     fn spawn<F>(future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
@@ -38,7 +38,7 @@ impl super::ConcurrencyBackend for WasmBrowserBackend {
     {
         Self::spawn_named(None, future)
     }
-    
+
     fn spawn_local<F>(future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + 'static,
@@ -46,7 +46,7 @@ impl super::ConcurrencyBackend for WasmBrowserBackend {
         // note: 'tokio_with_wasm::spawn_local' has an incorrect signature and only works with Output=().
         tokio_with_wasm::spawn(future)
     }
-    
+
     fn spawn_named<F>(name: Option<&str>, future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
@@ -67,15 +67,12 @@ impl super::ConcurrencyBackend for WasmBrowserBackend {
             tokio::task::spawn(future)
         }
     }
-    
-    fn timeout<F, T>(dur: Self::Duration, future: F) -> impl Future<Output = Result<T, super::Timeout>>
+
+    async fn timeout<F, T>(dur: Self::Duration, future: F) -> Result<T, super::Timeout>
     where
-        F: Future<Output = T> + Send,
-        T: 'static,
+        F: Future<Output = T>,
     {
-        async move {
-            time::timeout(dur, future).await.map_err(|_| super::Timeout)
-        }
+        time::timeout(dur, future).await.map_err(|_| super::Timeout)
     }
 }
 
@@ -142,8 +139,7 @@ where
 /// Returns [Ok(_)] if the future succeeded before the timeout, [Err(super::Timeout)] otherwise
 pub async fn timeout<F, T>(dur: super::Duration, future: F) -> Result<T, super::Timeout>
 where
-    F: Future<Output = T> + Send,
-    T: 'static,
+    F: Future<Output = T>,
 {
     <WasmBrowserBackend as super::ConcurrencyBackend>::timeout(dur, future).await
 }

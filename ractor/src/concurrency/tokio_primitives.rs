@@ -17,15 +17,15 @@ impl super::ConcurrencyBackend for TokioBackend {
     type Instant = tokio::time::Instant;
     type Interval = tokio::time::Interval;
     type JoinSet<T> = tokio::task::JoinSet<T>;
-    
+
     fn sleep(dur: Self::Duration) -> impl Future<Output = ()> + Send {
         tokio::time::sleep(dur)
     }
-    
+
     fn interval(dur: Self::Duration) -> Self::Interval {
         tokio::time::interval(dur)
     }
-    
+
     fn spawn<F>(future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
@@ -33,14 +33,14 @@ impl super::ConcurrencyBackend for TokioBackend {
     {
         Self::spawn_named(None, future)
     }
-    
+
     fn spawn_local<F>(future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + 'static,
     {
         tokio::task::spawn_local(future)
     }
-    
+
     fn spawn_named<F>(name: Option<&str>, future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
@@ -61,16 +61,17 @@ impl super::ConcurrencyBackend for TokioBackend {
             tokio::task::spawn(future)
         }
     }
-    
-    fn timeout<F, T>(dur: Self::Duration, future: F) -> impl Future<Output = Result<T, super::Timeout>>
+
+    async fn timeout<F, T>(
+        dur: Self::Duration,
+        future: F,
+    ) -> Result<T, super::Timeout>
     where
         F: Future<Output = T>,
     {
-        async move {
-            tokio::time::timeout(dur, future)
-                .await
-                .map_err(|_| super::Timeout)
-        }
+        tokio::time::timeout(dur, future)
+            .await
+            .map_err(|_| super::Timeout)
     }
 }
 

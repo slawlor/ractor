@@ -32,18 +32,18 @@ impl super::ConcurrencyBackend for AsyncStdBackend {
     type Instant = std::time::Instant;
     type Interval = Interval;
     type JoinSet<T> = JoinSet<T>;
-    
+
     fn sleep(dur: Self::Duration) -> impl Future<Output = ()> + Send {
         async_std::task::sleep(dur)
     }
-    
+
     fn interval(dur: Self::Duration) -> Self::Interval {
         Interval {
             dur,
             next_tick: std::time::Instant::now(),
         }
     }
-    
+
     fn spawn<F>(future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
@@ -51,7 +51,7 @@ impl super::ConcurrencyBackend for AsyncStdBackend {
     {
         Self::spawn_named(None, future)
     }
-    
+
     fn spawn_local<F>(future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + 'static,
@@ -70,7 +70,7 @@ impl super::ConcurrencyBackend for AsyncStdBackend {
             is_done: signal,
         }
     }
-    
+
     fn spawn_named<F>(name: Option<&str>, future: F) -> Self::JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
@@ -109,16 +109,14 @@ impl super::ConcurrencyBackend for AsyncStdBackend {
             }
         }
     }
-    
-    fn timeout<F, T>(dur: Self::Duration, future: F) -> impl Future<Output = Result<T, super::Timeout>>
+
+    async fn timeout<F, T>(dur: Self::Duration, future: F) -> Result<T, super::Timeout>
     where
         F: Future<Output = T>,
     {
-        async move {
-            async_std::future::timeout(dur, future)
-                .await
-                .map_err(|_| super::Timeout)
-        }
+        async_std::future::timeout(dur, future)
+            .await
+            .map_err(|_| super::Timeout)
     }
 }
 
