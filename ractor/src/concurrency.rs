@@ -171,7 +171,7 @@ pub use self::tokio_primitives::test;
 ))]
 pub use self::async_std_primitives::test;
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(all(target_arch = "wasm32", target_os = "unknown", test))]
 pub use self::wasm_browser_primitives::test;
 
 // Public type aliases using CurrentBackend
