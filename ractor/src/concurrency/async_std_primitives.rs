@@ -195,7 +195,7 @@ impl Interval {
         let now = Instant::now();
         // if the next tick time is in the future, wait until it's time
         if self.next_tick > now {
-            sleep(self.next_tick - now).await;
+            async_std::task::sleep(self.next_tick - now).await;
         }
         // set the next tick time
         self.next_tick += self.dur;
@@ -256,6 +256,7 @@ mod async_std_primitive_tests {
 
     use super::*;
     use crate::common_test::periodic_check;
+    use crate::concurrency::{sleep, spawn, spawn_named};
 
     #[super::test]
     async fn join_handle_aborts() {
