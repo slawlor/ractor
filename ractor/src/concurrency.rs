@@ -5,6 +5,58 @@
 
 //! Shared concurrency primitives utilized within the library for different frameworks (tokio, async-std, etc)
 
+use std::future::Future;
+
+/// Trait defining the interface for concurrency backends
+/// 
+/// This trait provides a common interface for different async runtime backends
+/// (tokio, async-std, wasm-browser). Each backend implements this trait with
+/// its own runtime-specific types and behavior.
+pub trait ConcurrencyBackend {
+    /// Task join handle type
+    type JoinHandle<T>;
+    
+    /// Duration type
+    type Duration: Clone;
+    
+    /// Instant/time point type
+    type Instant: Clone;
+    
+    /// Interval type
+    type Interval;
+    
+    /// JoinSet type for managing multiple futures
+    type JoinSet<T>;
+    
+    /// Sleep for a duration
+    fn sleep(dur: Self::Duration) -> impl Future<Output = ()> + Send;
+    
+    /// Create an interval that ticks at a regular duration
+    fn interval(dur: Self::Duration) -> Self::Interval;
+    
+    /// Spawn a task on the executor runtime
+    fn spawn<F>(future: F) -> Self::JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static;
+    
+    /// Spawn a task on the executor runtime which will not be moved to other threads
+    fn spawn_local<F>(future: F) -> Self::JoinHandle<F::Output>
+    where
+        F: Future + 'static;
+    
+    /// Spawn a (possibly) named task on the executor runtime
+    fn spawn_named<F>(name: Option<&str>, future: F) -> Self::JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static;
+    
+    /// Execute a future with a timeout
+    fn timeout<F, T>(dur: Self::Duration, future: F) -> impl Future<Output = Result<T, Timeout>>
+    where
+        F: Future<Output = T>;
+}
+
 /// A timeout error
 #[derive(Debug)]
 pub struct Timeout;
