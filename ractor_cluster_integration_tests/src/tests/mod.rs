@@ -13,6 +13,10 @@ use rand::Rng;
 pub mod auth_handshake;
 pub mod dist_connect;
 pub mod encryption;
+#[cfg(test)]
+pub mod external_transport;
+#[cfg(all(test, unix))]
+pub mod external_unix;
 pub mod pg_groups;
 
 fn random_name() -> String {

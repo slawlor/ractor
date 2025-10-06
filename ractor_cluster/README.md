@@ -78,6 +78,38 @@ ractor_cluster::client_connect(
 
 Similarly there is a `client_connect_enc` to connect to a `NodeServer` which is utilizing encrypted communication. That's it! If your nodes are sharing a proper magic cookie value, they should authenticate to each other and you'll see remote actors spawned on your local system which you can communciate with through the various `pg` or `pid`-based registries.
 
+### Bring Your Own Transport
+
+If you want to run the cluster protocol over a custom transport (for example QUIC, WebSocket, SSH tunnel, or an in-memory pipe), you can implement a tiny trait and inject a connection into the `NodeServer`.
+
+- Implement `ractor_cluster::ClusterBidiStream` for your connected stream type. It just needs to split into a read and a write half that implement `tokio::io::AsyncRead`/`AsyncWrite`.
+- The cluster protocol framing remains identical: a big-endian length prefix followed by a prost-encoded payload. You don't need to touch authentication, control, remote actor, or PG sync logic.
+- Open a connection in your app, wrap it as `ClusterBidiStream`, and send it to the node server using `NodeServerMessage::ConnectionOpenedExternal` or via the helper `client_connect_external`.
+
+Example:
+
+```rust
+use ractor_cluster::{ClusterBidiStream, BoxRead, BoxWrite};
+use tokio::io::DuplexStream;
+
+struct MyDuplex(DuplexStream);
+
+impl ClusterBidiStream for MyDuplex {
+    fn split(self: Box<Self>) -> (BoxRead, BoxWrite) {
+        let (r, w) = tokio::io::split(self.0);
+        (Box::new(r), Box::new(w))
+    }
+    fn peer_label(&self) -> Option<String> { Some("duplex:peer".into()) }
+    fn local_label(&self) -> Option<String> { Some("duplex:local".into()) }
+}
+
+// elsewhere in async context
+// let (a, b) = tokio::io::duplex(64 * 1024);
+// node_server.cast(NodeServerMessage::ConnectionOpenedExternal { stream: Box::new(MyDuplex(a)), is_server: false })?;
+```
+
+The existing TCP and TLS paths continue to work as before. External transports are purely additive.
+
 ### Designing remote-supported actors
 
 **Note** not all actors are created equal. Actors need to support having their message types sent over the network link. This is done by overriding specific methods of the `ractor::Message` trait all messages need to support. Due to the lack of specialization support in Rust, if you choose to use `ractor_cluster` you'll need to derive the `ractor::Message` trait for **all** message types in your crate. However to support this, we have a few procedural macros to make this a more painless process
