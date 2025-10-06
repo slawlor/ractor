@@ -110,32 +110,139 @@ pub fn broadcast<T: Clone>(buffer: usize) -> (BroadcastSender<T>, BroadcastRecei
     tokio::sync::broadcast::channel(buffer)
 }
 
+// Backend modules
 #[cfg(all(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     not(feature = "async-std")
 ))]
 pub mod tokio_primitives;
-#[cfg(all(
-    not(all(target_arch = "wasm32", target_os = "unknown")),
-    not(feature = "async-std")
-))]
-pub use self::tokio_primitives::*;
 
 #[cfg(all(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     feature = "async-std"
 ))]
 pub mod async_std_primitives;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub mod wasm_browser_primitives;
+
+// Select the current backend via type alias
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    not(feature = "async-std")
+))]
+type CurrentBackend = tokio_primitives::TokioBackend;
+
 #[cfg(all(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     feature = "async-std"
 ))]
-pub use self::async_std_primitives::*;
+type CurrentBackend = async_std_primitives::AsyncStdBackend;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub mod wasm_browser_primitives;
+type CurrentBackend = wasm_browser_primitives::WasmBrowserBackend;
+
+// Re-export backend-specific macros (internal use only)
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    not(feature = "async-std")
+))]
+pub(crate) use self::tokio_primitives::select;
+
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    feature = "async-std"
+))]
+pub(crate) use self::async_std_primitives::select;
+
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub use self::wasm_browser_primitives::*;
+pub(crate) use self::wasm_browser_primitives::select;
+
+// Re-export test macro
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    not(feature = "async-std")
+))]
+pub use self::tokio_primitives::test;
+
+#[cfg(all(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    feature = "async-std"
+))]
+pub use self::async_std_primitives::test;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub use self::wasm_browser_primitives::test;
+
+// Public type aliases using CurrentBackend
+/// Represents a task JoinHandle
+pub type JoinHandle<T> = <CurrentBackend as ConcurrencyBackend>::JoinHandle<T>;
+
+/// A duration of time
+pub type Duration = <CurrentBackend as ConcurrencyBackend>::Duration;
+
+/// An instant measured on system time
+pub type Instant = <CurrentBackend as ConcurrencyBackend>::Instant;
+
+/// An asynchronous interval calculation which waits until
+/// a checkpoint time to tick
+pub type Interval = <CurrentBackend as ConcurrencyBackend>::Interval;
+
+/// A set of futures to join on, in an unordered fashion
+/// (first-completed, first-served)
+pub type JoinSet<T> = <CurrentBackend as ConcurrencyBackend>::JoinSet<T>;
+
+// Public free functions using CurrentBackend
+/// Sleep the task for a duration of time
+pub async fn sleep(dur: Duration) {
+    <CurrentBackend as ConcurrencyBackend>::sleep(dur).await;
+}
+
+/// Build a new interval at the given duration starting at now
+///
+/// Ticks 1 time immediately
+pub fn interval(dur: Duration) -> Interval {
+    <CurrentBackend as ConcurrencyBackend>::interval(dur)
+}
+
+/// Spawn a task on the executor runtime
+pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    <CurrentBackend as ConcurrencyBackend>::spawn(future)
+}
+
+/// Spawn a task on the executor runtime which will not be moved to other threads
+pub fn spawn_local<F>(future: F) -> JoinHandle<F::Output>
+where
+    F: Future + 'static,
+{
+    <CurrentBackend as ConcurrencyBackend>::spawn_local(future)
+}
+
+/// Spawn a (possibly) named task on the executor runtime
+pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    <CurrentBackend as ConcurrencyBackend>::spawn_named(name, future)
+}
+
+/// Execute the future up to a timeout
+///
+/// * `dur`: The duration of time to allow the future to execute for
+/// * `future`: The future to execute
+///
+/// Returns [Ok(_)] if the future succeeded before the timeout, [Err(Timeout)] otherwise
+pub async fn timeout<F, T>(dur: Duration, future: F) -> Result<T, Timeout>
+where
+    F: Future<Output = T>,
+{
+    <CurrentBackend as ConcurrencyBackend>::timeout(dur, future).await
+}
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 mod target_specific {

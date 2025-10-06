@@ -76,74 +76,6 @@ impl super::ConcurrencyBackend for WasmBrowserBackend {
     }
 }
 
-/// Represents a task JoinHandle
-pub type JoinHandle<T> = <WasmBrowserBackend as super::ConcurrencyBackend>::JoinHandle<T>;
-
-/// A duration of time
-pub type Duration = <WasmBrowserBackend as super::ConcurrencyBackend>::Duration;
-
-/// An instant measured on system time
-pub type Instant = <WasmBrowserBackend as super::ConcurrencyBackend>::Instant;
-
-/// Sleep the task for a duration of time
-pub fn sleep(dur: Duration) -> impl Future<Output = ()> + Send {
-    <WasmBrowserBackend as super::ConcurrencyBackend>::sleep(dur)
-}
-
-/// An asynchronous interval calculation which waits until
-/// a checkpoint time to tick
-pub type Interval = <WasmBrowserBackend as super::ConcurrencyBackend>::Interval;
-
-/// Build a new interval at the given duration starting at now
-///
-/// Ticks 1 time immediately
-pub fn interval(dur: Duration) -> Interval {
-    <WasmBrowserBackend as super::ConcurrencyBackend>::interval(dur)
-}
-
-/// A set of futures to join on, in an unordered fashion
-/// (first-completed, first-served)
-pub type JoinSet<T> = <WasmBrowserBackend as super::ConcurrencyBackend>::JoinSet<T>;
-
-/// Spawn a task on the executor runtime
-pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    <WasmBrowserBackend as super::ConcurrencyBackend>::spawn(future)
-}
-
-/// Spawn a task on the executor runtime which will not be moved to other threads
-pub fn spawn_local<F>(future: F) -> JoinHandle<F::Output>
-where
-    F: Future + 'static,
-{
-    <WasmBrowserBackend as super::ConcurrencyBackend>::spawn_local(future)
-}
-
-/// Spawn a (possibly) named task on the executor runtime
-pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    <WasmBrowserBackend as super::ConcurrencyBackend>::spawn_named(name, future)
-}
-
-/// Execute the future up to a timeout
-///
-/// * `dur`: The duration of time to allow the future to execute for
-/// * `future`: The future to execute
-///
-/// Returns [Ok(_)] if the future succeeded before the timeout, [Err(super::Timeout)] otherwise
-pub async fn timeout<F, T>(dur: super::Duration, future: F) -> Result<T, super::Timeout>
-where
-    F: Future<Output = T>,
-{
-    <WasmBrowserBackend as super::ConcurrencyBackend>::timeout(dur, future).await
-}
-
 macro_rules! select {
         ($($tokens:tt)*) => {{
             tokio::select! {
@@ -160,5 +92,4 @@ macro_rules! select {
 
 pub(crate) use select;
 // test macro
-#[cfg(test)]
 pub use wasm_bindgen_test::wasm_bindgen_test as test;

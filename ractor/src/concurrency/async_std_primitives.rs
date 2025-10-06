@@ -202,13 +202,6 @@ impl Interval {
     }
 }
 
-/// Build a new interval at the given duration starting at now
-///
-/// Ticks 1 time immediately
-pub fn interval(dur: Duration) -> Interval {
-    <AsyncStdBackend as super::ConcurrencyBackend>::interval(dur)
-}
-
 /// A set of futures to join on, in an unordered fashion
 /// (first-completed, first-served). This is a wrapper
 /// to match the signature of `tokio`'s `JoinSet`
@@ -252,50 +245,6 @@ impl<T> JoinSet<T> {
     pub fn is_empty(&self) -> bool {
         self.set.is_empty()
     }
-}
-
-/// Sleep the task for a duration of time
-pub async fn sleep(dur: super::Duration) {
-    <AsyncStdBackend as super::ConcurrencyBackend>::sleep(dur).await;
-}
-
-/// Spawn a task on the executor runtime
-pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    <AsyncStdBackend as super::ConcurrencyBackend>::spawn(future)
-}
-
-/// Spawn a task on the executor runtime which will not be moved to other threads
-pub fn spawn_local<F>(future: F) -> JoinHandle<F::Output>
-where
-    F: Future + 'static,
-{
-    <AsyncStdBackend as super::ConcurrencyBackend>::spawn_local(future)
-}
-
-/// Spawn a (possibly) named task on the executor runtime
-pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    <AsyncStdBackend as super::ConcurrencyBackend>::spawn_named(name, future)
-}
-
-/// Execute the future up to a timeout
-///
-/// * `dur`: The duration of time to allow the future to execute for
-/// * `future`: The future to execute
-///
-/// Returns [Ok(_)] if the future succeeded before the timeout, [Err(super::Timeout)] otherwise
-pub async fn timeout<F, T>(dur: super::Duration, future: F) -> Result<T, super::Timeout>
-where
-    F: Future<Output = T>,
-{
-    <AsyncStdBackend as super::ConcurrencyBackend>::timeout(dur, future).await
 }
 
 /// test macro
