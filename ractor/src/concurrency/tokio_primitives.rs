@@ -62,10 +62,7 @@ impl super::ConcurrencyBackend for TokioBackend {
         }
     }
 
-    async fn timeout<F, T>(
-        dur: Self::Duration,
-        future: F,
-    ) -> Result<T, super::Timeout>
+    async fn timeout<F, T>(dur: Self::Duration, future: F) -> Result<T, super::Timeout>
     where
         F: Future<Output = T>,
     {
