@@ -57,7 +57,7 @@ fn create_actors(c: &mut Criterion) {
     #[cfg(not(feature = "async-std"))]
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     #[cfg(feature = "async-std")]
-    let _ = async_std::task::block_on(async {});
+    async_std::task::block_on(async {});
     c.bench_function(&id, move |b| {
         b.iter_batched(
             || {},
@@ -97,7 +97,7 @@ fn create_actors(c: &mut Criterion) {
     #[cfg(not(feature = "async-std"))]
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     #[cfg(feature = "async-std")]
-    let _ = async_std::task::block_on(async {});
+    async_std::task::block_on(async {});
     c.bench_function(&id, move |b| {
         b.iter_batched(
             || {},
@@ -142,7 +142,7 @@ fn schedule_work(c: &mut Criterion) {
     #[cfg(not(feature = "async-std"))]
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     #[cfg(feature = "async-std")]
-    let _ = async_std::task::block_on(async {});
+    async_std::task::block_on(async {});
     c.bench_function(&id, move |b| {
         b.iter_batched(
             || {
@@ -195,7 +195,7 @@ fn schedule_work(c: &mut Criterion) {
     #[cfg(not(feature = "async-std"))]
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     #[cfg(feature = "async-std")]
-    let _ = async_std::task::block_on(async {});
+    async_std::task::block_on(async {});
     c.bench_function(&id, move |b| {
         b.iter_batched(
             || {
@@ -288,7 +288,7 @@ fn process_messages(c: &mut Criterion) {
     #[cfg(not(feature = "async-std"))]
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     #[cfg(feature = "async-std")]
-    let _ = async_std::task::block_on(async {});
+    async_std::task::block_on(async {});
     c.bench_function(&id, move |b| {
         b.iter_batched(
             || {
@@ -414,7 +414,7 @@ fn process_output_port_messages(c: &mut Criterion) {
     #[cfg(not(feature = "async-std"))]
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     #[cfg(feature = "async-std")]
-    let _ = async_std::task::block_on(async {});
+    async_std::task::block_on(async {});
     c.bench_function(&id, move |b| {
         b.iter_batched(
             || {
@@ -428,7 +428,7 @@ fn process_output_port_messages(c: &mut Criterion) {
                                 Actor::spawn(None, ReceivingActor { num_msgs: NUM_MSGS }, ())
                                     .await
                                     .expect("Failed to create test actor");
-                            output_port.subscribe(r, |v| Some(v));
+                            output_port.subscribe(r, Some);
                             handels.push(h);
                         }
                         let (_, handle) =
@@ -449,7 +449,7 @@ fn process_output_port_messages(c: &mut Criterion) {
                                 Actor::spawn(None, ReceivingActor { num_msgs: NUM_MSGS }, ())
                                     .await
                                     .expect("Failed to create test actor");
-                            output_port.subscribe(r, |v| Some(v));
+                            output_port.subscribe(r, Some);
                             handels.push(h);
                         }
                         let (_, handle) =

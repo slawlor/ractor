@@ -18,6 +18,7 @@ use clap::Args;
 use ractor::concurrency::sleep;
 use ractor::concurrency::Duration;
 use ractor::concurrency::Instant;
+use ractor::concurrency::JoinHandle as RactorJoinHandle;
 use ractor::Actor;
 use ractor::ActorProcessingErr;
 use ractor::ActorRef;
@@ -30,7 +31,7 @@ use ractor_cluster::{BoxRead, BoxWrite};
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
+use tokio::task::JoinHandle as TokioJoinHandle;
 
 const EXTERNAL_GROUP: &str = "external-transport";
 const SESSION_TIMEOUT_MS: u128 = 5_000;
@@ -331,7 +332,7 @@ fn spawn_external_listener(
     port: u16,
     label: String,
     ready: oneshot::Sender<Result<(), String>>,
-) -> JoinHandle<Result<(), String>> {
+) -> TokioJoinHandle<Result<(), String>> {
     tokio::spawn(async move {
         tracing::info!("{} awaiting external transport on 0.0.0.0:{port}", label);
         let listener = match TcpListener::bind(("0.0.0.0", port)).await {
@@ -419,7 +420,7 @@ async fn wait_for_session_ready(
         match ractor::call_t!(node_actor, NodeServerMessage::GetSessions, 500) {
             Ok(map) => {
                 if map.is_empty() {
-                    if let Some((node_id, peer_addr, since)) = &auth_only_session {
+                    if let Some((node_id, peer_addr, _since)) = &auth_only_session {
                         match ractor::call_t!(probe_actor, ExternalProbeMessage::IsComplete, 200) {
                             Ok(true) => {
                                 tracing::info!(
@@ -448,37 +449,35 @@ async fn wait_for_session_ready(
                                 NodeSessionMessage::GetAuthenticationState,
                                 500
                             ) {
-                                Ok(true) => {
-                                    match auth_only_session {
-                                        Some((node_id, _, since))
-                                            if node_id == info.node_id
-                                                && (Instant::now() - since).as_millis()
-                                                    >= SESSION_AUTH_GRACE_MS =>
-                                        {
-                                            tracing::info!(
+                                Ok(true) => match auth_only_session {
+                                    Some((node_id, _, since))
+                                        if node_id == info.node_id
+                                            && (Instant::now() - since).as_millis()
+                                                >= SESSION_AUTH_GRACE_MS =>
+                                    {
+                                        tracing::info!(
                                                 "{} proceeding with authenticated external session {} lacking ready signal",
                                                 label,
                                                 info.peer_addr.clone()
                                             );
-                                            return Ok(());
-                                        }
-                                        Some((node_id, _, _)) if node_id != info.node_id => {
-                                            auth_only_session = Some((
-                                                info.node_id,
-                                                info.peer_addr.clone(),
-                                                Instant::now(),
-                                            ));
-                                        }
-                                        None => {
-                                            auth_only_session = Some((
-                                                info.node_id,
-                                                info.peer_addr.clone(),
-                                                Instant::now(),
-                                            ));
-                                        }
-                                        _ => {}
+                                        return Ok(());
                                     }
-                                }
+                                    Some((node_id, _, _)) if node_id != info.node_id => {
+                                        auth_only_session = Some((
+                                            info.node_id,
+                                            info.peer_addr.clone(),
+                                            Instant::now(),
+                                        ));
+                                    }
+                                    None => {
+                                        auth_only_session = Some((
+                                            info.node_id,
+                                            info.peer_addr.clone(),
+                                            Instant::now(),
+                                        ));
+                                    }
+                                    _ => {}
+                                },
                                 Ok(false) => {
                                     auth_only_session = None;
                                 }
@@ -620,10 +619,10 @@ async fn wait_for_remote_probe_presence(label: &str) -> Result<(), i32> {
 
 async fn cleanup(
     node_actor: ActorRef<NodeServerMessage>,
-    node_handle: JoinHandle<()>,
+    node_handle: RactorJoinHandle<()>,
     probe_actor: ActorRef<ExternalProbeMessage>,
-    probe_handle: JoinHandle<()>,
-    listener_handle: Option<JoinHandle<Result<(), String>>>,
+    probe_handle: RactorJoinHandle<()>,
+    listener_handle: Option<TokioJoinHandle<Result<(), String>>>,
 ) {
     probe_actor.stop(None);
     node_actor.stop(None);
