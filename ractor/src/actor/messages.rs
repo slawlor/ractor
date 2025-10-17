@@ -12,7 +12,7 @@
 use std::any::Any;
 use std::fmt::Debug;
 
-use crate::message::BoxedDowncastErr;
+use crate::message::DowncastErr;
 use crate::ActorProcessingErr;
 use crate::State;
 
@@ -43,7 +43,7 @@ impl BoxedState {
 
     /// Try and take the resulting message as a specific type, consumes
     /// the boxed message
-    pub fn take<T>(&mut self) -> Result<T, BoxedDowncastErr>
+    pub fn take<T>(&mut self) -> Result<T, DowncastErr>
     where
         T: State,
     {
@@ -52,10 +52,10 @@ impl BoxedState {
                 if m.is::<T>() {
                     Ok(*m.downcast::<T>().unwrap())
                 } else {
-                    Err(BoxedDowncastErr)
+                    Err(DowncastErr)
                 }
             }
-            None => Err(BoxedDowncastErr),
+            None => Err(DowncastErr),
         }
     }
 }

@@ -107,14 +107,14 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
                     true
                 }
 
-                fn serialize(self) -> Result<ractor::message::SerializedMessage, ractor::message::BoxedDowncastErr> {
+                fn serialize(self) -> Result<ractor::message::SerializedMessage, ractor::message::DowncastErr> {
                     use ::ractor::BytesConvertable;
                     match self {
                         #( #serialized_variants ),*
                     }
                 }
 
-                fn deserialize(bytes: ractor::message::SerializedMessage) -> Result<Self, ractor::message::BoxedDowncastErr> {
+                fn deserialize(bytes: ractor::message::SerializedMessage) -> Result<Self, ractor::message::DowncastErr> {
                     use ::ractor::BytesConvertable;
                     match bytes {
                         ractor::message::SerializedMessage::Cast {variant, args, metadata} => {
@@ -122,7 +122,7 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
                                 #(#casts,)*
                                 _ => {
                                     // unknown CAST type
-                                    Err(ractor::message::BoxedDowncastErr)
+                                    Err(ractor::message::DowncastErr)
                                 }
                             }
                         }
@@ -131,13 +131,13 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
                                 #(#calls,)*
                                 _ => {
                                     // unknown CALL type
-                                    Err(ractor::message::BoxedDowncastErr)
+                                    Err(ractor::message::DowncastErr)
                                 }
                             }
                         }
                         _ => {
                             // call-reply isn't supported here
-                            Err(ractor::message::BoxedDowncastErr)
+                            Err(ractor::message::DowncastErr)
                         }
                     }
                 }
@@ -368,7 +368,7 @@ fn convert_deserialize_port(
     port_type: &AngleBracketedGenericArguments,
 ) -> impl ToTokens {
     let generic_args = &port_type.args;
-    // TODO: catch unwind for the conversion? returning Err(BoxedDowncastErr)
+    // TODO: catch unwind for the conversion? returning Err(DowncastErr)
     quote! {
         {
             let (tx, rx) = ractor::concurrency::oneshot::#port_type();
@@ -397,7 +397,7 @@ fn convert_serialize_port(
     the_port: &Ident,
     target_type: &AngleBracketedGenericArguments,
 ) -> impl ToTokens {
-    // TODO: catch unwind for the conversion? returning Err(BoxedDowncastErr)
+    // TODO: catch unwind for the conversion? returning Err(DowncastErr)
     let generic_args = &target_type.args;
     quote! {
         {

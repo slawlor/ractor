@@ -208,7 +208,7 @@ mod tests {
     use rand::Rng;
 
     use super::BytesConvertable;
-    use crate::message::BoxedDowncastErr;
+    use crate::message::DowncastErr;
     use crate::Message;
 
     fn random_string() -> String {
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_boxed_downcast_error() {
-        let err = BoxedDowncastErr;
+        let err = DowncastErr;
         println!("{err}");
         println!("{err:?}");
     }
