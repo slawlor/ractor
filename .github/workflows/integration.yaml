@@ -42,7 +42,12 @@ jobs:
         working-directory: .
         run: |
           FEATURES=${{matrix.features}} docker compose --env-file ./ractor_cluster_integration_tests/envs/encryption.env up --exit-code-from node-b
-          
+
+      - name: External transport
+        working-directory: .
+        run: |
+          FEATURES=${{matrix.features}} docker compose --env-file ./ractor_cluster_integration_tests/envs/external-transport.env up --exit-code-from node-b
+
       - name: Transitive connections
         working-directory: .
         run: |
