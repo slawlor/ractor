@@ -39,6 +39,8 @@ const PROBE_RPC_TIMEOUT_MS: u64 = 500;
 const PROBE_RETRY_DELAY_MS: u64 = 200;
 const CONNECT_RETRY_DELAY_MS: u64 = 200;
 const CONNECT_RETRY_ATTEMPTS: usize = 20;
+const SESSION_AUTH_GRACE_MS: u128 = 1_000;
+const SESSION_TEARDOWN_TIMEOUT_MS: u128 = 5_000;
 
 struct ExternalProbeActor;
 
@@ -145,6 +147,7 @@ impl Actor for ExternalProbeActor {
             ExternalProbeMessage::Ping(requestor, reply) => {
                 let response = format!("Hello {requestor} from {}", state.label);
                 let _ = reply.send(response.clone());
+                state.complete = true;
                 tracing::info!(
                     "{} responded to external transport probe with '{response}'",
                     state.label
@@ -279,7 +282,11 @@ pub async fn test(config: ExternalTransportConfig) -> i32 {
             }
         }
 
-        wait_for_session_ready(&node_actor, &config.node_name).await?;
+        if config.listen_port != 0 {
+            wait_for_session_ready(&node_actor, &probe_actor, &config.node_name).await?;
+        } else {
+            wait_for_remote_probe_presence(&config.node_name).await?;
+        }
 
         tracing::info!(
             "{} authenticated over external transport, starting probe",
@@ -288,6 +295,10 @@ pub async fn test(config: ExternalTransportConfig) -> i32 {
         let _ = ractor::cast!(probe_actor, ExternalProbeMessage::Kickoff);
 
         wait_for_probe_completion(&probe_actor, &config.node_name).await?;
+
+        if config.listen_port != 0 {
+            wait_for_session_teardown(&node_actor, &config.node_name).await?;
+        }
 
         Ok(())
     }
@@ -399,16 +410,87 @@ async fn connect_external_with_retry(
 
 async fn wait_for_session_ready(
     node_actor: &ActorRef<NodeServerMessage>,
+    probe_actor: &ActorRef<ExternalProbeMessage>,
     label: &str,
 ) -> Result<(), i32> {
     let start = Instant::now();
+    let mut auth_only_session: Option<(u64, String, Instant)> = None;
     loop {
         match ractor::call_t!(node_actor, NodeServerMessage::GetSessions, 500) {
             Ok(map) => {
-                if let Some(info) = map.into_values().next() {
+                if map.is_empty() {
+                    if let Some((node_id, peer_addr, since)) = &auth_only_session {
+                        match ractor::call_t!(probe_actor, ExternalProbeMessage::IsComplete, 200) {
+                            Ok(true) => {
+                                tracing::info!(
+                                    "{} proceeding after authenticated external session {} ({peer_addr}) closed post-probe",
+                                    label,
+                                    node_id
+                                );
+                                return Ok(());
+                            }
+                            Ok(false) => {}
+                            Err(err) => {
+                                tracing::warn!(
+                                    "{} failed to query probe completion after session close: {err}",
+                                    label
+                                );
+                            }
+                        }
+                    }
+                }
+                for info in map.into_values() {
                     match ractor::call_t!(info.actor, NodeSessionMessage::GetReadyState, 500) {
                         Ok(true) => return Ok(()),
-                        Ok(false) => {}
+                        Ok(false) => {
+                            match ractor::call_t!(
+                                info.actor,
+                                NodeSessionMessage::GetAuthenticationState,
+                                500
+                            ) {
+                                Ok(true) => {
+                                    match auth_only_session {
+                                        Some((node_id, _, since))
+                                            if node_id == info.node_id
+                                                && (Instant::now() - since).as_millis()
+                                                    >= SESSION_AUTH_GRACE_MS =>
+                                        {
+                                            tracing::info!(
+                                                "{} proceeding with authenticated external session {} lacking ready signal",
+                                                label,
+                                                info.peer_addr.clone()
+                                            );
+                                            return Ok(());
+                                        }
+                                        Some((node_id, _, _)) if node_id != info.node_id => {
+                                            auth_only_session = Some((
+                                                info.node_id,
+                                                info.peer_addr.clone(),
+                                                Instant::now(),
+                                            ));
+                                        }
+                                        None => {
+                                            auth_only_session = Some((
+                                                info.node_id,
+                                                info.peer_addr.clone(),
+                                                Instant::now(),
+                                            ));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Ok(false) => {
+                                    auth_only_session = None;
+                                }
+                                Err(err) => {
+                                    tracing::error!(
+                                        "{} failed to query external session auth state: {err}",
+                                        label
+                                    );
+                                    return Err(-4);
+                                }
+                            }
+                        }
                         Err(err) => {
                             tracing::error!(
                                 "{} failed to query external session readiness: {err}",
@@ -461,6 +543,75 @@ async fn wait_for_probe_completion(
                 tracing::error!("{} failed to query external probe state: {err}", label);
                 return Err(-5);
             }
+        }
+
+        sleep(Duration::from_millis(100)).await;
+    }
+}
+
+async fn wait_for_session_teardown(
+    node_actor: &ActorRef<NodeServerMessage>,
+    label: &str,
+) -> Result<(), i32> {
+    let start = Instant::now();
+    loop {
+        match ractor::call_t!(node_actor, NodeServerMessage::GetSessions, 500) {
+            Ok(map) => {
+                if map.is_empty() {
+                    tracing::info!(
+                        "{} observed external transport session teardown, proceeding to cleanup",
+                        label
+                    );
+                    return Ok(());
+                }
+            }
+            Err(err) => {
+                tracing::error!(
+                    "{} failed to fetch external session list during teardown: {err}",
+                    label
+                );
+                return Err(-4);
+            }
+        }
+
+        if (Instant::now() - start).as_millis() > SESSION_TEARDOWN_TIMEOUT_MS {
+            tracing::warn!(
+                "{} timed out waiting for external transport session teardown; continuing anyway",
+                label
+            );
+            return Ok(());
+        }
+
+        sleep(Duration::from_millis(100)).await;
+    }
+}
+
+async fn wait_for_remote_probe_presence(label: &str) -> Result<(), i32> {
+    let start = Instant::now();
+    loop {
+        let remote_members = ractor::pg::get_members(&EXTERNAL_GROUP.to_string())
+            .into_iter()
+            .filter(|actor| !actor.get_id().is_local())
+            .collect::<Vec<_>>();
+
+        if !remote_members.is_empty() {
+            tracing::info!(
+                "{} discovered remote probe members ({:?}) in process group '{EXTERNAL_GROUP}'",
+                label,
+                remote_members
+                    .iter()
+                    .map(|actor| actor.get_id())
+                    .collect::<Vec<_>>()
+            );
+            return Ok(());
+        }
+
+        if (Instant::now() - start).as_millis() > SESSION_TIMEOUT_MS {
+            tracing::error!(
+                "{} timed out waiting for remote probe members in process group '{EXTERNAL_GROUP}'",
+                label
+            );
+            return Err(-2);
         }
 
         sleep(Duration::from_millis(100)).await;
