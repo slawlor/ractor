@@ -427,7 +427,7 @@ fn convert_serialize_port(
 
 fn get_generic_reply_port_type(path_data: &TypePath) -> AngleBracketedGenericArguments {
     if let syn::PathArguments::AngleBracketed(generic_args) =
-        &path_data.path.segments.first().unwrap().arguments
+        &path_data.path.segments.last().unwrap().arguments
     {
         generic_args.clone()
     } else {

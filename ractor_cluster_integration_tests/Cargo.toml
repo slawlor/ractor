@@ -27,7 +27,7 @@ rand = "0.8"
 tokio-rustls = { version = "0.26" }
 rustls-pemfile = "2.1"
 rustyrepl = { version = "0.2", features = ["async"] }
-tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing", "net", "io-util"] }
 tracing = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"]}

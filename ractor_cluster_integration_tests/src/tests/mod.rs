@@ -13,6 +13,9 @@ use rand::Rng;
 pub mod auth_handshake;
 pub mod dist_connect;
 pub mod encryption;
+pub mod external_transport;
+#[cfg(all(test, unix))]
+pub mod external_unix;
 pub mod pg_groups;
 
 fn random_name() -> String {
@@ -31,6 +34,8 @@ pub enum TestCase {
     PgGroups(pg_groups::PgGroupsConfig),
     /// Test encrypted socket communications (through the auth handshake)
     Encryption(encryption::EncryptionConfig),
+    /// Exercise the external transport API inside docker
+    ExternalTransport(external_transport::ExternalTransportConfig),
     /// Test the transitive connection of a cluster
     DistConnect(dist_connect::DistConnectConfig),
     /// Not-a-Node: Don't run any test and exit this node with code 0

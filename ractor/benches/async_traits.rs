@@ -82,7 +82,7 @@ fn big_stack_futures(c: &mut Criterion) {
     #[cfg(not(feature = "async-std"))]
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
     #[cfg(feature = "async-std")]
-    let _ = async_std::task::block_on(async {});
+    async_std::task::block_on(async {});
     c.bench_function(&id, move |b| {
         b.iter_batched(
             || {
