@@ -216,6 +216,65 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         result
     }
 
+    /// Spawn an actor instantly, not waiting on the actor's `pre_start` routine.
+    /// Returns the `ActorRef` and a JoinHandle which resolves to the inner actor handle
+    /// once the actor has finished its startup attempt (or the startup error).
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn spawn_instant(
+        name: Option<ActorName>,
+        startup_args: TActor::Arguments,
+        spawner: ThreadLocalActorSpawner,
+    ) -> Result<
+        (
+            ActorRef<TActor::Msg>,
+            JoinHandle<Result<JoinHandle<()>, SpawnErr>>,
+        ),
+        SpawnErr,
+    > {
+        let (actor, ports) = Self::new(name.clone())?;
+        let actor_ref = actor.actor_ref.clone();
+        let actor_ref2 = actor_ref.clone();
+        let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
+            let result = actor.start(ports, startup_args, spawner, None).await;
+            if result.is_err() {
+                actor_ref2.set_status(ActorStatus::Stopped);
+            }
+            let (_, handle) = result?;
+            Ok(handle)
+        });
+        Ok((actor_ref, join_op))
+    }
+
+    /// Spawn an actor instantly with supervision, not waiting on the actor's `pre_start` routine.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn spawn_linked_instant(
+        name: Option<ActorName>,
+        startup_args: TActor::Arguments,
+        spawner: ThreadLocalActorSpawner,
+        supervisor: ActorCell,
+    ) -> Result<
+        (
+            ActorRef<TActor::Msg>,
+            JoinHandle<Result<JoinHandle<()>, SpawnErr>>,
+        ),
+        SpawnErr,
+    > {
+        let (actor, ports) = Self::new(name.clone())?;
+        let actor_ref = actor.actor_ref.clone();
+        let actor_ref2 = actor_ref.clone();
+        let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
+            let result = actor
+                .start(ports, startup_args, spawner, Some(supervisor))
+                .await;
+            if result.is_err() {
+                actor_ref2.set_status(ActorStatus::Stopped);
+            }
+            let (_, handle) = result?;
+            Ok(handle)
+        });
+        Ok((actor_ref, join_op))
+    }
+
     /// Start the actor immediately, optionally linking to a parent actor (supervision tree)
     ///
     /// NOTE: This returned [crate::concurrency::JoinHandle] is guaranteed to not panic (unless the runtime is shutting down perhaps).
