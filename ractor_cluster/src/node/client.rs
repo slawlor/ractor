@@ -130,3 +130,20 @@ where
     tracing::info!("TCP Session opened for {addr}");
     Ok(())
 }
+
+/// Connect to a node using an external transport stream.
+///
+/// This helper wraps a user-provided stream implementing [`crate::ClusterBidiStream`]
+/// and notifies the `NodeServer` of the opened connection. No socket or TLS is
+/// managed here; the caller is responsible for preparing the transport.
+pub async fn connect_external(
+    node_server: &ActorRef<super::NodeServerMessage>,
+    stream: Box<dyn crate::net::ClusterBidiStream>,
+) -> Result<(), ClientConnectErr> {
+    node_server.cast(super::NodeServerMessage::ConnectionOpenedExternal {
+        stream,
+        is_server: false,
+    })?;
+    tracing::info!("External session opened (client)");
+    Ok(())
+}

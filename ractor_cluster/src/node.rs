@@ -108,6 +108,15 @@ pub enum NodeServerMessage {
         is_server: bool,
     },
 
+    /// Notifies the session manager that a new external incoming (`is_server = true`) or outgoing (`is_server = false`)
+    /// connection was opened using a custom transport implementing [crate::ClusterBidiStream].
+    ConnectionOpenedExternal {
+        /// The external stream implementing the bidi transport
+        stream: Box<dyn crate::net::ClusterBidiStream>,
+        /// Flag denoting if it's a server (incoming) connection when [true], [false] for outgoing
+        is_server: bool,
+    },
+
     /// This specific node session has authenticated
     ConnectionAuthenticated(ActorId),
 
@@ -417,6 +426,56 @@ impl Actor for NodeServer {
                 } else {
                     // failed to startup actor, drop the socket
                     tracing::warn!("Failed to startup `NodeSession`, dropping connection");
+                }
+            }
+            Self::Msg::ConnectionOpenedExternal { stream, is_server } => {
+                // Capture labels before consuming the stream
+                let peer_label = stream.peer_label();
+                let local_label = stream.local_label();
+                let (reader, writer) = stream.split();
+
+                // Wrap into a NetworkStream::External and proceed as usual
+                let external_stream = Box::new(crate::net::NetworkStream::External {
+                    peer_label: peer_label.clone(),
+                    local_label,
+                    reader,
+                    writer,
+                });
+
+                let node_id = state.node_id_counter;
+                // Prefer label if present for diagnostics, else fall back to placeholder address
+                let peer_addr = peer_label.unwrap_or_else(|| "external".to_string());
+
+                if let Ok((actor, _)) = Actor::spawn_linked(
+                    None,
+                    NodeSession::new(
+                        node_id,
+                        is_server,
+                        self.cookie.clone(),
+                        myself.clone(),
+                        state.this_node_name.clone(),
+                        self.connection_mode,
+                    ),
+                    *external_stream,
+                    myself.get_cell(),
+                )
+                .await
+                {
+                    let ses = NodeServerSessionInformation::new(
+                        actor.clone(),
+                        is_server,
+                        node_id,
+                        peer_addr,
+                    );
+                    for (_, sub) in state.subscriptions.iter() {
+                        sub.node_session_opened(ses.clone());
+                    }
+                    state.node_sessions.insert(actor.get_id(), ses);
+                    state.node_id_counter += 1;
+                } else {
+                    tracing::warn!(
+                        "Failed to startup `NodeSession` for external transport, dropping connection"
+                    );
                 }
             }
             Self::Msg::ConnectionAuthenticated(actor_id) => {

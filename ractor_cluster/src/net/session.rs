@@ -42,6 +42,7 @@ async fn read_n_bytes(stream: &mut ActorReadHalf, len: usize) -> Result<Vec<u8>,
             ActorReadHalf::ServerTls(t) => t.read(&mut buf[c_len..]).await?,
             ActorReadHalf::ClientTls(t) => t.read(&mut buf[c_len..]).await?,
             ActorReadHalf::Regular(t) => t.read(&mut buf[c_len..]).await?,
+            ActorReadHalf::External(t) => t.read(&mut buf[c_len..]).await?,
         };
         if n == 0 {
             // EOF
@@ -145,6 +146,10 @@ impl Actor for Session {
                     ActorWriteHalf::ServerTls(write_half),
                 )
             }
+            super::NetworkStream::External { reader, writer, .. } => (
+                ActorReadHalf::External(reader),
+                ActorWriteHalf::External(writer),
+            ),
         };
 
         // let (read, write) = stream.into_split();
@@ -245,6 +250,7 @@ enum ActorWriteHalf {
     ServerTls(WriteHalf<tokio_rustls::server::TlsStream<TcpStream>>),
     ClientTls(WriteHalf<tokio_rustls::client::TlsStream<TcpStream>>),
     Regular(OwnedWriteHalf),
+    External(super::BoxWrite),
 }
 
 impl ActorWriteHalf {
@@ -254,6 +260,7 @@ impl ActorWriteHalf {
             Self::ServerTls(t) => t.write_all(data).await,
             Self::ClientTls(t) => t.write_all(data).await,
             Self::Regular(t) => t.write_all(data).await,
+            Self::External(t) => t.write_all(data).await,
         }
     }
 
@@ -263,6 +270,7 @@ impl ActorWriteHalf {
             Self::ServerTls(t) => t.flush().await,
             Self::ClientTls(t) => t.flush().await,
             Self::Regular(t) => t.flush().await,
+            Self::External(t) => t.flush().await,
         }
     }
 }
@@ -271,6 +279,7 @@ enum ActorReadHalf {
     ServerTls(ReadHalf<tokio_rustls::server::TlsStream<TcpStream>>),
     ClientTls(ReadHalf<tokio_rustls::client::TlsStream<TcpStream>>),
     Regular(OwnedReadHalf),
+    External(super::BoxRead),
 }
 
 impl ActorReadHalf {
@@ -279,6 +288,7 @@ impl ActorReadHalf {
             Self::ServerTls(t) => t.read_u64().await,
             Self::ClientTls(t) => t.read_u64().await,
             Self::Regular(t) => t.read_u64().await,
+            Self::External(t) => t.read_u64().await,
         }
     }
 }

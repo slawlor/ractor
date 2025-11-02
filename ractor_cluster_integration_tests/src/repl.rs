@@ -22,6 +22,9 @@ impl ReplCommandProcessor<TestCase> for TestRepl {
             TestCase::AuthHandshake(config) => crate::tests::auth_handshake::test(config).await,
             TestCase::PgGroups(config) => crate::tests::pg_groups::test(config).await,
             TestCase::Encryption(config) => crate::tests::encryption::test(config).await,
+            TestCase::ExternalTransport(config) => {
+                crate::tests::external_transport::test(config).await
+            }
             TestCase::DistConnect(config) => crate::tests::dist_connect::test(config).await,
 
             TestCase::Nan => {
