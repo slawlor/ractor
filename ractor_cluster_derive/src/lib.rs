@@ -44,8 +44,9 @@ pub fn ractor_message_derive_macro(input: TokenStream) -> TokenStream {
     // that we can manipulate
     let ast: DeriveInput = syn::parse(input).unwrap();
     let name = &ast.ident;
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
     let gen = quote! {
-        impl ractor::Message for #name {}
+        impl #impl_generics ractor::Message for #name #ty_generics #where_clause {}
     };
     gen.into()
 }
@@ -73,6 +74,7 @@ pub fn ractor_cluster_message_derive_macro(input: TokenStream) -> TokenStream {
 
 fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
     // we don't support the derive macro on structs or unions
     if let syn::Data::Enum(enum_data) = &ast.data {
@@ -101,7 +103,7 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
         });
 
         (quote! {
-            impl ractor::Message for #name {
+            impl #impl_generics ractor::Message for #name #ty_generics #where_clause {
                 fn serializable() -> bool {
                     // Network serializable message
                     true
