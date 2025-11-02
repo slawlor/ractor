@@ -166,7 +166,10 @@ async fn test_generic_serializable_generation() {
     let payload = String::from("rpc");
     let (tx, _rx) = ractor::concurrency::oneshot::<String>();
     let serialized_call = GenericMessage::<String>::Echo(payload.clone(), tx.into()).serialize();
-    assert!(matches!(serialized_call, Ok(SerializedMessage::Call { .. })));
+    assert!(matches!(
+        serialized_call,
+        Ok(SerializedMessage::Call { .. })
+    ));
 
     if let Ok(GenericMessage::<String>::Echo(deserialized_payload, _reply)) =
         GenericMessage::<String>::deserialize(serialized_call.unwrap())
@@ -195,8 +198,8 @@ async fn test_multi_generic_serializable_generation() {
     let payload_t = String::from("notify");
     let payload_u = vec![1u8, 2, 3];
 
-    let serialized = MultiGeneric::<String, Vec<u8>>::Notify(payload_t.clone(), payload_u.clone())
-        .serialize();
+    let serialized =
+        MultiGeneric::<String, Vec<u8>>::Notify(payload_t.clone(), payload_u.clone()).serialize();
     assert!(matches!(serialized, Ok(SerializedMessage::Cast { .. })));
 
     if let Ok(MultiGeneric::<String, Vec<u8>>::Notify(deser_t, deser_u)) =
@@ -212,7 +215,10 @@ async fn test_multi_generic_serializable_generation() {
     let (tx, _rx) = ractor::concurrency::oneshot::<Vec<u8>>();
     let serialized_call =
         MultiGeneric::<String, Vec<u8>>::Fetch(payload_t.clone(), tx.into()).serialize();
-    assert!(matches!(serialized_call, Ok(SerializedMessage::Call { .. })));
+    assert!(matches!(
+        serialized_call,
+        Ok(SerializedMessage::Call { .. })
+    ));
 
     if let Ok(MultiGeneric::<String, Vec<u8>>::Fetch(deser_t, _reply)) =
         MultiGeneric::<String, Vec<u8>>::deserialize(serialized_call.unwrap())
