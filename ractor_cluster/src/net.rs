@@ -24,7 +24,6 @@ pub(crate) type NetworkPort = u16;
 /// 1. unencrypted
 /// 2. encrypted and the server-side of the session
 /// 3. encrypted and the client-side of the session
-#[derive(Debug)]
 pub enum NetworkStream {
     /// Unencrypted session
     Raw {
@@ -53,6 +52,22 @@ pub enum NetworkStream {
         /// The stream
         stream: tokio_rustls::client::TlsStream<TcpStream>,
     },
+    /// External transport injected by the user
+    ///
+    /// This variant enables custom transports to be used while preserving
+    /// the existing TCP/TLS paths. The provided reader/writer must be a
+    /// connected, bidirectional byte stream using the same framing
+    /// (u64/usize big-endian length prefix + prost payload).
+    External {
+        /// Optional label for the peer (used for diagnostics)
+        peer_label: Option<String>,
+        /// Optional label for the local endpoint (used for diagnostics)
+        local_label: Option<String>,
+        /// Read half
+        reader: BoxRead,
+        /// Write half
+        writer: BoxWrite,
+    },
 }
 
 impl NetworkStream {
@@ -61,6 +76,8 @@ impl NetworkStream {
             Self::Raw { peer_addr, .. } => *peer_addr,
             Self::TlsServer { peer_addr, .. } => *peer_addr,
             Self::TlsClient { peer_addr, .. } => *peer_addr,
+            // External transports may not have a real socket address; return unspecified
+            Self::External { .. } => SocketAddr::from(([0, 0, 0, 0], 0)),
         }
     }
 
@@ -69,7 +86,58 @@ impl NetworkStream {
             Self::Raw { local_addr, .. } => *local_addr,
             Self::TlsServer { local_addr, .. } => *local_addr,
             Self::TlsClient { local_addr, .. } => *local_addr,
+            // External transports may not have a real socket address; return unspecified
+            Self::External { .. } => SocketAddr::from(([0, 0, 0, 0], 0)),
         }
+    }
+}
+
+impl std::fmt::Debug for NetworkStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut wip = f.debug_struct("NetworkStream");
+        match self {
+            Self::Raw {
+                peer_addr,
+                local_addr,
+                ..
+            } => {
+                _ = wip
+                    .field("mode", &"Raw")
+                    .field("peer_addr", peer_addr)
+                    .field("local_addr", local_addr);
+            }
+            Self::TlsServer {
+                peer_addr,
+                local_addr,
+                ..
+            } => {
+                _ = wip
+                    .field("mode", &"TlsServer")
+                    .field("peer_addr", peer_addr)
+                    .field("local_addr", local_addr);
+            }
+            Self::TlsClient {
+                peer_addr,
+                local_addr,
+                ..
+            } => {
+                _ = wip
+                    .field("mode", &"TlsClient")
+                    .field("peer_addr", peer_addr)
+                    .field("local_addr", local_addr);
+            }
+            Self::External {
+                peer_label,
+                local_label,
+                ..
+            } => {
+                _ = wip
+                    .field("mode", &"External")
+                    .field("peer_label", peer_label)
+                    .field("local_label", local_label);
+            }
+        }
+        wip.finish()
     }
 }
 
@@ -96,5 +164,31 @@ impl std::fmt::Debug for IncomingEncryptionMode {
         }
 
         wip.finish()
+    }
+}
+
+// ========== Transport Trait and Type Aliases ==========
+
+/// Boxed async read half for external transports
+pub type BoxRead = Box<dyn tokio::io::AsyncRead + Unpin + Send + 'static>;
+/// Boxed async write half for external transports
+pub type BoxWrite = Box<dyn tokio::io::AsyncWrite + Unpin + Send + 'static>;
+
+/// A generic connected, bidirectional byte stream for cluster traffic.
+///
+/// Implementors must provide a split into read/write halves. Optional
+/// labels allow nicer diagnostics when no SocketAddr is available.
+pub trait ClusterBidiStream: Send + 'static {
+    /// Split the connected stream into read/write halves.
+    fn split(self: Box<Self>) -> (BoxRead, BoxWrite);
+
+    /// Optional peer label for diagnostics/logging
+    fn peer_label(&self) -> Option<String> {
+        None
+    }
+
+    /// Optional local label for diagnostics/logging
+    fn local_label(&self) -> Option<String> {
+        None
     }
 }

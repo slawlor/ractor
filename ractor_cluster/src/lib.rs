@@ -73,9 +73,11 @@ pub type NodeId = u64;
 #[cfg(feature = "async-trait")]
 use async_trait as _;
 // ============== Re-exports ============== //
-pub use net::{IncomingEncryptionMode, NetworkStream};
+pub use net::{BoxRead, BoxWrite};
+pub use net::{ClusterBidiStream, IncomingEncryptionMode, NetworkStream};
 pub use node::client::connect as client_connect;
 pub use node::client::connect_enc as client_connect_enc;
+pub use node::client::connect_external as client_connect_external;
 pub use node::client::ClientConnectErr;
 pub use node::NodeEventSubscription;
 pub use node::NodeServer;
