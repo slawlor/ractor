@@ -186,17 +186,13 @@ pub enum NodeSessionMessage {
 /// Node connection mode from the [Erlang](https://www.erlang.org/doc/reference_manual/distributed.html#node-connections)
 /// specification. f a node A connects to node B, and node B has a connection to node C,
 /// then node A also tries to connect to node C
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub enum NodeConnectionMode {
     /// Transitive connection mode. Node A connecting to Node B will list Node B's peers and try and connect to those as well
+    #[default]
     Transitive,
     /// Nodes only connect to peers which are manually specified
     Isolated,
-}
-impl Default for NodeConnectionMode {
-    fn default() -> Self {
-        Self::Transitive
-    }
 }
 
 /// Represents the server which is managing all node session instances
