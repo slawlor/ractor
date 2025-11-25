@@ -11,6 +11,7 @@ use futures::future::join_all;
 
 use super::*;
 use crate::concurrency::timeout;
+use crate::concurrency::JoinHandle;
 use crate::Actor;
 use crate::ActorProcessingErr;
 use crate::ActorRef;

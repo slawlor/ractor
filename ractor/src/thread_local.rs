@@ -251,6 +251,26 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
     ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> {
         inner::ThreadLocalActorRuntime::<Self>::spawn(name, startup_args, spawner)
     }
+    /// Spawn an actor instantly, not waiting on the actor's `pre_start` routine.
+    ///
+    /// Returns a [Ok((ActorRef, JoinHandle<Result<JoinHandle<()>, SpawnErr>>))] upon successful creation of the
+    /// message queues, so you can begin sending messages. However the associated [JoinHandle] contains the inner
+    /// information around if the actor successfully started or not in it's `pre_start` routine. Returns [Err(SpawnErr)] if
+    /// the actor name is already allocated
+    #[allow(clippy::type_complexity)]
+    fn spawn_instant(
+        name: Option<ActorName>,
+        startup_args: Self::Arguments,
+        spawner: ThreadLocalActorSpawner,
+    ) -> Result<
+        (
+            ActorRef<Self::Msg>,
+            JoinHandle<Result<JoinHandle<()>, SpawnErr>>,
+        ),
+        SpawnErr,
+    > {
+        inner::ThreadLocalActorRuntime::<Self>::spawn_instant(name, startup_args, spawner)
+    }
     /// Spawn an actor of this type with a supervisor, automatically starting the actor
     ///
     /// * `name`: A name to give the actor. Useful for global referencing or debug printing
@@ -270,6 +290,27 @@ pub trait ThreadLocalActor: Default + Sized + 'static {
         spawner: ThreadLocalActorSpawner,
     ) -> impl Future<Output = Result<(ActorRef<Self::Msg>, JoinHandle<()>), SpawnErr>> {
         inner::ThreadLocalActorRuntime::<Self>::spawn_linked(
+            name,
+            startup_args,
+            spawner,
+            supervisor,
+        )
+    }
+    /// Spawn an actor instantly with a supervisor, not waiting on the actor's `pre_start` routine.
+    #[allow(clippy::type_complexity)]
+    fn spawn_linked_instant(
+        name: Option<ActorName>,
+        startup_args: Self::Arguments,
+        supervisor: ActorCell,
+        spawner: ThreadLocalActorSpawner,
+    ) -> Result<
+        (
+            ActorRef<Self::Msg>,
+            JoinHandle<Result<JoinHandle<()>, SpawnErr>>,
+        ),
+        SpawnErr,
+    > {
+        inner::ThreadLocalActorRuntime::<Self>::spawn_linked_instant(
             name,
             startup_args,
             spawner,
@@ -365,7 +406,7 @@ impl Default for ThreadLocalActorSpawner {
 // note: it's not great that we have multiple implementations depending on the async backend in here
 // - ideally this would be moved to ./concurrency/*
 impl ThreadLocalActorSpawner {
-    #[cfg(all(feature = "tokio_runtime", not(target_arch = "wasm32")))]
+    #[cfg(all(not(feature = "async-std"), not(target_arch = "wasm32")))]
     /// Create a new [ThreadLocalActorSpawner] on the current thread.
     pub fn new() -> Self {
         let (send, mut recv) = crate::concurrency::mpsc_unbounded();
@@ -378,7 +419,7 @@ impl ThreadLocalActorSpawner {
         std::thread::spawn(move || {
             let local = tokio::task::LocalSet::new();
 
-            // TODO (seanlawlor): Supported named spawn
+            // TODO (seanlawlor): Support named spawn
             local.spawn_local(async move {
                 while let Some(SpawnArgs {
                     builder,
@@ -420,7 +461,7 @@ impl ThreadLocalActorSpawner {
         let (send, mut recv) = crate::concurrency::mpsc_unbounded();
 
         std::thread::spawn(move || {
-            // TODO (seanlawlor): Supported named spawn
+            // TODO (seanlawlor): Support named spawn
             async_std::task::block_on(async_std::task::spawn_local(async move {
                 while let Some(SpawnArgs {
                     builder,

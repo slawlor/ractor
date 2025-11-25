@@ -17,6 +17,16 @@ fn test_non_serializable_generation() {
     }
     assert!(!TheMessage::serializable());
 
+    #[derive(RactorMessage)]
+    enum GenericLocal<T>
+    where
+        T: Send + 'static,
+    {
+        Data(T),
+    }
+    assert!(!GenericLocal::<usize>::serializable());
+    let _ = GenericLocal::Data(5usize);
+
     let serialize = TheMessage::A.serialize();
     assert!(serialize.is_err());
     let data = SerializedMessage::Cast {
@@ -121,6 +131,99 @@ async fn test_complex_serializable_generation() {
     {
         assert_eq!(data1, vec![0u8, 5u8]);
         assert_eq!(data2, vec![1, 2, 3, 4]);
+    } else {
+        panic!("Deserialized message to incorrect type");
+    }
+}
+
+#[ractor::concurrency::test]
+async fn test_generic_serializable_generation() {
+    #[derive(RactorClusterMessage, Debug)]
+    enum GenericMessage<T>
+    where
+        T: ractor::BytesConvertable + Clone + Send + 'static,
+    {
+        #[rpc]
+        Echo(T, RpcReplyPort<T>),
+        Notify(T),
+    }
+
+    assert!(GenericMessage::<String>::serializable());
+
+    let payload = String::from("ping");
+
+    let serialized = GenericMessage::<String>::Notify(payload.clone()).serialize();
+    assert!(matches!(serialized, Ok(SerializedMessage::Cast { .. })));
+
+    if let Ok(GenericMessage::<String>::Notify(deserialized_payload)) =
+        GenericMessage::<String>::deserialize(serialized.unwrap())
+    {
+        assert_eq!(deserialized_payload, payload);
+    } else {
+        panic!("Deserialized message to incorrect type");
+    }
+
+    let payload = String::from("rpc");
+    let (tx, _rx) = ractor::concurrency::oneshot::<String>();
+    let serialized_call = GenericMessage::<String>::Echo(payload.clone(), tx.into()).serialize();
+    assert!(matches!(
+        serialized_call,
+        Ok(SerializedMessage::Call { .. })
+    ));
+
+    if let Ok(GenericMessage::<String>::Echo(deserialized_payload, _reply)) =
+        GenericMessage::<String>::deserialize(serialized_call.unwrap())
+    {
+        assert_eq!(deserialized_payload, payload);
+    } else {
+        panic!("Deserialized message to incorrect type");
+    }
+}
+
+#[ractor::concurrency::test]
+async fn test_multi_generic_serializable_generation() {
+    #[derive(RactorClusterMessage, Debug)]
+    enum MultiGeneric<T, U>
+    where
+        T: ractor::BytesConvertable + Send + 'static,
+        U: ractor::BytesConvertable + Clone + Send + 'static,
+    {
+        Notify(T, U),
+        #[rpc]
+        Fetch(T, RpcReplyPort<U>),
+    }
+
+    assert!(MultiGeneric::<String, Vec<u8>>::serializable());
+
+    let payload_t = String::from("notify");
+    let payload_u = vec![1u8, 2, 3];
+
+    let serialized =
+        MultiGeneric::<String, Vec<u8>>::Notify(payload_t.clone(), payload_u.clone()).serialize();
+    assert!(matches!(serialized, Ok(SerializedMessage::Cast { .. })));
+
+    if let Ok(MultiGeneric::<String, Vec<u8>>::Notify(deser_t, deser_u)) =
+        MultiGeneric::<String, Vec<u8>>::deserialize(serialized.unwrap())
+    {
+        assert_eq!(deser_t, payload_t);
+        assert_eq!(deser_u, payload_u);
+    } else {
+        panic!("Deserialized message to incorrect type");
+    }
+
+    let payload_t = String::from("fetch");
+    let (tx, _rx) = ractor::concurrency::oneshot::<Vec<u8>>();
+    let serialized_call =
+        MultiGeneric::<String, Vec<u8>>::Fetch(payload_t.clone(), tx.into()).serialize();
+    assert!(matches!(
+        serialized_call,
+        Ok(SerializedMessage::Call { .. })
+    ));
+
+    if let Ok(MultiGeneric::<String, Vec<u8>>::Fetch(deser_t, _reply)) =
+        MultiGeneric::<String, Vec<u8>>::deserialize(serialized_call.unwrap())
+    {
+        assert_eq!(deser_t, payload_t);
     } else {
         panic!("Deserialized message to incorrect type");
     }

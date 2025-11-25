@@ -1,9 +1,9 @@
 name: Unittests for wasm32-unknown-unknown
 on:
   push:
-    branches: main
-  workflow_dispatch: 
-  pull_request: 
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
     types: [opened, reopened, synchronize]
 
 jobs:
@@ -18,25 +18,56 @@ jobs:
         with:
           toolchain: stable
           override: true
-      
+
       - name: Install wasm-pack
         run: cargo install wasm-pack
-      
-      - uses: actions/setup-node@v4
+
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
-      
+
       - name: Setup test runner
         run: |
           cd ./.github/wasm-test-runner
           npm install
-          
+
       - name: Run tests
         run: |
           export WORKING_DIR=$(pwd)
           cd ./.github/wasm-test-runner
           node ./index.js
 
+  unit-test-output-port-v2:
+    name: "Run unit tests in browser (features: output-port-v2)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Setup test runner
+        run: |
+          cd ./.github/wasm-test-runner
+          npm install
+
+      - name: "Run tests (features: output-port-v2)"
+        env:
+          FEATURES_OUTPUT_PORT_V2: "true"
+        run: |
+          export WORKING_DIR=$(pwd)
+          cd ./.github/wasm-test-runner
+          node ./index.js
 
   unit-test-async-trait:
     name: "Run unit tests in browser (features: async-trait)"
@@ -49,19 +80,19 @@ jobs:
         with:
           toolchain: stable
           override: true
-      
+
       - name: Install wasm-pack
         run: cargo install wasm-pack
-      
-      - uses: actions/setup-node@v4
+
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
-      
+
       - name: Setup test runner
         run: |
           cd ./.github/wasm-test-runner
           npm install
-          
+
       - name: "Run tests (features: async-trait)"
         env:
           FEATURES_ASYNC_TRAIT: "true"
