@@ -434,9 +434,9 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
     ) -> Result<ActorLoopResult, ActorProcessingErr> {
         match ports.listen_in_priority().await {
             Ok(actor_port_message) => match actor_port_message {
-                actor_cell::ActorPortMessage::Signal(signal) => {
-                    Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
-                }
+                actor_cell::ActorPortMessage::Signal(signal) => Ok(ActorLoopResult::signal(
+                    Self::handle_signal(myself.clone(), signal),
+                )),
                 actor_cell::ActorPortMessage::Stop(stop_message) => {
                     let exit_reason = match stop_message {
                         StopMessage::Stop => {
@@ -463,9 +463,10 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                     match ports.run_with_signal(future).await {
                         Ok(Ok(())) => Ok(ActorLoopResult::ok()),
                         Ok(Err(internal_err)) => Err(internal_err),
-                        Err(signal) => {
-                            Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
-                        }
+                        Err(signal) => Ok(ActorLoopResult::signal(Self::handle_signal(
+                            myself.clone(),
+                            signal,
+                        ))),
                     }
                 }
                 actor_cell::ActorPortMessage::Message(MuxedMessage::Message(msg)) => {
@@ -473,9 +474,10 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                     match ports.run_with_signal(future).await {
                         Ok(Ok(())) => Ok(ActorLoopResult::ok()),
                         Ok(Err(internal_err)) => Err(internal_err),
-                        Err(signal) => {
-                            Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
-                        }
+                        Err(signal) => Ok(ActorLoopResult::signal(Self::handle_signal(
+                            myself.clone(),
+                            signal,
+                        ))),
                     }
                 }
                 actor_cell::ActorPortMessage::Message(MuxedMessage::Drain) => {

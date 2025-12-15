@@ -105,18 +105,16 @@ impl SupervisionTree {
 
     /// Stop all the linked children, but does NOT unlink them (stop flow will do that)
     pub(crate) fn stop_all_children(&self, reason: Option<String>) {
-        let cells = self.get_children();
-        for cell in cells {
+        self.for_each_child(|cell| {
             cell.stop(reason.clone());
-        }
+        });
     }
 
     /// Drain all the linked children, but does NOT unlink them
     pub(crate) fn drain_all_children(&self) {
-        let cells = self.get_children();
-        for cell in cells {
+        self.for_each_child(|cell| {
             _ = cell.drain();
-        }
+        });
     }
 
     /// Stop all the linked children, but does NOT unlink them (stop flow will do that),
@@ -206,6 +204,20 @@ impl SupervisionTree {
             map.values().cloned().collect()
         } else {
             vec![]
+        }
+    }
+
+    /// Execute a closure for each child without allocating a Vec.
+    /// This is more efficient when you just need to iterate over children.
+    pub(crate) fn for_each_child<F>(&self, mut f: F)
+    where
+        F: FnMut(&ActorCell),
+    {
+        let guard = self.children.lock().unwrap();
+        if let Some(map) = &*guard {
+            for cell in map.values() {
+                f(cell);
+            }
         }
     }
 
