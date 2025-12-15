@@ -134,7 +134,13 @@ async fn test_send_after() {
     // therefore the counter should be empty
     assert_eq!(0, counter.load(Ordering::Relaxed));
 
-    crate::concurrency::sleep(Duration::from_millis(20)).await;
+    // Wait for the message to be delivered and processed before stopping
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 1,
+        Duration::from_millis(100),
+    )
+    .await;
+
     // kill the actor
     actor_ref.stop(None);
 

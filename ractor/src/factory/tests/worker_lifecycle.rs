@@ -311,6 +311,15 @@ async fn test_factory_can_silent_retry() {
     let result = rx.recv().await;
     assert!(result.is_some());
 
+    // Give a small grace period to ensure the retry hook has completed and the counter is updated
+    // The retry hook runs synchronously in the drop handler before resubmission, but we want to
+    // ensure any async scheduling has settled
+    crate::periodic_check(
+        || num_retries.load(Ordering::SeqCst) == 1,
+        Duration::from_millis(100),
+    )
+    .await;
+
     assert_eq!(1, num_retries.load(Ordering::SeqCst));
     factory.stop(None);
     handle.await.unwrap();
