@@ -179,12 +179,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         spawner: ThreadLocalActorSpawner,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name)?;
-        let aref = actor.actor_ref.clone();
-        let result = actor.start(ports, startup_args, spawner, None).await;
-        if result.is_err() {
-            aref.set_status(ActorStatus::Stopped);
-        }
-        result
+        actor.start(ports, startup_args, spawner, None).await
     }
 
     /// Spawn an actor with a supervisor, automatically starting the actor
@@ -206,14 +201,9 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         supervisor: ActorCell,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name)?;
-        let aref = actor.actor_ref.clone();
-        let result = actor
+        actor
             .start(ports, startup_args, spawner, Some(supervisor))
-            .await;
-        if result.is_err() {
-            aref.set_status(ActorStatus::Stopped);
-        }
-        result
+            .await
     }
 
     /// Spawn an actor instantly, not waiting on the actor's `pre_start` routine.
@@ -233,12 +223,8 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
     > {
         let (actor, ports) = Self::new(name.clone())?;
         let actor_ref = actor.actor_ref.clone();
-        let actor_ref2 = actor_ref.clone();
         let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
             let result = actor.start(ports, startup_args, spawner, None).await;
-            if result.is_err() {
-                actor_ref2.set_status(ActorStatus::Stopped);
-            }
             let (_, handle) = result?;
             Ok(handle)
         });
@@ -261,14 +247,10 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
     > {
         let (actor, ports) = Self::new(name.clone())?;
         let actor_ref = actor.actor_ref.clone();
-        let actor_ref2 = actor_ref.clone();
         let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
             let result = actor
                 .start(ports, startup_args, spawner, Some(supervisor))
                 .await;
-            if result.is_err() {
-                actor_ref2.set_status(ActorStatus::Stopped);
-            }
             let (_, handle) = result?;
             Ok(handle)
         });
@@ -404,7 +386,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                     should_exit,
                     exit_reason,
                     was_killed,
-                } = Self::process_message(myself.clone(), state, handler, &mut ports)
+                } = Self::process_message(&myself, state, handler, &mut ports)
                     .await
                     .map_err(ActorErr::Failed)?;
                 // processing loop exit
@@ -445,7 +427,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
     /// Returns a tuple of the next [Actor::State] and a flag to denote if the processing
     /// loop is done
     async fn process_message(
-        myself: ActorRef<TActor::Msg>,
+        myself: &ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
         ports: &mut ActorPortSet,
@@ -453,7 +435,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         match ports.listen_in_priority().await {
             Ok(actor_port_message) => match actor_port_message {
                 actor_cell::ActorPortMessage::Signal(signal) => {
-                    Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
+                    Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
                 }
                 actor_cell::ActorPortMessage::Stop(stop_message) => {
                     let exit_reason = match stop_message {
@@ -482,7 +464,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                         Ok(Ok(())) => Ok(ActorLoopResult::ok()),
                         Ok(Err(internal_err)) => Err(internal_err),
                         Err(signal) => {
-                            Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
+                            Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
                         }
                     }
                 }
@@ -492,7 +474,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                         Ok(Ok(())) => Ok(ActorLoopResult::ok()),
                         Ok(Err(internal_err)) => Err(internal_err),
                         Err(signal) => {
-                            Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
+                            Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
                         }
                     }
                 }
@@ -508,21 +490,21 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                 // we should always die. Therefore we flag
                 // to terminate
                 Ok(ActorLoopResult::signal(Self::handle_signal(
-                    myself,
+                    myself.clone(),
                     Signal::Kill,
                 )))
             }
             Err(MessagingErr::InvalidActorType) => {
                 // not possible. Treat like a channel closed
                 Ok(ActorLoopResult::signal(Self::handle_signal(
-                    myself,
+                    myself.clone(),
                     Signal::Kill,
                 )))
             }
             Err(MessagingErr::SendErr(_)) => {
                 // not possible. Treat like a channel closed
                 Ok(ActorLoopResult::signal(Self::handle_signal(
-                    myself,
+                    myself.clone(),
                     Signal::Kill,
                 )))
             }

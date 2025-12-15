@@ -150,6 +150,23 @@ impl ActorProperties {
             return Err(MessagingErr::InvalidActorType);
         }
 
+        // Delegate to unchecked version after type check
+        self.send_message_unchecked(message)
+    }
+
+    /// Send a message without runtime type checking.
+    ///
+    /// This is an internal optimization for strongly-typed ActorRef which has compile-time
+    /// type safety guarantees, avoiding the redundant runtime TypeId comparison.
+    ///
+    /// SAFETY: Callers must ensure the message type matches the actor's expected type.
+    pub(crate) fn send_message_unchecked<TMessage>(
+        &self,
+        message: TMessage,
+    ) -> Result<(), MessagingErr<TMessage>>
+    where
+        TMessage: Message,
+    {
         let status = self.get_status();
         if status >= ActorStatus::Draining {
             // if currently draining, stopping or stopped: reject messages directly.

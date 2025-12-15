@@ -211,17 +211,50 @@ impl SupervisionTree {
 
     /// Send a notification to the supervisor.
     ///
-    /// CAVEAT: Monitors get notified first, in order to save an unnecessary
-    /// clone if there are no monitors.
+    /// Optimized to collect all targets under a single lock, then send outside the lock
+    /// to minimize lock contention.
     pub(crate) fn notify_supervisor(&self, evt: SupervisionEvent) {
+        // Collect all notification targets under a single lock acquisition
         #[cfg(feature = "monitors")]
-        if let Some(monitors) = &mut *(self.monitors.lock().unwrap()) {
-            // We notify the monitors on a best-effort basis, and if we fail to send the event, we remove
-            // the monitor
-            monitors.retain(|_, v| v.send_supervisor_evt(evt.clone_no_data()).is_ok());
+        let monitor_targets: Vec<ActorCell> = {
+            let guard = self.monitors.lock().unwrap();
+            if let Some(monitors) = &*guard {
+                monitors.values().cloned().collect()
+            } else {
+                Vec::new()
+            }
+        };
+
+        let supervisor_target = {
+            let guard = self.supervisor.lock().unwrap();
+            (*guard).clone()
+        };
+
+        // Send to all monitors (best-effort, outside the lock)
+        #[cfg(feature = "monitors")]
+        if !monitor_targets.is_empty() {
+            let monitor_evt = evt.clone_no_data();
+            let mut failed_monitors = Vec::new();
+
+            for (idx, monitor) in monitor_targets.iter().enumerate() {
+                if monitor.send_supervisor_evt(monitor_evt.clone()).is_err() {
+                    failed_monitors.push(monitor.get_id());
+                }
+            }
+
+            // Clean up failed monitors if any
+            if !failed_monitors.is_empty() {
+                let mut guard = self.monitors.lock().unwrap();
+                if let Some(monitors) = &mut *guard {
+                    for id in failed_monitors {
+                        monitors.remove(&id);
+                    }
+                }
+            }
         }
 
-        if let Some(parent) = &*(self.supervisor.lock().unwrap()) {
+        // Send to supervisor
+        if let Some(parent) = supervisor_target {
             _ = parent.send_supervisor_evt(evt);
         }
     }

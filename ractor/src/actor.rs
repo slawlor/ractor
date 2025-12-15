@@ -519,12 +519,7 @@ where
         startup_args: TActor::Arguments,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
-        let aref = actor.actor_ref.clone();
-        let result = actor.start(ports, startup_args, None).await;
-        if result.is_err() {
-            aref.set_status(ActorStatus::Stopped);
-        }
-        result
+        actor.start(ports, startup_args, None).await
     }
 
     /// Spawn an actor with a supervisor, automatically starting the actor
@@ -545,12 +540,7 @@ where
         supervisor: ActorCell,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
         let (actor, ports) = Self::new(name, handler)?;
-        let aref = actor.actor_ref.clone();
-        let result = actor.start(ports, startup_args, Some(supervisor)).await;
-        if result.is_err() {
-            aref.set_status(ActorStatus::Stopped);
-        }
-        result
+        actor.start(ports, startup_args, Some(supervisor)).await
     }
 
     /// Spawn an actor instantly, not waiting on the actor's `pre_start` routine. This is helpful
@@ -583,12 +573,9 @@ where
     > {
         let (actor, ports) = Self::new(name.clone(), handler)?;
         let actor_ref = actor.actor_ref.clone();
-        let actor_ref2 = actor_ref.clone();
         let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
+            // start() now handles setting status to Stopped on error
             let result = actor.start(ports, startup_args, None).await;
-            if result.is_err() {
-                actor_ref2.set_status(ActorStatus::Stopped);
-            }
             let (_, handle) = result?;
             Ok(handle)
         });
@@ -630,12 +617,9 @@ where
     > {
         let (actor, ports) = Self::new(name.clone(), handler)?;
         let actor_ref = actor.actor_ref.clone();
-        let actor_ref2 = actor_ref.clone();
         let join_op = crate::concurrency::spawn_named(name.as_deref(), async move {
+            // start() now handles setting status to Stopped on error
             let result = actor.start(ports, startup_args, Some(supervisor)).await;
-            if result.is_err() {
-                actor_ref2.set_status(ActorStatus::Stopped);
-            }
             let (_, handle) = result?;
             Ok(handle)
         });
@@ -743,9 +727,19 @@ where
         actor_ref.set_status(ActorStatus::Starting);
 
         // Perform the pre-start routine, crashing immediately if we fail to start
-        let mut state = Self::do_pre_start(actor_ref.clone(), &handler, startup_args)
-            .await?
-            .map_err(SpawnErr::StartupFailed)?;
+        let mut state = match Self::do_pre_start(actor_ref.clone(), &handler, startup_args).await {
+            Ok(Ok(state)) => state,
+            Ok(Err(e)) => {
+                // Set status to stopped on error before returning
+                actor_ref.set_status(ActorStatus::Stopped);
+                return Err(SpawnErr::StartupFailed(e));
+            }
+            Err(e) => {
+                // Set status to stopped on error before returning
+                actor_ref.set_status(ActorStatus::Stopped);
+                return Err(e);
+            }
+        };
 
         // setup supervision
         if let Some(sup) = &supervisor {
@@ -821,7 +815,7 @@ where
                     should_exit,
                     exit_reason,
                     was_killed,
-                } = Self::process_message(myself.clone(), state, handler, &mut ports)
+                } = Self::process_message(&myself, state, handler, &mut ports)
                     .await
                     .map_err(ActorErr::Failed)?;
                 // processing loop exit
@@ -862,7 +856,7 @@ where
     /// Returns a tuple of the next [Actor::State] and a flag to denote if the processing
     /// loop is done
     async fn process_message(
-        myself: ActorRef<TActor::Msg>,
+        myself: &ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
         ports: &mut ActorPortSet,
@@ -870,7 +864,7 @@ where
         match ports.listen_in_priority().await {
             Ok(actor_port_message) => match actor_port_message {
                 actor_cell::ActorPortMessage::Signal(signal) => {
-                    Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
+                    Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
                 }
                 actor_cell::ActorPortMessage::Stop(stop_message) => {
                     let exit_reason = match stop_message {
@@ -899,7 +893,7 @@ where
                         Ok(Ok(())) => Ok(ActorLoopResult::ok()),
                         Ok(Err(internal_err)) => Err(internal_err),
                         Err(signal) => {
-                            Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
+                            Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
                         }
                     }
                 }
@@ -909,7 +903,7 @@ where
                         Ok(Ok(())) => Ok(ActorLoopResult::ok()),
                         Ok(Err(internal_err)) => Err(internal_err),
                         Err(signal) => {
-                            Ok(ActorLoopResult::signal(Self::handle_signal(myself, signal)))
+                            Ok(ActorLoopResult::signal(Self::handle_signal(myself.clone(), signal)))
                         }
                     }
                 }
@@ -925,21 +919,21 @@ where
                 // we should always die. Therefore we flag
                 // to terminate
                 Ok(ActorLoopResult::signal(Self::handle_signal(
-                    myself,
+                    myself.clone(),
                     Signal::Kill,
                 )))
             }
             Err(MessagingErr::InvalidActorType) => {
                 // not possible. Treat like a channel closed
                 Ok(ActorLoopResult::signal(Self::handle_signal(
-                    myself,
+                    myself.clone(),
                     Signal::Kill,
                 )))
             }
             Err(MessagingErr::SendErr(_)) => {
                 // not possible. Treat like a channel closed
                 Ok(ActorLoopResult::signal(Self::handle_signal(
-                    myself,
+                    myself.clone(),
                     Signal::Kill,
                 )))
             }
