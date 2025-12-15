@@ -245,21 +245,14 @@ impl SupervisionTree {
         // Send to all monitors (best-effort, outside the lock)
         #[cfg(feature = "monitors")]
         if !monitor_targets.is_empty() {
-            let monitor_evt = evt.clone_no_data();
-            let mut failed_monitors = Vec::new();
-
-            for (idx, monitor) in monitor_targets.iter().enumerate() {
-                if monitor.send_supervisor_evt(monitor_evt.clone()).is_err() {
-                    failed_monitors.push(monitor.get_id());
-                }
-            }
-
-            // Clean up failed monitors if any
-            if !failed_monitors.is_empty() {
-                let mut guard = self.monitors.lock().unwrap();
-                if let Some(monitors) = &mut *guard {
-                    for id in failed_monitors {
-                        monitors.remove(&id);
+            for monitor in monitor_targets.iter() {
+                // Clone the event for each monitor (without requiring inner data to be Clone)
+                let monitor_evt = evt.clone_no_data();
+                if monitor.send_supervisor_evt(monitor_evt).is_err() {
+                    // Best-effort delivery - if send fails, remove the monitor
+                    let mut guard = self.monitors.lock().unwrap();
+                    if let Some(monitors) = &mut *guard {
+                        monitors.remove(&monitor.get_id());
                     }
                 }
             }
