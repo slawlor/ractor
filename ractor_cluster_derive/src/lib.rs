@@ -29,6 +29,7 @@ use proc_macro::TokenStream;
 use quote::format_ident;
 use quote::quote;
 use quote::ToTokens;
+use syn::spanned::Spanned;
 use syn::AngleBracketedGenericArguments;
 use syn::DeriveInput;
 use syn::Fields;
@@ -42,7 +43,11 @@ use syn::{self};
 pub fn ractor_message_derive_macro(input: TokenStream) -> TokenStream {
     // Construct a representation of Rust code as a syntax tree
     // that we can manipulate
-    let ast: DeriveInput = syn::parse(input).unwrap();
+    let ast: DeriveInput = match syn::parse(input) {
+        Ok(ast) => ast,
+        Err(err) => return err.to_compile_error().into(),
+    };
+
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
     let gen = quote! {
@@ -66,13 +71,19 @@ pub fn ractor_message_derive_macro(input: TokenStream) -> TokenStream {
 pub fn ractor_cluster_message_derive_macro(input: TokenStream) -> TokenStream {
     // Construct a representation of Rust code as a syntax tree
     // that we can manipulate
-    let ast: DeriveInput = syn::parse(input).unwrap();
+    let ast: DeriveInput = match syn::parse(input) {
+        Ok(ast) => ast,
+        Err(err) => return err.to_compile_error().into(),
+    };
 
     // Build the trait implementation
-    impl_message_macro(&ast)
+    match impl_message_macro(&ast) {
+        Ok(tokens) => tokens,
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
-fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
+fn impl_message_macro(ast: &syn::DeriveInput) -> syn::Result<TokenStream> {
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
@@ -83,26 +94,36 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
             .variants
             .iter()
             .map(impl_variant_serialize)
-            .collect::<Vec<_>>();
-        // Build the deserialize handlers for both casts and calls
-        let casts = enum_data.variants.iter().filter_map(|variant| {
-            let is_call = variant.attrs.iter().any(|attr| attr.path().is_ident("rpc"));
-            if !is_call {
-                Some(impl_cast_variant_deserialize(variant))
-            } else {
-                None
-            }
-        });
-        let calls = enum_data.variants.iter().filter_map(|variant| {
-            let is_call = variant.attrs.iter().any(|attr| attr.path().is_ident("rpc"));
-            if is_call {
-                Some(impl_call_variant_deserialize(variant))
-            } else {
-                None
-            }
-        });
+            .collect::<Result<Vec<_>, _>>()?;
 
-        (quote! {
+        // Build the deserialize handlers for both casts and calls
+        let casts = enum_data
+            .variants
+            .iter()
+            .filter_map(|variant| {
+                let is_call = variant.attrs.iter().any(|attr| attr.path().is_ident("rpc"));
+                if !is_call {
+                    Some(impl_cast_variant_deserialize(variant))
+                } else {
+                    None
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let calls = enum_data
+            .variants
+            .iter()
+            .filter_map(|variant| {
+                let is_call = variant.attrs.iter().any(|attr| attr.path().is_ident("rpc"));
+                if is_call {
+                    Some(impl_call_variant_deserialize(variant))
+                } else {
+                    None
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok((quote! {
             impl #impl_generics ractor::Message for #name #ty_generics #where_clause {
                 fn serializable() -> bool {
                     // Network serializable message
@@ -144,19 +165,29 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
                     }
                 }
             }
-        }).into()
+        })
+        .into())
     } else {
-        TokenStream::new()
+        Err(syn::Error::new(
+            name.span(),
+            "RactorClusterMessage can only be derived for enums, not structs or unions",
+        ))
     }
 }
 
-fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
+fn impl_variant_serialize(variant: &Variant) -> syn::Result<impl ToTokens> {
     let name = &variant.ident;
     let variant_name = name.to_string();
     let is_call = variant.attrs.iter().any(|attr| attr.path().is_ident("rpc"));
+
     if is_call {
         match &variant.fields {
-            Fields::Unit => panic!("RPC Calls must have a `RpcReplyPort<T>`"),
+            Fields::Unit => Err(syn::Error::new(
+                variant.span(),
+                "RPC calls must have at least one field: a `RpcReplyPort<T>` as the last argument.\n\
+                 \n\
+                 Example:\n  #[rpc]\n  YourRpc(RpcReplyPort<YourReturnType>),",
+            )),
             Fields::Unnamed(unnamed_fields) => {
                 // we only support un-named fields, where the last field is the "reply" port
                 let mut fields = unnamed_fields
@@ -165,14 +196,23 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                     .enumerate()
                     .map(|(i, arg)| (format_ident!("field{}", i), &arg.ty))
                     .collect::<Vec<_>>();
+
                 // the last field is the port
                 let _ = fields.pop();
-                let port_type = if let syn::Type::Path(path_data) =
-                    unnamed_fields.unnamed.last().unwrap().ty.clone()
-                {
-                    get_generic_reply_port_type(&path_data)
+                let last_field = unnamed_fields.unnamed.last().ok_or_else(|| {
+                    syn::Error::new(
+                        variant.span(),
+                        "RPC calls must have at least one field for the RpcReplyPort",
+                    )
+                })?;
+
+                let port_type = if let syn::Type::Path(path_data) = &last_field.ty {
+                    get_generic_reply_port_type(path_data)?
                 } else {
-                    panic!("No generic arguments on path data!");
+                    return Err(syn::Error::new(
+                        last_field.ty.span(),
+                        "Expected RpcReplyPort<T> type, but found a non-path type",
+                    ));
                 };
 
                 let port = format_ident!("reply");
@@ -180,7 +220,7 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
 
                 if fields.is_empty() {
                     // no arguments, just a port
-                    quote! {
+                    Ok(quote! {
                         Self::#name(#port) => {
                             let target_port = #target_port;
                             Ok(ractor::message::SerializedMessage::Call {
@@ -190,11 +230,11 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                                 metadata: None,
                             })
                         }
-                    }
+                    })
                 } else {
                     let field_names = fields.iter().map(|(a, _)| a);
                     let packed = fields.iter().map(|(field, arg)| pack_args(field, arg));
-                    quote! {
+                    Ok(quote! {
                         Self::#name(#(#field_names),*, #port) => {
                             let mut data = vec![];
                             #(#packed;)*
@@ -206,16 +246,22 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                                 metadata: None,
                             })
                         }
-                    }
+                    })
                 }
             }
-            _ => panic!("Named fields are not supported (today)"),
+            Fields::Named(_) => Err(syn::Error::new(
+                variant.span(),
+                "Named fields are not currently supported for RactorClusterMessage.\n\
+                 \n\
+                 Please use unnamed (tuple-style) fields instead:\n  \
+                 #[rpc]\n  YourVariant(YourType, RpcReplyPort<ReturnType>),",
+            )),
         }
     } else {
         match &variant.fields {
             Fields::Unit => {
                 // empty, just use the index value
-                quote! {
+                Ok(quote! {
                     Self::#name => {
                         Ok(ractor::message::SerializedMessage::Cast {
                             variant: #variant_name.to_string(),
@@ -223,7 +269,7 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                             metadata: None,
                         })
                     }
-                }
+                })
             }
             Fields::Unnamed(unnamed_fields) => {
                 // we only support un-named fields, where the last field is the "reply" port
@@ -236,7 +282,7 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
 
                 let field_names = fields.iter().map(|(a, _)| a);
                 let packed = fields.iter().map(|(field, arg)| pack_args(field, arg));
-                quote! {
+                Ok(quote! {
                     Self::#name(#(#field_names),*) => {
                         let mut data = vec![];
 
@@ -248,24 +294,30 @@ fn impl_variant_serialize(variant: &Variant) -> impl ToTokens {
                             metadata: None,
                         })
                     }
-                }
+                })
             }
-            _ => panic!("Named fields are not supported (today)"),
+            Fields::Named(_) => Err(syn::Error::new(
+                variant.span(),
+                "Named fields are not currently supported for RactorClusterMessage.\n\
+                 \n\
+                 Please use unnamed (tuple-style) fields instead:\n  \
+                 YourVariant(YourType1, YourType2),",
+            )),
         }
     }
 }
 
-fn impl_cast_variant_deserialize(variant: &Variant) -> impl ToTokens {
+fn impl_cast_variant_deserialize(variant: &Variant) -> syn::Result<impl ToTokens> {
     let name = &variant.ident;
     let variant_name = name.to_string();
     match &variant.fields {
         Fields::Unit => {
             // empty, just the index value
-            quote! {
+            Ok(quote! {
                 #variant_name => {
                     Ok(Self::#name)
                 }
-            }
+            })
         }
         Fields::Unnamed(unnamed_fields) => {
             let fields = unnamed_fields
@@ -276,23 +328,34 @@ fn impl_cast_variant_deserialize(variant: &Variant) -> impl ToTokens {
                 .collect::<Vec<_>>();
             let field_names = fields.iter().map(|(a, _)| a);
             let unpacked = fields.iter().map(|(field, arg)| unpack_arg(field, arg));
-            quote! {
+            Ok(quote! {
                 #variant_name => {
                     let mut ptr = 0usize;
                     #(#unpacked;)*
                     Ok(Self::#name(#(#field_names),*))
                 }
-            }
+            })
         }
-        _ => panic!("Named fields are not supported (today)"),
+        Fields::Named(_) => Err(syn::Error::new(
+            variant.span(),
+            "Named fields are not currently supported for RactorClusterMessage.\n\
+             \n\
+             Please use unnamed (tuple-style) fields instead:\n  \
+             YourVariant(YourType1, YourType2),",
+        )),
     }
 }
 
-fn impl_call_variant_deserialize(variant: &Variant) -> impl ToTokens {
+fn impl_call_variant_deserialize(variant: &Variant) -> syn::Result<impl ToTokens> {
     let name = &variant.ident;
     let variant_name = name.to_string();
     match &variant.fields {
-        Fields::Unit => panic!("RPC Calls must have a `RpcReplyPort<T>`"),
+        Fields::Unit => Err(syn::Error::new(
+            variant.span(),
+            "RPC calls must have at least one field: a `RpcReplyPort<T>` as the last argument.\n\
+             \n\
+             Example:\n  #[rpc]\n  YourRpc(RpcReplyPort<YourReturnType>),",
+        )),
         Fields::Unnamed(unnamed_fields) => {
             let mut fields = unnamed_fields
                 .unnamed
@@ -302,12 +365,20 @@ fn impl_call_variant_deserialize(variant: &Variant) -> impl ToTokens {
                 .collect::<Vec<_>>();
 
             let port = format_ident!("reply");
-            let port_type = if let syn::Type::Path(path_data) =
-                unnamed_fields.unnamed.last().unwrap().ty.clone()
-            {
-                get_generic_reply_port_type(&path_data)
+            let last_field = unnamed_fields.unnamed.last().ok_or_else(|| {
+                syn::Error::new(
+                    variant.span(),
+                    "RPC calls must have at least one field for the RpcReplyPort",
+                )
+            })?;
+
+            let port_type = if let syn::Type::Path(path_data) = &last_field.ty {
+                get_generic_reply_port_type(path_data)?
             } else {
-                panic!("No generic arguments on path data!");
+                return Err(syn::Error::new(
+                    last_field.ty.span(),
+                    "Expected RpcReplyPort<T> type, but found a non-path type",
+                ));
             };
 
             let target_port = convert_deserialize_port(&port, &port_type);
@@ -315,26 +386,32 @@ fn impl_call_variant_deserialize(variant: &Variant) -> impl ToTokens {
             // the last field is the port, pop it off
             let _ = fields.pop();
             if fields.is_empty() {
-                quote! {
+                Ok(quote! {
                     #variant_name => {
                         let target_port = #target_port;
                         Ok(Self::#name(target_port))
                     }
-                }
+                })
             } else {
                 let field_names = fields.iter().map(|(a, _)| a);
                 let unpacked = fields.iter().map(|(field, arg)| unpack_arg(field, arg));
-                quote! {
+                Ok(quote! {
                     #variant_name => {
                         let mut ptr = 0usize;
                         #(#unpacked;)*
                         let target_port = #target_port;
                         Ok(Self::#name(#(#field_names),*, target_port))
                     }
-                }
+                })
             }
         }
-        _ => panic!("Named fields are not supported (today)"),
+        Fields::Named(_) => Err(syn::Error::new(
+            variant.span(),
+            "Named fields are not currently supported for RactorClusterMessage.\n\
+             \n\
+             Please use unnamed (tuple-style) fields instead:\n  \
+             #[rpc]\n  YourVariant(YourType, RpcReplyPort<ReturnType>),",
+        )),
     }
 }
 
@@ -427,12 +504,26 @@ fn convert_serialize_port(
     }
 }
 
-fn get_generic_reply_port_type(path_data: &TypePath) -> AngleBracketedGenericArguments {
-    if let syn::PathArguments::AngleBracketed(generic_args) =
-        &path_data.path.segments.last().unwrap().arguments
-    {
-        generic_args.clone()
+fn get_generic_reply_port_type(
+    path_data: &TypePath,
+) -> syn::Result<AngleBracketedGenericArguments> {
+    let last_segment = path_data.path.segments.last().ok_or_else(|| {
+        syn::Error::new(
+            path_data.span(),
+            "Expected a type path with at least one segment (e.g., RpcReplyPort<T>)",
+        )
+    })?;
+
+    if let syn::PathArguments::AngleBracketed(generic_args) = &last_segment.arguments {
+        Ok(generic_args.clone())
     } else {
-        panic!("RpcReplyPort failed to get generic args");
+        Err(syn::Error::new(
+            last_segment.span(),
+            "RpcReplyPort must have generic type arguments.\n\
+             \n\
+             Expected: RpcReplyPort<YourReturnType>\n\
+             \n\
+             The generic argument specifies what type will be returned by the RPC call.",
+        ))
     }
 }
