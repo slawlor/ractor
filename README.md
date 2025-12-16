@@ -17,6 +17,10 @@ A pure-Rust actor framework. Inspired from [Erlang's `gen_server`](https://www.e
 * `ractor`: ![ractor Downloads](https://img.shields.io/crates/d/ractor.svg)
 * `ractor_cluster`: ![ractor_cluster Downloads](https://img.shields.io/crates/d/ractor_cluster.svg)
 
+## Runtime semantics
+
+See the detailed runtime semantics and guarantees in docs/runtime-semantics.md for priority channels, supervision semantics, RPC/cluster behaviors, and recommended best practices: [Semantics](docs/runtime-semantics.md)
+
 ## Updates
 
 * **Website**: Ractor has a companion website for more detailed getting-started guides along with some best practices and is updated regularly. Api docs will still be available at [docs.rs](https://docs.rs/ractor) however this will be a supplimentary site for `ractor`. Try it out! <https://slawlor.github.io/ractor/>

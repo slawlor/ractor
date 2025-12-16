@@ -98,11 +98,10 @@ pub trait Message: Any + Send + Sized + 'static {
         if m.msg.is_some() {
             match m.msg.take() {
                 Some(m) => {
-                    if m.is::<Self>() {
-                        Ok(*m.downcast::<Self>().unwrap())
-                    } else {
-                        Err(BoxedDowncastErr)
-                    }
+                    // downcast already checks the type, no need for redundant is::<Self>() check
+                    m.downcast::<Self>()
+                        .map(|boxed| *boxed)
+                        .map_err(|_| BoxedDowncastErr)
                 }
                 _ => Err(BoxedDowncastErr),
             }
@@ -121,11 +120,10 @@ pub trait Message: Any + Send + Sized + 'static {
     fn from_boxed(mut m: BoxedMessage) -> Result<Self, BoxedDowncastErr> {
         match m.msg.take() {
             Some(m) => {
-                if m.is::<Self>() {
-                    Ok(*m.downcast::<Self>().unwrap())
-                } else {
-                    Err(BoxedDowncastErr)
-                }
+                // downcast already checks the type, no need for redundant is::<Self>() check
+                m.downcast::<Self>()
+                    .map(|boxed| *boxed)
+                    .map_err(|_| BoxedDowncastErr)
             }
             _ => Err(BoxedDowncastErr),
         }

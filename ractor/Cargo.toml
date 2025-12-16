@@ -106,3 +106,8 @@ required-features = []
 name = "async_traits"
 harness = false
 required-features = []
+
+[[bench]]
+name = "simple_advanced_benchmarks"
+harness = false
+required-features = []

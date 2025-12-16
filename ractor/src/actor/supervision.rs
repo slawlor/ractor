@@ -105,18 +105,16 @@ impl SupervisionTree {
 
     /// Stop all the linked children, but does NOT unlink them (stop flow will do that)
     pub(crate) fn stop_all_children(&self, reason: Option<String>) {
-        let cells = self.get_children();
-        for cell in cells {
+        self.for_each_child(|cell| {
             cell.stop(reason.clone());
-        }
+        });
     }
 
     /// Drain all the linked children, but does NOT unlink them
     pub(crate) fn drain_all_children(&self) {
-        let cells = self.get_children();
-        for cell in cells {
+        self.for_each_child(|cell| {
             _ = cell.drain();
-        }
+        });
     }
 
     /// Stop all the linked children, but does NOT unlink them (stop flow will do that),
@@ -209,19 +207,59 @@ impl SupervisionTree {
         }
     }
 
+    /// Execute a closure for each child without allocating a Vec.
+    /// This is more efficient when you just need to iterate over children.
+    pub(crate) fn for_each_child<F>(&self, mut f: F)
+    where
+        F: FnMut(&ActorCell),
+    {
+        let guard = self.children.lock().unwrap();
+        if let Some(map) = &*guard {
+            for cell in map.values() {
+                f(cell);
+            }
+        }
+    }
+
     /// Send a notification to the supervisor.
     ///
-    /// CAVEAT: Monitors get notified first, in order to save an unnecessary
-    /// clone if there are no monitors.
+    /// Optimized to collect all targets under a single lock, then send outside the lock
+    /// to minimize lock contention.
     pub(crate) fn notify_supervisor(&self, evt: SupervisionEvent) {
+        // Collect all notification targets under a single lock acquisition
         #[cfg(feature = "monitors")]
-        if let Some(monitors) = &mut *(self.monitors.lock().unwrap()) {
-            // We notify the monitors on a best-effort basis, and if we fail to send the event, we remove
-            // the monitor
-            monitors.retain(|_, v| v.send_supervisor_evt(evt.clone_no_data()).is_ok());
+        let monitor_targets: Vec<ActorCell> = {
+            let guard = self.monitors.lock().unwrap();
+            if let Some(monitors) = &*guard {
+                monitors.values().cloned().collect()
+            } else {
+                Vec::new()
+            }
+        };
+
+        let supervisor_target = {
+            let guard = self.supervisor.lock().unwrap();
+            (*guard).clone()
+        };
+
+        // Send to all monitors (best-effort, outside the lock)
+        #[cfg(feature = "monitors")]
+        if !monitor_targets.is_empty() {
+            for monitor in monitor_targets.iter() {
+                // Clone the event for each monitor (without requiring inner data to be Clone)
+                let monitor_evt = evt.clone_no_data();
+                if monitor.send_supervisor_evt(monitor_evt).is_err() {
+                    // Best-effort delivery - if send fails, remove the monitor
+                    let mut guard = self.monitors.lock().unwrap();
+                    if let Some(monitors) = &mut *guard {
+                        monitors.remove(&monitor.get_id());
+                    }
+                }
+            }
         }
 
-        if let Some(parent) = &*(self.supervisor.lock().unwrap()) {
+        // Send to supervisor
+        if let Some(parent) = supervisor_target {
             _ = parent.send_supervisor_evt(evt);
         }
     }

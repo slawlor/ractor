@@ -704,6 +704,12 @@ async fn derived_actor_ref() {
         .send_message(u16_message)
         .expect("Failed to send message to actor");
 
+    periodic_check(
+        || result_counter.load(Ordering::Relaxed) == sum,
+        Duration::from_millis(500),
+    )
+    .await;
+
     actor
         .drain_and_wait(None)
         .await

@@ -691,10 +691,10 @@ async fn test_stuck_workers() {
         counters: [Arc<AtomicU16>; NUM_TEST_WORKERS],
     }
 
-    impl WorkerBuilder<TestWorker, ()> for StuckWorkerBuilder {
-        fn build(&mut self, wid: usize) -> (TestWorker, ()) {
+    impl WorkerBuilder<StuckWorker, ()> for StuckWorkerBuilder {
+        fn build(&mut self, wid: usize) -> (StuckWorker, ()) {
             (
-                TestWorker {
+                StuckWorker {
                     counter: self.counters[wid].clone(),
                     slow: Some(10000),
                 },
@@ -710,7 +710,7 @@ async fn test_stuck_workers() {
         TestKey,
         TestMessage,
         (),
-        TestWorker,
+        StuckWorker,
         routing::RoundRobinRouting<TestKey, TestMessage>,
         DefaultQueue,
     >::default();
