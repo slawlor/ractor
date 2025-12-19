@@ -22,6 +22,104 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 
+/// Async-std-based concurrency backend implementation
+#[derive(Debug, Clone, Copy)]
+pub struct AsyncStdBackend;
+
+impl super::ConcurrencyBackend for AsyncStdBackend {
+    type JoinHandle<T> = JoinHandle<T>;
+    type Duration = std::time::Duration;
+    type Instant = std::time::Instant;
+    type Interval = Interval;
+    type JoinSet<T> = JoinSet<T>;
+
+    fn sleep(dur: Self::Duration) -> impl Future<Output = ()> + Send {
+        async_std::task::sleep(dur)
+    }
+
+    fn interval(dur: Self::Duration) -> Self::Interval {
+        Interval {
+            dur,
+            next_tick: std::time::Instant::now(),
+        }
+    }
+
+    fn spawn<F>(future: F) -> Self::JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        Self::spawn_named(None, future)
+    }
+
+    fn spawn_local<F>(future: F) -> Self::JoinHandle<F::Output>
+    where
+        F: Future + 'static,
+    {
+        let signal = Arc::new(AtomicBool::new(false));
+        let inner_signal = signal.clone();
+
+        let jh = async_std::task::spawn_local(async move {
+            let r = future.await;
+            inner_signal.fetch_or(true, Ordering::Relaxed);
+            r
+        });
+
+        JoinHandle {
+            handle: Some(jh),
+            is_done: signal,
+        }
+    }
+
+    fn spawn_named<F>(name: Option<&str>, future: F) -> Self::JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        if let Some(name) = name {
+            let signal = Arc::new(AtomicBool::new(false));
+            let inner_signal = signal.clone();
+
+            let jh = async_std::task::Builder::new()
+                .name(name.to_string())
+                .spawn(async move {
+                    let r = future.await;
+                    inner_signal.fetch_or(true, Ordering::Relaxed);
+                    r
+                })
+                .unwrap();
+
+            JoinHandle {
+                handle: Some(jh),
+                is_done: signal,
+            }
+        } else {
+            let signal = Arc::new(AtomicBool::new(false));
+            let inner_signal = signal.clone();
+
+            let jh = async_std::task::spawn(async move {
+                let r = future.await;
+                inner_signal.fetch_or(true, Ordering::Relaxed);
+                r
+            });
+
+            JoinHandle {
+                handle: Some(jh),
+                is_done: signal,
+            }
+        }
+    }
+
+    async fn timeout<F, T>(dur: Self::Duration, future: F) -> Result<T, super::Timeout>
+    where
+        F: Future<Output = T>,
+    {
+        async_std::future::timeout(dur, future)
+            .await
+            .map_err(|_| super::Timeout)
+    }
+}
+
 /// Represents a [JoinHandle] on a spawned task.
 /// Adds some syntactic wrapping to support a JoinHandle
 /// similar to `tokio`'s.
@@ -97,20 +195,10 @@ impl Interval {
         let now = Instant::now();
         // if the next tick time is in the future, wait until it's time
         if self.next_tick > now {
-            sleep(self.next_tick - now).await;
+            async_std::task::sleep(self.next_tick - now).await;
         }
         // set the next tick time
         self.next_tick += self.dur;
-    }
-}
-
-/// Build a new interval at the given duration starting at now
-///
-/// Ticks 1 time immediately
-pub fn interval(dur: Duration) -> Interval {
-    Interval {
-        dur,
-        next_tick: Instant::now(),
     }
 }
 
@@ -159,95 +247,6 @@ impl<T> JoinSet<T> {
     }
 }
 
-/// Sleep the task for a duration of time
-pub async fn sleep(dur: super::Duration) {
-    async_std::task::sleep(dur).await;
-}
-
-/// Spawn a task on the executor runtime
-pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    spawn_named(None, future)
-}
-
-/// Spawn a task on the executor runtime which will not be moved to other threads
-pub fn spawn_local<F>(future: F) -> JoinHandle<F::Output>
-where
-    F: Future + 'static,
-{
-    let signal = Arc::new(AtomicBool::new(false));
-    let inner_signal = signal.clone();
-
-    let jh = async_std::task::spawn_local(async move {
-        let r = future.await;
-        inner_signal.fetch_or(true, Ordering::Relaxed);
-        r
-    });
-
-    JoinHandle {
-        handle: Some(jh),
-        is_done: signal,
-    }
-}
-
-/// Spawn a (possibly) named task on the executor runtime
-pub fn spawn_named<F>(name: Option<&str>, future: F) -> JoinHandle<F::Output>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    if let Some(name) = name {
-        let signal = Arc::new(AtomicBool::new(false));
-        let inner_signal = signal.clone();
-
-        let jh = async_std::task::Builder::new()
-            .name(name.to_string())
-            .spawn(async move {
-                let r = future.await;
-                inner_signal.fetch_or(true, Ordering::Relaxed);
-                r
-            })
-            .unwrap();
-
-        JoinHandle {
-            handle: Some(jh),
-            is_done: signal,
-        }
-    } else {
-        let signal = Arc::new(AtomicBool::new(false));
-        let inner_signal = signal.clone();
-
-        let jh = async_std::task::spawn(async move {
-            let r = future.await;
-            inner_signal.fetch_or(true, Ordering::Relaxed);
-            r
-        });
-
-        JoinHandle {
-            handle: Some(jh),
-            is_done: signal,
-        }
-    }
-}
-
-/// Execute the future up to a timeout
-///
-/// * `dur`: The duration of time to allow the future to execute for
-/// * `future`: The future to execute
-///
-/// Returns [Ok(_)] if the future succeeded before the timeout, [Err(super::Timeout)] otherwise
-pub async fn timeout<F, T>(dur: super::Duration, future: F) -> Result<T, super::Timeout>
-where
-    F: Future<Output = T>,
-{
-    async_std::future::timeout(dur, future)
-        .await
-        .map_err(|_| super::Timeout)
-}
-
 /// test macro
 pub use async_std::test;
 pub use futures::select_biased as select;
@@ -257,6 +256,7 @@ mod async_std_primitive_tests {
 
     use super::*;
     use crate::common_test::periodic_check;
+    use crate::concurrency::{sleep, spawn, spawn_named};
 
     #[super::test]
     async fn join_handle_aborts() {
