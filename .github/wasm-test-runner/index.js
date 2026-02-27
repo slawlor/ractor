@@ -8,9 +8,9 @@ import { spawn } from "child_process";
     return;
   }
   var command;
-  if (process.env.FEATURES_ASYNC_TRAIT == true) {
+  if (process.env.FEATURES_ASYNC_TRAIT === "true") {
     command = "wasm-pack test --chrome ./ractor --features async-trait";
-  } else if (process.env.FEATURES_OUTPUT_PORT_V2 == true) {
+  } else if (process.env.FEATURES_OUTPUT_PORT_V2 === "true") {
     command = "wasm-pack test --chrome ./ractor --features output-port-v2";
   } else {
     command = "wasm-pack test --chrome ./ractor";
