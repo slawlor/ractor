@@ -228,3 +228,102 @@ async fn test_multi_generic_serializable_generation() {
         panic!("Deserialized message to incorrect type");
     }
 }
+
+#[ractor::concurrency::test]
+async fn test_named_fields_serializable_generation() {
+    #[derive(RactorClusterMessage, Debug)]
+    enum NamedMessage {
+        Info {
+            data: Vec<u8>,
+            count: u32,
+        },
+        #[rpc]
+        Query {
+            key: String,
+            reply: RpcReplyPort<Vec<u8>>,
+        },
+    }
+
+    assert!(NamedMessage::serializable());
+
+    // Test Info cast variant round-trip
+    let serialized = NamedMessage::Info {
+        data: vec![1, 2, 3],
+        count: 42,
+    }
+    .serialize();
+    assert!(matches!(serialized, Ok(SerializedMessage::Cast { .. })));
+    if let Ok(NamedMessage::Info { data, count }) = NamedMessage::deserialize(serialized.unwrap()) {
+        assert_eq!(data, vec![1u8, 2, 3]);
+        assert_eq!(count, 42);
+    } else {
+        panic!("Deserialized message to incorrect type");
+    }
+
+    // Test Query RPC variant round-trip
+    let (tx, _rx) = ractor::concurrency::oneshot::<Vec<u8>>();
+    let serialized = NamedMessage::Query {
+        key: "test".to_string(),
+        reply: tx.into(),
+    }
+    .serialize();
+    assert!(matches!(serialized, Ok(SerializedMessage::Call { .. })));
+    if let Ok(NamedMessage::Query { key, reply: _ }) =
+        NamedMessage::deserialize(serialized.unwrap())
+    {
+        assert_eq!(key, "test");
+    } else {
+        panic!("Deserialized message to incorrect type");
+    }
+}
+
+#[ractor::concurrency::test]
+async fn test_rpc_port_not_last() {
+    #[derive(RactorClusterMessage, Debug)]
+    enum PortFirstMessage {
+        #[rpc]
+        Ask(RpcReplyPort<String>, Vec<u8>),
+    }
+
+    assert!(PortFirstMessage::serializable());
+
+    let (tx, _rx) = ractor::concurrency::oneshot::<String>();
+    let serialized = PortFirstMessage::Ask(tx.into(), vec![10, 20]).serialize();
+    assert!(matches!(serialized, Ok(SerializedMessage::Call { .. })));
+    if let Ok(PortFirstMessage::Ask(_port, data)) =
+        PortFirstMessage::deserialize(serialized.unwrap())
+    {
+        assert_eq!(data, vec![10u8, 20]);
+    } else {
+        panic!("Deserialized message to incorrect type");
+    }
+}
+
+#[ractor::concurrency::test]
+async fn test_named_fields_port_not_last() {
+    #[derive(RactorClusterMessage, Debug)]
+    enum NamedPortFirst {
+        #[rpc]
+        Request {
+            reply: RpcReplyPort<u64>,
+            payload: String,
+        },
+    }
+
+    assert!(NamedPortFirst::serializable());
+
+    let (tx, _rx) = ractor::concurrency::oneshot::<u64>();
+    let serialized = NamedPortFirst::Request {
+        reply: tx.into(),
+        payload: "hello".to_string(),
+    }
+    .serialize();
+    assert!(matches!(serialized, Ok(SerializedMessage::Call { .. })));
+    if let Ok(NamedPortFirst::Request { reply: _, payload }) =
+        NamedPortFirst::deserialize(serialized.unwrap())
+    {
+        assert_eq!(payload, "hello");
+    } else {
+        panic!("Deserialized message to incorrect type");
+    }
+}
