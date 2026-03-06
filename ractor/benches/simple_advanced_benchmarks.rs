@@ -17,7 +17,11 @@ use ractor::{Actor, ActorProcessingErr, ActorRef};
 
 /// Small messages (1-32 bytes) - where SBO would theoretically help
 fn small_message_workload(c: &mut Criterion) {
-    const NUM_MSGS: u64 = 10000;
+    let num_msgs: u64 = if std::env::var("CI").is_ok() {
+        100
+    } else {
+        10_000
+    };
 
     // 8-byte message
     #[derive(Clone)]
@@ -26,7 +30,9 @@ fn small_message_workload(c: &mut Criterion) {
     #[cfg(feature = "cluster")]
     impl ractor::Message for Msg8B {}
 
-    struct Actor8B;
+    struct Actor8B {
+        target: u64,
+    }
 
     #[cfg_attr(feature = "async-trait", ractor::async_trait)]
     impl Actor for Actor8B {
@@ -49,7 +55,7 @@ fn small_message_workload(c: &mut Criterion) {
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             *state += 1;
-            if *state >= NUM_MSGS {
+            if *state >= self.target {
                 myself.stop(None);
             }
             Ok(())
@@ -63,7 +69,9 @@ fn small_message_workload(c: &mut Criterion) {
     #[cfg(feature = "cluster")]
     impl ractor::Message for Msg16B {}
 
-    struct Actor16B;
+    struct Actor16B {
+        target: u64,
+    }
 
     #[cfg_attr(feature = "async-trait", ractor::async_trait)]
     impl Actor for Actor16B {
@@ -86,7 +94,7 @@ fn small_message_workload(c: &mut Criterion) {
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             *state += 1;
-            if *state >= NUM_MSGS {
+            if *state >= self.target {
                 myself.stop(None);
             }
             Ok(())
@@ -100,7 +108,9 @@ fn small_message_workload(c: &mut Criterion) {
     #[cfg(feature = "cluster")]
     impl ractor::Message for Msg32B {}
 
-    struct Actor32B;
+    struct Actor32B {
+        target: u64,
+    }
 
     #[cfg_attr(feature = "async-trait", ractor::async_trait)]
     impl Actor for Actor32B {
@@ -123,7 +133,7 @@ fn small_message_workload(c: &mut Criterion) {
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             *state += 1;
-            if *state >= NUM_MSGS {
+            if *state >= self.target {
                 myself.stop(None);
             }
             Ok(())
@@ -134,7 +144,7 @@ fn small_message_workload(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
 
     let mut group = c.benchmark_group("small_messages");
-    group.throughput(Throughput::Elements(NUM_MSGS));
+    group.throughput(Throughput::Elements(num_msgs));
 
     group.bench_function("8_byte_messages", |b| {
         b.iter_batched(
@@ -142,7 +152,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        Actor::spawn(None, Actor8B, ())
+                        Actor::spawn(None, Actor8B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -150,7 +160,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        Actor::spawn(None, Actor8B, ())
+                        Actor::spawn(None, Actor8B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -160,7 +170,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg8B(i));
                         }
                         let _ = handle.await;
@@ -169,7 +179,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg8B(i));
                         }
                         let _ = handle.await;
@@ -186,7 +196,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        Actor::spawn(None, Actor16B, ())
+                        Actor::spawn(None, Actor16B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -194,7 +204,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        Actor::spawn(None, Actor16B, ())
+                        Actor::spawn(None, Actor16B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -204,7 +214,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg16B(i, i + 1));
                         }
                         let _ = handle.await;
@@ -213,7 +223,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg16B(i, i + 1));
                         }
                         let _ = handle.await;
@@ -230,7 +240,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        Actor::spawn(None, Actor32B, ())
+                        Actor::spawn(None, Actor32B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -238,7 +248,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        Actor::spawn(None, Actor32B, ())
+                        Actor::spawn(None, Actor32B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -248,7 +258,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg32B(i, i + 1, i + 2, i + 3));
                         }
                         let _ = handle.await;
@@ -257,7 +267,7 @@ fn small_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg32B(i, i + 1, i + 2, i + 3));
                         }
                         let _ = handle.await;
@@ -273,7 +283,11 @@ fn small_message_workload(c: &mut Criterion) {
 
 /// Large messages (64-1024 bytes) - where heap allocation is expected
 fn large_message_workload(c: &mut Criterion) {
-    const NUM_MSGS: u64 = 10000;
+    let num_msgs: u64 = if std::env::var("CI").is_ok() {
+        100
+    } else {
+        1_000
+    };
 
     // 64-byte message
     #[derive(Clone)]
@@ -282,7 +296,9 @@ fn large_message_workload(c: &mut Criterion) {
     #[cfg(feature = "cluster")]
     impl ractor::Message for Msg64B {}
 
-    struct Actor64B;
+    struct Actor64B {
+        target: u64,
+    }
 
     #[cfg_attr(feature = "async-trait", ractor::async_trait)]
     impl Actor for Actor64B {
@@ -305,7 +321,7 @@ fn large_message_workload(c: &mut Criterion) {
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             *state += 1;
-            if *state >= NUM_MSGS {
+            if *state >= self.target {
                 myself.stop(None);
             }
             Ok(())
@@ -319,7 +335,9 @@ fn large_message_workload(c: &mut Criterion) {
     #[cfg(feature = "cluster")]
     impl ractor::Message for Msg256B {}
 
-    struct Actor256B;
+    struct Actor256B {
+        target: u64,
+    }
 
     #[cfg_attr(feature = "async-trait", ractor::async_trait)]
     impl Actor for Actor256B {
@@ -342,7 +360,7 @@ fn large_message_workload(c: &mut Criterion) {
             state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
             *state += 1;
-            if *state >= NUM_MSGS {
+            if *state >= self.target {
                 myself.stop(None);
             }
             Ok(())
@@ -353,7 +371,7 @@ fn large_message_workload(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
 
     let mut group = c.benchmark_group("large_messages");
-    group.throughput(Throughput::Elements(NUM_MSGS));
+    group.throughput(Throughput::Elements(num_msgs));
 
     group.bench_function("64_byte_messages", |b| {
         b.iter_batched(
@@ -361,7 +379,7 @@ fn large_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        Actor::spawn(None, Actor64B, ())
+                        Actor::spawn(None, Actor64B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -369,7 +387,7 @@ fn large_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        Actor::spawn(None, Actor64B, ())
+                        Actor::spawn(None, Actor64B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -379,7 +397,7 @@ fn large_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg64B([i; 8]));
                         }
                         let _ = handle.await;
@@ -388,7 +406,7 @@ fn large_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg64B([i; 8]));
                         }
                         let _ = handle.await;
@@ -405,7 +423,7 @@ fn large_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        Actor::spawn(None, Actor256B, ())
+                        Actor::spawn(None, Actor256B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -413,7 +431,7 @@ fn large_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        Actor::spawn(None, Actor256B, ())
+                        Actor::spawn(None, Actor256B { target: num_msgs }, ())
                             .await
                             .expect("Failed to spawn actor")
                     })
@@ -423,7 +441,7 @@ fn large_message_workload(c: &mut Criterion) {
                 #[cfg(not(feature = "async-std"))]
                 {
                     runtime.block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg256B([i; 32]));
                         }
                         let _ = handle.await;
@@ -432,7 +450,7 @@ fn large_message_workload(c: &mut Criterion) {
                 #[cfg(feature = "async-std")]
                 {
                     async_std::task::block_on(async {
-                        for i in 0..NUM_MSGS {
+                        for i in 0..num_msgs {
                             let _ = actor_ref.cast(Msg256B([i; 32]));
                         }
                         let _ = handle.await;
@@ -483,7 +501,12 @@ fn spawn_throughput(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("spawn_throughput");
 
-    for count in [10, 100, 1000] {
+    let counts = if std::env::var("CI").is_ok() {
+        vec![10, 100]
+    } else {
+        vec![10, 100, 1000]
+    };
+    for count in counts {
         group.throughput(Throughput::Elements(count));
         group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
             b.iter_batched(

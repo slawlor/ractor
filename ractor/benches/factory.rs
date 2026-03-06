@@ -147,7 +147,11 @@ async fn spawn_factory(
 // ============ Benchmark ============
 
 fn factory_queuer_dispatch(c: &mut Criterion) {
-    const NUM_MESSAGES: u64 = 10_000;
+    let num_messages = if std::env::var("CI").is_ok() {
+        500
+    } else {
+        10_000
+    };
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -155,9 +159,14 @@ fn factory_queuer_dispatch(c: &mut Criterion) {
         .unwrap();
 
     let mut group = c.benchmark_group("factory_queuer_dispatch");
-    group.throughput(Throughput::Elements(NUM_MESSAGES));
+    group.throughput(Throughput::Elements(num_messages));
 
-    for num_workers in [100, 1_000] {
+    let worker_counts = if std::env::var("CI").is_ok() {
+        vec![10, 100]
+    } else {
+        vec![100, 1_000]
+    };
+    for num_workers in worker_counts {
         // Spawn the factory ONCE for this pool size — outside the
         // measurement loop so worker creation cost is excluded.
         let (factory, _factory_handle, counter) =
@@ -166,7 +175,7 @@ fn factory_queuer_dispatch(c: &mut Criterion) {
         // Warm up: send one batch through so every worker has started
         // its processing loop and the runtime's thread pool is hot.
         runtime.block_on(async {
-            for id in 0..NUM_MESSAGES {
+            for id in 0..num_messages {
                 factory
                     .cast(FactoryMessage::Dispatch(Job {
                         key: BenchKey { id },
@@ -176,7 +185,7 @@ fn factory_queuer_dispatch(c: &mut Criterion) {
                     }))
                     .expect("Failed to dispatch job");
             }
-            while counter.load(Ordering::Relaxed) < NUM_MESSAGES {
+            while counter.load(Ordering::Relaxed) < num_messages {
                 tokio::task::yield_now().await;
             }
         });
@@ -189,9 +198,9 @@ fn factory_queuer_dispatch(c: &mut Criterion) {
                     runtime.block_on(async {
                         // Reset counter for this iteration
                         let base = counter.load(Ordering::Relaxed);
-                        let target = base + NUM_MESSAGES;
+                        let target = base + num_messages;
 
-                        for id in 0..NUM_MESSAGES {
+                        for id in 0..num_messages {
                             factory
                                 .cast(FactoryMessage::Dispatch(Job {
                                     key: BenchKey { id },

@@ -24,13 +24,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run benchmarks on main
-        run: cargo bench -p ractor -- --save-baseline main
+        run: CI=1 cargo bench -p ractor
+        env:
+          CI: 1
 
       - name: Install critcmp
         run: cargo install critcmp --locked
 
       - name: Export main baseline
-        run: critcmp --export main > main.json
+        run: critcmp --export new > main.json
 
       - name: Upload main baseline
         uses: actions/upload-artifact@v4
@@ -60,7 +62,9 @@ jobs:
           name: bench-baseline-main
 
       - name: Run benchmarks on PR branch
-        run: cargo bench -p ractor -- --save-baseline pr
+        run: CI=1 cargo bench -p ractor
+        env:
+          CI: 1
 
       - name: Install critcmp
         run: cargo install critcmp --locked
@@ -68,7 +72,7 @@ jobs:
       - name: Compare benchmarks
         id: compare
         run: |
-          RESULT=$(critcmp main.json pr)
+          RESULT=$(critcmp main.json new)
           echo "$RESULT"
           {
             echo "result<<EOF"
