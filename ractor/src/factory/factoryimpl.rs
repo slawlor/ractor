@@ -389,6 +389,9 @@ where
             if let Some(existing_worker) = self.pool.get_mut(&wid) {
                 // mark the worker as healthy again
                 existing_worker.set_draining(false);
+                if existing_worker.is_available() {
+                    self.router.on_worker_availability_change(wid, true);
+                }
             } else {
                 // worker doesn't exist, add it
                 let (handler, custom_start) = self.worker_builder.build(wid);
@@ -416,6 +419,7 @@ where
                         self.stats.clone(),
                     ),
                 );
+                self.router.on_worker_availability_change(wid, true);
             }
         }
         Ok(())
@@ -433,6 +437,7 @@ where
                     } else {
                         // drained, stop and drop
                         tracing::trace!("Stopping worker {wid}");
+                        self.router.on_worker_availability_change(wid, false);
                         mut_worker.actor.stop(None);
                         existing_worker.remove();
                     }
@@ -576,6 +581,9 @@ where
             }
         } else if !is_worker_draining {
             self.try_route_next_active_job(who)?;
+            if matches!(self.pool.get(&who), Some(w) if w.is_available()) {
+                self.router.on_worker_availability_change(who, true);
+            }
         }
         Ok(())
     }
@@ -807,7 +815,7 @@ where
         FactoryArguments {
             mut worker_builder,
             num_initial_workers,
-            router,
+            mut router,
             queue,
             discard_handler,
             discard_settings,
@@ -849,6 +857,7 @@ where
                     stats.clone(),
                 ),
             );
+            router.on_worker_availability_change(wid, true);
         }
 
         // Startup worker pinging
@@ -960,6 +969,9 @@ where
                 };
                 if let Some(wid) = wid {
                     state.try_route_next_active_job(wid)?;
+                    if matches!(state.pool.get(&wid), Some(w) if w.is_available()) {
+                        state.router.on_worker_availability_change(wid, true);
+                    }
                 }
             }
             SupervisionEvent::ActorFailed(who, reason) => {
@@ -989,6 +1001,9 @@ where
                 };
                 if let Some(wid) = wid {
                     state.try_route_next_active_job(wid)?;
+                    if matches!(state.pool.get(&wid), Some(w) if w.is_available()) {
+                        state.router.on_worker_availability_change(wid, true);
+                    }
                 }
             }
             _ => {}

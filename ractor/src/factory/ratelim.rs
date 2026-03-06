@@ -87,6 +87,10 @@ where
     fn is_factory_queueing(&self) -> bool {
         self.router.is_factory_queueing()
     }
+
+    fn on_worker_availability_change(&mut self, wid: WorkerId, available: bool) {
+        self.router.on_worker_availability_change(wid, available);
+    }
 }
 
 /// A basic leaky-bucket rate limiter. This is a synchronous implementation
