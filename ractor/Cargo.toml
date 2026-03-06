@@ -111,3 +111,8 @@ required-features = []
 name = "simple_advanced_benchmarks"
 harness = false
 required-features = []
+
+[[bench]]
+name = "factory"
+harness = false
+required-features = []
