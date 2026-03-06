@@ -815,7 +815,7 @@ where
                     should_exit,
                     exit_reason,
                     was_killed,
-                } = Self::process_message(&myself, state, handler, &mut ports)
+                } = Box::pin(Self::process_message(&myself, state, handler, &mut ports))
                     .await
                     .map_err(ActorErr::Failed)?;
                 // processing loop exit
