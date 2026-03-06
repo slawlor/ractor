@@ -1,6 +1,6 @@
 [package]
 name = "ractor"
-version = "0.15.10"
+version = "0.15.11"
 authors = ["Sean Lawlor", "Evan Au", "Dillon George"]
 description = "A actor framework for Rust"
 documentation = "https://docs.rs/ractor"
@@ -109,5 +109,10 @@ required-features = []
 
 [[bench]]
 name = "simple_advanced_benchmarks"
+harness = false
+required-features = []
+
+[[bench]]
+name = "factory"
 harness = false
 required-features = []

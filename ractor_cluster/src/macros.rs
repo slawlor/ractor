@@ -31,8 +31,6 @@ macro_rules! derive_serialization_for_prost_type {
 mod test {
     use ractor::BytesConvertable;
 
-    use crate::derive_serialization_for_prost_type;
-
     #[test]
     fn test_protobuf_message_serialization() {
         derive_serialization_for_prost_type! {crate::protocol::NetworkMessage}

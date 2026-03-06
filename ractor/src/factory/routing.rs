@@ -6,6 +6,7 @@
 //! Routing protocols for Factories
 
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::marker::PhantomData;
 
 use crate::factory::worker::WorkerProperties;
@@ -101,6 +102,15 @@ where
     /// Returns a flag indicating if the factory does discard/overload management ([true])
     /// or if is handled by the workers worker(s) ([false])
     fn is_factory_queueing(&self) -> bool;
+
+    /// Notification that a worker's availability has changed.
+    ///
+    /// Called by the factory when a worker transitions between available and busy states.
+    /// Routers can use this to maintain an index of available workers for O(1) dispatch.
+    ///
+    /// * `wid` - The worker id whose availability changed
+    /// * `available` - `true` if the worker is now available, `false` if now busy
+    fn on_worker_availability_change(&mut self, _wid: WorkerId, _available: bool) {}
 }
 
 // ============================ Macros ======================= //
@@ -175,8 +185,36 @@ where
 }
 
 // ============================ Queuer routing ======================= //
-impl_routing_mode! {QueuerRouting, "Factory will dispatch job to first available worker.
-Factory will maintain shared internal queue of messages"}
+/// Factory will dispatch job to first available worker.
+/// Factory will maintain shared internal queue of messages
+#[derive(Debug)]
+pub struct QueuerRouting<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    _key: PhantomData<fn() -> TKey>,
+    _msg: PhantomData<fn() -> TMsg>,
+    /// FIFO deque of workers believed to be available
+    available_workers: VecDeque<WorkerId>,
+    /// Indexed by WorkerId — true if the worker is already in `available_workers`
+    worker_in_queue: Vec<bool>,
+}
+
+impl<TKey, TMsg> Default for QueuerRouting<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    fn default() -> Self {
+        Self {
+            _key: PhantomData,
+            _msg: PhantomData,
+            available_workers: VecDeque::new(),
+            worker_in_queue: Vec::new(),
+        }
+    }
+}
 
 impl<TKey, TMsg> Router<TKey, TMsg> for QueuerRouting<TKey, TMsg>
 where
@@ -213,24 +251,77 @@ where
                 return worker_hint;
             }
         }
-        worker_pool
-            .iter()
-            .find(|(_, worker)| worker.is_available())
-            .map(|(wid, _)| *wid)
+        // Pop from the available-workers deque, skipping stale entries
+        while let Some(wid) = self.available_workers.pop_front() {
+            if wid < self.worker_in_queue.len() {
+                self.worker_in_queue[wid] = false;
+            }
+            if let Some(worker) = worker_pool.get(&wid) {
+                if worker.is_available() {
+                    return Some(wid);
+                }
+            }
+            // Worker removed from pool or no longer available — skip
+        }
+        None
     }
 
     fn is_factory_queueing(&self) -> bool {
         true
     }
+
+    fn on_worker_availability_change(&mut self, wid: WorkerId, available: bool) {
+        // Grow the tracking vec if needed
+        if wid >= self.worker_in_queue.len() {
+            self.worker_in_queue.resize(wid + 1, false);
+        }
+        if available {
+            if !self.worker_in_queue[wid] {
+                self.worker_in_queue[wid] = true;
+                self.available_workers.push_back(wid);
+            }
+        } else {
+            // Mark not-in-queue; lazy removal from deque
+            self.worker_in_queue[wid] = false;
+        }
+    }
 }
 
 // ============================ Sticky Queuer routing ======================= //
-impl_routing_mode! {StickyQueuerRouting, "Factory will dispatch jobs to a worker that is processing the same key (if any).
-Factory will maintain shared internal queue of messages.
+/// Factory will dispatch jobs to a worker that is processing the same key (if any).
+/// Factory will maintain shared internal queue of messages.
+///
+/// Note: This is helpful for sharded db access style scenarios. If a worker is
+/// currently doing something on a given row id for example, we want subsequent updates
+/// to land on the same worker so it can serialize updates to the same row consistently.
+#[derive(Debug)]
+pub struct StickyQueuerRouting<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    _key: PhantomData<fn() -> TKey>,
+    _msg: PhantomData<fn() -> TMsg>,
+    /// FIFO deque of workers believed to be available
+    available_workers: VecDeque<WorkerId>,
+    /// Indexed by WorkerId — true if the worker is already in `available_workers`
+    worker_in_queue: Vec<bool>,
+}
 
-Note: This is helpful for sharded db access style scenarios. If a worker is
-currently doing something on a given row id for example, we want subsequent updates
-to land on the same worker so it can serialize updates to the same row consistently."}
+impl<TKey, TMsg> Default for StickyQueuerRouting<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    fn default() -> Self {
+        Self {
+            _key: PhantomData,
+            _msg: PhantomData,
+            available_workers: VecDeque::new(),
+            worker_in_queue: Vec::new(),
+        }
+    }
+}
 
 impl<TKey, TMsg> Router<TKey, TMsg> for StickyQueuerRouting<TKey, TMsg>
 where
@@ -277,22 +368,46 @@ where
             return maybe_worker;
         }
 
-        // now take first available, based on hint then brute-search
+        // now take first available, based on hint then deque
         if let Some(worker) = worker_hint.and_then(|worker| worker_pool.get(&worker)) {
             if worker.is_available() {
                 return worker_hint;
             }
         }
 
-        // fallback to first free worker as there's no sticky worker
-        worker_pool
-            .iter()
-            .find(|(_, worker)| worker.is_available())
-            .map(|(wid, _)| *wid)
+        // fallback to first free worker via the available-workers deque
+        while let Some(wid) = self.available_workers.pop_front() {
+            if wid < self.worker_in_queue.len() {
+                self.worker_in_queue[wid] = false;
+            }
+            if let Some(worker) = worker_pool.get(&wid) {
+                if worker.is_available() {
+                    return Some(wid);
+                }
+            }
+            // Worker removed from pool or no longer available — skip
+        }
+        None
     }
 
     fn is_factory_queueing(&self) -> bool {
         true
+    }
+
+    fn on_worker_availability_change(&mut self, wid: WorkerId, available: bool) {
+        // Grow the tracking vec if needed
+        if wid >= self.worker_in_queue.len() {
+            self.worker_in_queue.resize(wid + 1, false);
+        }
+        if available {
+            if !self.worker_in_queue[wid] {
+                self.worker_in_queue[wid] = true;
+                self.available_workers.push_back(wid);
+            }
+        } else {
+            // Mark not-in-queue; lazy removal from deque
+            self.worker_in_queue[wid] = false;
+        }
     }
 }
 
