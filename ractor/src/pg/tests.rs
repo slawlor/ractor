@@ -919,3 +919,204 @@ async fn local_vs_remote_pg_members_in_named_scopes() {
         handle.await.expect("Actor cleanup failed");
     }
 }
+
+#[named]
+#[serial]
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+async fn test_monitor_scope_no_duplicate_notifications() {
+    let scope = function_name!().to_string();
+    let group = function_name!().to_string();
+
+    let counter = Arc::new(AtomicU8::new(0u8));
+
+    struct NotificationCounter {
+        scope: ScopeName,
+        counter: Arc<AtomicU8>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for NotificationCounter {
+        type Msg = ();
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle_supervisor_evt(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            message: SupervisionEvent,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            if let SupervisionEvent::ProcessGroupChanged(change) = message {
+                if let pg::GroupChangeMessage::Join(scope_name, _, _) = change {
+                    if scope_name == self.scope {
+                        self.counter.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let (monitor_actor, monitor_handle) = Actor::spawn(
+        None,
+        NotificationCounter {
+            scope: scope.clone(),
+            counter: counter.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Failed to start monitor actor");
+
+    // First actor joins the group BEFORE scope monitoring is set up
+    let (actor1, handle1) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to spawn test actor");
+    pg::join_scoped(scope.clone(), group.clone(), vec![actor1.clone().into()]);
+
+    // Now set up scope monitoring (after group already has members)
+    pg::monitor_scope(scope.clone(), monitor_actor.clone().into());
+
+    // Second actor joins - should produce exactly 1 notification, not 2
+    let (actor2, handle2) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to spawn test actor");
+    pg::join_scoped(scope.clone(), group.clone(), vec![actor2.clone().into()]);
+
+    periodic_check(
+        || counter.load(Ordering::Relaxed) == 1,
+        Duration::from_secs(5),
+    )
+    .await;
+
+    // Wait briefly and verify no duplicate notification arrived
+    crate::concurrency::sleep(Duration::from_millis(200)).await;
+    assert_eq!(1, counter.load(Ordering::Relaxed));
+
+    // Cleanup
+    actor1.stop(None);
+    handle1.await.expect("Actor cleanup failed");
+    actor2.stop(None);
+    handle2.await.expect("Actor cleanup failed");
+    monitor_actor.stop(None);
+    monitor_handle.await.expect("Actor cleanup failed");
+}
+
+#[named]
+#[serial]
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+async fn test_demonitor_scope_fully_unsubscribes() {
+    let scope = function_name!().to_string();
+    let group = function_name!().to_string();
+
+    let counter = Arc::new(AtomicU8::new(0u8));
+
+    struct NotificationCounter {
+        scope: ScopeName,
+        counter: Arc<AtomicU8>,
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for NotificationCounter {
+        type Msg = ();
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle_supervisor_evt(
+            &self,
+            _myself: crate::ActorRef<Self::Msg>,
+            message: SupervisionEvent,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            if let SupervisionEvent::ProcessGroupChanged(change) = message {
+                match change {
+                    pg::GroupChangeMessage::Join(scope_name, _, _) if scope_name == self.scope => {
+                        self.counter.fetch_add(1, Ordering::Relaxed);
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let (monitor_actor, monitor_handle) = Actor::spawn(
+        None,
+        NotificationCounter {
+            scope: scope.clone(),
+            counter: counter.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Failed to start monitor actor");
+
+    // Monitor the scope, then immediately demonitor
+    pg::monitor_scope(scope.clone(), monitor_actor.clone().into());
+    pg::demonitor_scope(scope.clone(), monitor_actor.get_id());
+
+    // Join a group in the scope - should NOT produce any notification
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to spawn test actor");
+    pg::join_scoped(scope.clone(), group.clone(), vec![actor.clone().into()]);
+
+    // Wait and verify no notification was received
+    crate::concurrency::sleep(Duration::from_millis(200)).await;
+    assert_eq!(0, counter.load(Ordering::Relaxed));
+
+    // Cleanup
+    actor.stop(None);
+    handle.await.expect("Actor cleanup failed");
+    monitor_actor.stop(None);
+    monitor_handle.await.expect("Actor cleanup failed");
+}
+
+#[named]
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+async fn test_stopped_actor_not_inserted() {
+    let group = function_name!().to_string();
+
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to spawn test actor");
+    let cell = actor.clone().get_cell();
+
+    // Stop the actor first
+    actor.stop(None);
+    handle.await.expect("Actor cleanup failed");
+
+    // Try to join after stop - should NOT be inserted
+    pg::join(group.clone(), vec![cell]);
+
+    let members = pg::get_members(&group);
+    assert_eq!(0, members.len());
+}
