@@ -329,8 +329,12 @@ impl ActorCell {
     ///
     /// * `status` - The [ActorStatus] to set
     pub(crate) fn set_status(&self, status: ActorStatus) {
-        // The actor is shut down
-        if status == ActorStatus::Stopped || status == ActorStatus::Stopping {
+        // The actor is shut down — only run cleanup once, on the first transition
+        // to Stopping. This avoids redundant full-DashMap iterations on the
+        // Stopping → Stopped transition.
+        if (status == ActorStatus::Stopped || status == ActorStatus::Stopping)
+            && self.get_status() < ActorStatus::Stopping
+        {
             #[cfg(feature = "cluster")]
             {
                 // stop monitoring for updates
