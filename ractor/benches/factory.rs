@@ -147,7 +147,7 @@ async fn spawn_factory(
 // ============ Benchmark ============
 
 fn factory_queuer_dispatch(c: &mut Criterion) {
-    const NUM_MESSAGES: u64 = 50_000;
+    const NUM_MESSAGES: u64 = 10_000;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -157,7 +157,7 @@ fn factory_queuer_dispatch(c: &mut Criterion) {
     let mut group = c.benchmark_group("factory_queuer_dispatch");
     group.throughput(Throughput::Elements(NUM_MESSAGES));
 
-    for num_workers in [100, 1_000, 5_000, 10_000] {
+    for num_workers in [100, 1_000] {
         // Spawn the factory ONCE for this pool size — outside the
         // measurement loop so worker creation cost is excluded.
         let (factory, _factory_handle, counter) =
