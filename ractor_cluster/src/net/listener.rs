@@ -106,6 +106,7 @@ impl Actor for Listener {
         if let Some(listener) = &mut state.listener {
             match listener.accept().await {
                 Ok((stream, addr)) => {
+                    stream.set_nodelay(true)?;
                     let local = stream.local_addr()?;
 
                     let session = match &self.encryption {

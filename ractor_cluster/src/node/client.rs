@@ -70,6 +70,7 @@ where
 {
     // connect to the socket
     let stream = TcpStream::connect(address).await?;
+    stream.set_nodelay(true)?;
 
     // Notify the NodeServer that a new connection is opened
     let addr = stream.peer_addr()?;
@@ -108,6 +109,7 @@ where
 {
     // connect to the socket
     let stream = TcpStream::connect(address).await?;
+    stream.set_nodelay(true)?;
 
     let addr = stream.peer_addr()?;
     let local = stream.local_addr()?;
