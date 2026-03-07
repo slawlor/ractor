@@ -5,6 +5,8 @@
 
 //! TCP Server to accept incoming sessions
 
+use std::net::IpAddr;
+
 use ractor::cast;
 use ractor::Actor;
 use ractor::ActorProcessingErr;
@@ -23,6 +25,7 @@ pub(crate) struct Listener {
     port: super::NetworkPort,
     session_manager: ActorRef<crate::node::NodeServerMessage>,
     encryption: IncomingEncryptionMode,
+    listen_addr: Option<IpAddr>,
 }
 
 impl Listener {
@@ -31,11 +34,13 @@ impl Listener {
         port: super::NetworkPort,
         session_manager: ActorRef<crate::node::NodeServerMessage>,
         encryption: IncomingEncryptionMode,
+        listen_addr: Option<IpAddr>,
     ) -> Self {
         Self {
             port,
             session_manager,
             encryption,
+            listen_addr,
         }
     }
 }
@@ -59,23 +64,34 @@ impl Actor for Listener {
         myself: ActorRef<Self::Msg>,
         node_server: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let addr = format!("[::]:{}", self.port);
-        let listener = match TcpListener::bind(&addr).await {
-            Ok(l) => {
-                // If the used port differs from the user-specified port, inform the node server.
-                let local_addr = l.local_addr()?;
-                if local_addr.port() != self.port {
-                    node_server.send_message(NodeServerMessage::PortChanged {
-                        port: local_addr.port(),
-                    })?;
-                }
+        let listener = if let Some(addr) = self.listen_addr {
+            // User-specified bind address — bind directly
+            let addr = std::net::SocketAddr::new(addr, self.port);
+            TcpListener::bind(addr).await?
+        } else {
+            // Default: create a dual-stack IPv6 socket so that both IPv4 and IPv6
+            // connections are accepted. On Linux IPV6_V6ONLY defaults to false, but
+            // on Windows it defaults to true, so we must set it explicitly.
+            use socket2::{Domain, Protocol, Socket, Type};
 
-                l
-            }
-            Err(err) => {
-                return Err(From::from(err));
-            }
+            let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
+            socket.set_only_v6(false)?;
+            socket.set_reuse_address(true)?;
+            socket.set_nonblocking(true)?;
+            let addr =
+                std::net::SocketAddrV6::new(std::net::Ipv6Addr::UNSPECIFIED, self.port, 0, 0);
+            socket.bind(&addr.into())?;
+            socket.listen(128)?;
+            TcpListener::from_std(std::net::TcpListener::from(socket))?
         };
+
+        // If the used port differs from the user-specified port, inform the node server.
+        let local_addr = listener.local_addr()?;
+        if local_addr.port() != self.port {
+            node_server.send_message(NodeServerMessage::PortChanged {
+                port: local_addr.port(),
+            })?;
+        }
 
         // startup the event processing loop by sending an initial msg
         let _ = myself.cast(ListenerMessage);
@@ -106,6 +122,7 @@ impl Actor for Listener {
         if let Some(listener) = &mut state.listener {
             match listener.accept().await {
                 Ok((stream, addr)) => {
+                    stream.set_nodelay(true)?;
                     let local = stream.local_addr()?;
 
                     let session = match &self.encryption {
