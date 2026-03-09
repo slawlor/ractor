@@ -290,6 +290,11 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
 
         actor_ref.set_status(ActorStatus::Starting);
 
+        // setup supervision synchronously
+        if let Some(sup) = &supervisor {
+            actor_ref.link(sup.clone());
+        }
+
         // Generate the ActorRef which will be returned
         let spawn_name = name.clone();
         let myself_ret = actor_ref.clone();
@@ -299,14 +304,24 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
             let handler = TActor::default();
             async move {
                 // Perform the pre-start routine, crashing immediately if we fail to start
-                let mut state = Self::do_pre_start(actor_ref.clone(), &handler, startup_args)
-                    .await?
-                    .map_err(SpawnErr::StartupFailed)?;
-
-                // setup supervision
-                if let Some(sup) = &supervisor {
-                    actor_ref.link(sup.clone());
-                }
+                let result = Self::do_pre_start(actor_ref.clone(), &handler, startup_args).await;
+                let mut state = match result {
+                    Ok(Ok(state)) => state,
+                    Ok(Err(e)) => {
+                        // cleanup supervision on pre_start failure
+                        if let Some(sup) = &supervisor {
+                            actor_ref.unlink(sup.clone());
+                        }
+                        return Err(SpawnErr::StartupFailed(e));
+                    }
+                    Err(e) => {
+                        // cleanup supervision on panic
+                        if let Some(sup) = &supervisor {
+                            actor_ref.unlink(sup.clone());
+                        }
+                        return Err(e);
+                    }
+                };
 
                 // run the processing loop, backgrounding the work
                 let handle = crate::concurrency::spawn_local(async move {

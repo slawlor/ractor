@@ -70,6 +70,7 @@ where
 {
     // connect to the socket
     let stream = TcpStream::connect(address).await?;
+    stream.set_nodelay(true)?;
 
     // Notify the NodeServer that a new connection is opened
     let addr = stream.peer_addr()?;
@@ -108,6 +109,7 @@ where
 {
     // connect to the socket
     let stream = TcpStream::connect(address).await?;
+    stream.set_nodelay(true)?;
 
     let addr = stream.peer_addr()?;
     let local = stream.local_addr()?;
@@ -146,4 +148,50 @@ pub async fn connect_external(
     })?;
     tracing::info!("External session opened (client)");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_client_connect_err_from_tokio_io_error() {
+        // Test that tokio::io::Error converts to ClientConnectErr::Socket
+        let io_err = tokio::io::Error::new(
+            tokio::io::ErrorKind::ConnectionRefused,
+            "Connection refused",
+        );
+        let client_err: ClientConnectErr = io_err.into();
+
+        match client_err {
+            ClientConnectErr::Socket(_) => {
+                // Expected
+            }
+            _ => {
+                panic!("Expected ClientConnectErr::Socket");
+            }
+        }
+    }
+
+    #[test]
+    fn test_client_connect_err_display() {
+        // Test that ClientConnectErr can be displayed
+        let io_err = tokio::io::Error::new(tokio::io::ErrorKind::Other, "Connection error");
+        let client_err: ClientConnectErr = io_err.into();
+
+        let _display_str = format!("{}", client_err);
+        // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_client_connect_err_is_error() {
+        // Test that ClientConnectErr implements Error trait
+        use std::error::Error;
+
+        let io_err = tokio::io::Error::new(tokio::io::ErrorKind::Other, "Some error");
+        let client_err: ClientConnectErr = io_err.into();
+
+        let _err: &dyn Error = &client_err;
+        // Just verify it implements the Error trait
+    }
 }

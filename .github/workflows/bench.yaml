@@ -72,11 +72,20 @@ jobs:
       - name: Compare benchmarks
         id: compare
         run: |
+          # run the comparison twice: default multi-column output and a flattened
+          # list view for easier per-benchmark deltas
           RESULT=$(critcmp main.json new)
+          LIST=$(critcmp main.json new --list)
           echo "$RESULT"
+          echo
+          echo "Flat results (see per-benchmark deltas):"
+          echo "$LIST"
           {
             echo "result<<EOF"
             echo "$RESULT"
+            echo "EOF"
+            echo "list<<EOF"
+            echo "$LIST"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -98,12 +107,25 @@ jobs:
             ## Benchmark Comparison (PR vs `main`)
 
             <details>
-            <summary>Results</summary>
+            <summary>Results (collapse to hide)</summary>
 
             ```
             ${{ steps.compare.outputs.result }}
             ```
 
+            _Note: a **negative** delta indicates the PR is faster (an
+            improvement); a **positive** delta means the PR is slower (a
+            regression). Benchmarks are grouped (e.g., `small_messages`,
+            `spawn_throughput`); the flattened list below shows every
+            individual comparison for clearer deltas._
+
+            === per-benchmark breakdown ===
+
+            ```
+            ${{ steps.compare.outputs.list }}
+            ```
+
             </details>
 
-            _Benchmarks run on shared CI hardware (`ubuntu-latest`). Differences under ~5% may be noise._
+            _Benchmarks run on shared CI hardware (`ubuntu-latest`).
+            Differences under ~5% may be noise._
