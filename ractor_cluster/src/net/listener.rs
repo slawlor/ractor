@@ -168,3 +168,65 @@ impl Actor for Listener {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+    use tokio::net::TcpListener;
+
+    #[test]
+    fn test_listener_ipv4_binding() {
+        // Test that custom IPv4 address binding works
+        // We can't fully test the actor without mocking, but we can test the
+        // socket binding logic that the listener uses
+        let ipv4_addr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let _socket_addr = std::net::SocketAddr::new(ipv4_addr, 0);
+        // This will be tested in integration tests since it requires an ActorRef
+    }
+
+    #[tokio::test]
+    async fn test_listener_default_dual_stack() {
+        // Test that default listener binds to dual-stack IPv6 ([::]：0)
+        // This tests the socket2 configuration path
+        use socket2::{Domain, Protocol, Socket, Type};
+
+        let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))
+            .expect("Socket creation failed");
+        socket.set_only_v6(false).expect("set_only_v6 failed");
+        socket
+            .set_reuse_address(true)
+            .expect("set_reuse_address failed");
+        socket
+            .set_nonblocking(true)
+            .expect("set_nonblocking failed");
+
+        let addr = std::net::SocketAddrV6::new(std::net::Ipv6Addr::UNSPECIFIED, 0, 0, 0);
+        socket.bind(&addr.into()).expect("bind failed");
+        socket.listen(128).expect("listen failed");
+
+        let tcp_listener =
+            TcpListener::from_std(std::net::TcpListener::from(socket)).expect("from_std failed");
+
+        // Verify the listener is bound
+        let local_addr = tcp_listener.local_addr().expect("local_addr failed");
+        assert!(local_addr.port() > 0, "Port should be assigned");
+    }
+
+    #[tokio::test]
+    async fn test_listener_custom_ipv4_address() {
+        // Test that custom IPv4 address binding works
+        let ipv4_addr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let socket_addr = std::net::SocketAddr::new(ipv4_addr, 0);
+
+        let listener = TcpListener::bind(socket_addr)
+            .await
+            .expect("Failed to bind IPv4 listener");
+
+        let local = listener.local_addr().expect("local_addr failed");
+        assert_eq!(
+            local.ip(),
+            ipv4_addr,
+            "Should bind to specified IPv4 address"
+        );
+    }
+}

@@ -630,3 +630,126 @@ impl Actor for NodeServer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn test_node_server_creation() {
+        let node = NodeServer::new(
+            9090,
+            "test_cookie".to_string(),
+            "test_node".to_string(),
+            "localhost".to_string(),
+            None,
+            None,
+        );
+
+        assert_eq!(node.port, 9090);
+        assert_eq!(node.cookie, "test_cookie");
+        assert_eq!(node.node_name, "test_node");
+        assert_eq!(node.hostname, "localhost");
+        // listen_addr should default to None
+        assert!(node.listen_addr.is_none());
+    }
+
+    #[test]
+    fn test_node_server_with_listen_addr_ipv4() {
+        let ipv4_addr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+
+        let node = NodeServer::new(
+            9090,
+            "test_cookie".to_string(),
+            "test_node".to_string(),
+            "localhost".to_string(),
+            None,
+            None,
+        )
+        .with_listen_addr(ipv4_addr);
+
+        assert_eq!(node.listen_addr, Some(ipv4_addr));
+        assert_eq!(node.port, 9090); // port should remain unchanged
+    }
+
+    #[test]
+    fn test_node_server_with_listen_addr_ipv6() {
+        let ipv6_addr = IpAddr::V6(Ipv6Addr::LOCALHOST);
+
+        let node = NodeServer::new(
+            9090,
+            "test_cookie".to_string(),
+            "test_node".to_string(),
+            "localhost".to_string(),
+            None,
+            None,
+        )
+        .with_listen_addr(ipv6_addr);
+
+        assert_eq!(node.listen_addr, Some(ipv6_addr));
+    }
+
+    #[test]
+    fn test_node_server_default_encryption_raw() {
+        let node = NodeServer::new(
+            9090,
+            "test_cookie".to_string(),
+            "test_node".to_string(),
+            "localhost".to_string(),
+            None,
+            None,
+        );
+
+        // Should default to Raw encryption mode
+        match node.encryption_mode {
+            IncomingEncryptionMode::Raw => {
+                // Expected
+            }
+            _ => {
+                panic!("Expected IncomingEncryptionMode::Raw");
+            }
+        }
+    }
+
+    #[test]
+    fn test_node_server_default_connection_mode() {
+        let node = NodeServer::new(
+            9090,
+            "test_cookie".to_string(),
+            "test_node".to_string(),
+            "localhost".to_string(),
+            None,
+            None,
+        );
+
+        // Should default to Isolated connection mode
+        match node.connection_mode {
+            NodeConnectionMode::Isolated => {
+                // Expected
+            }
+            _ => {
+                panic!("Expected NodeConnectionMode::Isolated");
+            }
+        }
+    }
+
+    #[test]
+    fn test_node_server_builder_chaining() {
+        let ipv4_addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+
+        let node = NodeServer::new(
+            9090,
+            "test_cookie".to_string(),
+            "test_node".to_string(),
+            "localhost".to_string(),
+            None,
+            None,
+        )
+        .with_listen_addr(ipv4_addr);
+
+        assert_eq!(node.listen_addr, Some(ipv4_addr));
+        assert_eq!(node.port, 9090);
+        assert_eq!(node.node_name, "test_node");
+    }
+}
