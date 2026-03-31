@@ -103,8 +103,9 @@ where
     ///
     /// Returns [Ok(())] on successful message send, [Err(MessagingErr)] otherwise
     pub fn send_message(&self, message: TMessage) -> Result<(), MessagingErr<TMessage>> {
-        // Use unchecked version - ActorRef<TMessage> provides compile-time type safety
-        self.inner.inner.send_message_unchecked::<TMessage>(message)
+        // ActorRef<TMessage> provides compile-time type safety, so we can call
+        // the safe method directly on ActorProperties.
+        self.inner.inner.send_message::<TMessage>(message)
     }
 
     // ========================== General Actor Operation Aliases ========================== //

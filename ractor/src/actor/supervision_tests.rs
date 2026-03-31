@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::concurrency::Duration;
-use crate::message::BoxedDowncastErr;
+use crate::message::DowncastErr;
 use crate::periodic_check;
 use crate::Actor;
 use crate::ActorCell;
@@ -1119,10 +1119,10 @@ async fn test_supervisor_captures_dead_childs_state() {
     }
 
     let mut temp_state = super::messages::BoxedState::new(123u64);
-    assert_eq!(Err(BoxedDowncastErr), temp_state.take::<u32>());
+    assert_eq!(Err(DowncastErr), temp_state.take::<u32>());
     let mut temp_state = super::messages::BoxedState::new(123u64);
     assert_eq!(Ok(123u64), temp_state.take::<u64>());
-    assert_eq!(Err(BoxedDowncastErr), temp_state.take::<u64>());
+    assert_eq!(Err(DowncastErr), temp_state.take::<u64>());
 
     let flag = Arc::new(AtomicU64::new(0));
 
