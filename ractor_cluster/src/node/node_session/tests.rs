@@ -874,6 +874,81 @@ async fn node_session_handle_control() {
 }
 
 #[ractor::concurrency::test]
+async fn actor_failed_does_not_respawn_remote_actor() {
+    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
+        .await
+        .expect("Failed to start dummy node server");
+    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession, ())
+        .await
+        .expect("Failed to start dummy node session");
+
+    let server_ref: ActorRef<super::NodeServerMessage> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<NodeSessionMessage> = dummy_session.get_cell().into();
+
+    let session = NodeSession {
+        cookie: "cookie".to_string(),
+        is_server: true,
+        node_id: 1,
+        this_node_name: auth_protocol::NameMessage {
+            name: "myself".to_string(),
+            flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
+        },
+        node_server: server_ref.clone(),
+        connection_mode: NodeConnectionMode::Isolated,
+    };
+
+    let mut state = NodeSessionState {
+        auth: AuthenticationState::AsClient(auth::ClientAuthenticationProcess::Ok),
+        ready: ReadyState::Open,
+        local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        name: None,
+        remote_actors: HashMap::new(),
+        tcp: None,
+        epoch: Instant::now(),
+    };
+
+    let remote_name = "node_session_actor_failed_remote_actor".to_string();
+
+    let (remote_actor, remote_handle) = ractor::ActorRuntime::spawn_linked_remote(
+        Some(remote_name.clone()),
+        crate::remote_actor::RemoteActor,
+        ractor::ActorId::Remote {
+            node_id: 1,
+            pid: 43,
+        },
+        session_ref.clone(),
+        dummy_session.get_cell(),
+    )
+    .await
+    .expect("Failed to start remote actor");
+
+    state.remote_actors.insert(43, remote_actor.clone());
+
+    assert!(ractor::registry::where_is(remote_name.clone()).is_some());
+
+    session
+        .handle_supervisor_evt(
+            session_ref.clone(),
+            SupervisionEvent::ActorFailed(remote_actor.get_cell(), "boom".to_string().into()),
+            &mut state,
+        )
+        .await
+        .expect("Failed to process supervisor event");
+
+    remote_handle.await.expect("Failed to stop remote actor");
+
+    assert!(state.remote_actors.is_empty());
+    assert!(ractor::registry::where_is(remote_name).is_none());
+
+    dummy_server.stop(None);
+    dummy_session.stop(None);
+    dummy_shandle.await.unwrap();
+    dummy_chandle.await.unwrap();
+}
+
+#[ractor::concurrency::test]
 async fn pg_leave_after_terminate_does_not_respawn_remote_actor() {
     let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
         .await
