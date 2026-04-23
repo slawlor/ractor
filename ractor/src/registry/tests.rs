@@ -245,7 +245,7 @@ mod pid_registry_tests {
         }
 
         let remote_pid = ActorId::Remote { node_id: 1, pid: 2 };
-        let remote_name = "remote_actor_with_name".to_string();
+        let remote_name = "pid_registry_remote_actor_with_name".to_string();
 
         let (actor, handle) = Actor::spawn(None, EmptyActor, ())
             .await

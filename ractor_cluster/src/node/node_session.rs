@@ -584,12 +584,20 @@ impl NodeSession {
                 }
                 control_protocol::control_message::Msg::PgLeave(leave) => {
                     let mut cells = vec![];
-                    for control_protocol::Actor { pid, .. } in leave.actors {
+                    for control_protocol::Actor { pid, name } in leave.actors {
                         if let Some(actor) = state.remote_actors.get(&pid) {
                             cells.push(actor.get_cell());
+                        } else {
+                            tracing::debug!(
+                                "Ignoring PG leave for unknown remote actor {:?} on node {}",
+                                name,
+                                self.node_id
+                            );
                         }
                     }
-                    // join the remote actors to the local PG group
+                    // Remove the remote actors from the local PG group if we still have a live shim.
+                    // If the actor already terminated locally, there is no shim left to update and
+                    // the group membership will already have been cleaned up by the actor shutdown path.
                     if !cells.is_empty() {
                         tracing::debug!(
                             "PG Leave scope '{}' and group '{}' for {} remote actors",

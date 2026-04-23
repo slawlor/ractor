@@ -872,3 +872,107 @@ async fn node_session_handle_control() {
     dummy_shandle.await.unwrap();
     dummy_chandle.await.unwrap();
 }
+
+#[ractor::concurrency::test]
+async fn pg_leave_after_terminate_does_not_respawn_remote_actor() {
+    let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
+        .await
+        .expect("Failed to start dummy node server");
+    let (dummy_session, dummy_chandle) = Actor::spawn(None, DummyNodeSession, ())
+        .await
+        .expect("Failed to start dummy node session");
+
+    let server_ref: ActorRef<super::NodeServerMessage> = dummy_server.get_cell().into();
+    let session_ref: ActorRef<NodeSessionMessage> = dummy_session.get_cell().into();
+
+    let session = NodeSession {
+        cookie: "cookie".to_string(),
+        is_server: true,
+        node_id: 1,
+        this_node_name: auth_protocol::NameMessage {
+            name: "myself".to_string(),
+            flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
+        },
+        node_server: server_ref.clone(),
+        connection_mode: NodeConnectionMode::Isolated,
+    };
+
+    let mut state = NodeSessionState {
+        auth: AuthenticationState::AsClient(auth::ClientAuthenticationProcess::Ok),
+        ready: ReadyState::Open,
+        local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        name: None,
+        remote_actors: HashMap::new(),
+        tcp: None,
+        epoch: Instant::now(),
+    };
+
+    let remote_name = "node_session_pg_leave_remote_actor".to_string();
+
+    session
+        .handle_control(
+            &mut state,
+            control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::Spawn(
+                    control_protocol::Spawn {
+                        actors: vec![control_protocol::Actor {
+                            name: Some(remote_name.clone()),
+                            pid: 43,
+                        }],
+                    },
+                )),
+            },
+            session_ref.clone(),
+        )
+        .await
+        .expect("Failed to process control message");
+
+    assert_eq!(1, state.remote_actors.len());
+    assert!(ractor::registry::where_is(remote_name.clone()).is_some());
+
+    session
+        .handle_control(
+            &mut state,
+            control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::Terminate(
+                    control_protocol::Terminate { ids: vec![43] },
+                )),
+            },
+            session_ref.clone(),
+        )
+        .await
+        .expect("Failed to process control message");
+
+    assert!(state.remote_actors.is_empty());
+    assert!(ractor::registry::where_is(remote_name.clone()).is_none());
+
+    session
+        .handle_control(
+            &mut state,
+            control_protocol::ControlMessage {
+                msg: Some(control_protocol::control_message::Msg::PgLeave(
+                    control_protocol::PgLeave {
+                        scope: "node_session_test_scope".to_string(),
+                        group: "node_session_handle_control".to_string(),
+                        actors: vec![control_protocol::Actor {
+                            name: Some(remote_name.clone()),
+                            pid: 43,
+                        }],
+                    },
+                )),
+            },
+            session_ref,
+        )
+        .await
+        .expect("Failed to process control message");
+
+    assert!(state.remote_actors.is_empty());
+    assert!(ractor::registry::where_is(remote_name).is_none());
+
+    dummy_server.stop(None);
+    dummy_session.stop(None);
+    dummy_shandle.await.unwrap();
+    dummy_chandle.await.unwrap();
+}
