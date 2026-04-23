@@ -285,7 +285,19 @@ impl ActorCell {
         };
 
         if let Some(r_name) = registered_name {
-            crate::registry::register(r_name, cell.clone())?;
+            if let Err(crate::registry::ActorRegistryErr::AlreadyRegistered(_)) =
+                crate::registry::register(r_name.clone(), cell.clone())
+            {
+                // A local actor (or a previous remote shim) already holds this name.
+                // Skip registration and log — do not fail the spawn. The actor is still
+                // reachable by pid; callers must use `registry::where_is` rather than
+                // `ActorRef::where_is` to avoid message-type mismatches anyway.
+                tracing::warn!(
+                    "Remote actor name '{}' is already taken in the local registry; \
+                     spawning shim without registering the name",
+                    r_name
+                );
+            }
         }
 
         Ok((
