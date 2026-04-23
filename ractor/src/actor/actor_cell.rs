@@ -278,14 +278,16 @@ impl ActorCell {
             return Err(SpawnErr::StartupFailed(From::from("Cannot create a new remote actor handler without the actor id being marked as a remote actor!")));
         }
 
+        let registered_name = name.clone();
         let (props, rx1, rx2, rx3, rx4) = ActorProperties::new_remote::<TActor>(name, id);
         let cell = Self {
             inner: Arc::new(props),
         };
-        // NOTE: remote actors don't appear in the name registry
-        // if let Some(r_name) = name {
-        //     crate::registry::register(r_name, cell.clone())?;
-        // }
+
+        if let Some(r_name) = registered_name {
+            crate::registry::register(r_name, cell.clone())?;
+        }
+
         Ok((
             cell,
             ActorPortSet {

@@ -228,6 +228,55 @@ mod pid_registry_tests {
         not(all(target_arch = "wasm32", target_os = "unknown")),
         tracing_test::traced_test
     )]
+    async fn remote_actor_with_name_is_registered() {
+        struct EmptyActor;
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
+        impl Actor for EmptyActor {
+            type Msg = ();
+            type State = ();
+            type Arguments = ();
+            async fn pre_start(
+                &self,
+                _this_actor: crate::ActorRef<Self::Msg>,
+                _: (),
+            ) -> Result<Self::State, ActorProcessingErr> {
+                Ok(())
+            }
+        }
+
+        let remote_pid = ActorId::Remote { node_id: 1, pid: 2 };
+        let remote_name = "remote_actor_with_name".to_string();
+
+        let (actor, handle) = Actor::spawn(None, EmptyActor, ())
+            .await
+            .expect("Actor failed to start");
+
+        let (remote_actor, remote_handle) = crate::ActorRuntime::spawn_linked_remote(
+            Some(remote_name.clone()),
+            RemoteActor,
+            remote_pid,
+            (),
+            actor.get_cell(),
+        )
+        .await
+        .expect("Failed to start remote actor");
+
+        assert!(crate::registry::where_is(remote_name.clone()).is_some());
+        assert!(crate::registry::where_is_pid(remote_actor.get_id()).is_none());
+
+        remote_actor.stop(None);
+        remote_handle.await.expect("Failed to stop remote actor");
+        actor.stop(None);
+        handle.await.expect("Failed to clean stop the actor");
+
+        assert!(crate::registry::where_is(remote_name).is_none());
+    }
+
+    #[crate::concurrency::test]
+    #[cfg_attr(
+        not(all(target_arch = "wasm32", target_os = "unknown")),
+        tracing_test::traced_test
+    )]
     async fn test_basic_registation() {
         struct EmptyActor;
 
