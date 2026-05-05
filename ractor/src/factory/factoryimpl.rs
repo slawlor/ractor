@@ -314,6 +314,7 @@ where
                 )? {
                     RouteResult::Handled => {
                         // routed a job, we're done trying to route the next active job.
+                        self.processing_messages += 1;
                         return Ok(());
                     }
                     RouteResult::RateLimited(mut job) => {

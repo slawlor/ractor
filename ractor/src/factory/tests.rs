@@ -12,6 +12,7 @@ mod dynamic_pool;
 mod dynamic_settings;
 mod lifecycle;
 mod priority_queueing;
+mod processing_messages_accounting;
 mod ratelim;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// these tests use panic and are not supported on wasm because wasm is panic=abort
