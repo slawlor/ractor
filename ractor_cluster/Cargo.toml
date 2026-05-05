@@ -23,13 +23,13 @@ default = []
 
 [build-dependencies]
 protoc-bin-vendored = "3"
-prost-build = { version = "0.13" }
+prost-build = { version = "0.14" }
 
 [dependencies]
 ## Required dependencies
 bytes = { version = "1" }
-prost = { version = "0.13" }
-prost-types = { version = "0.13" }
+prost = { version = "0.14" }
+prost-types = { version = "0.14" }
 ractor = { version = "0.15.0", default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster"], path = "../ractor" }
 ractor_cluster_derive = { version = "0.15.0", path = "../ractor_cluster_derive" }
 rand = "0.8"
