@@ -33,7 +33,7 @@ default = ["tokio_runtime", "message_span_propogation"]
 
 [dependencies]
 ## Required dependencies
-bon = "2.2"
+bon = "3.9"
 dashmap = "6"
 futures = "0.3"
 once_cell = "1"
