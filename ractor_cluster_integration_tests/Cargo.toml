@@ -23,7 +23,7 @@ async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
 ractor = { default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster"], path = "../ractor" }
 ractor_cluster = { path = "../ractor_cluster" }
-rand = "0.8"
+rand = "0.10"
 tokio-rustls = { version = "0.26" }
 rustls-pemfile = "2.1"
 rustyrepl = { version = "0.2", features = ["async"] }
