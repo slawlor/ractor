@@ -32,7 +32,7 @@ prost = { version = "0.14" }
 prost-types = { version = "0.14" }
 ractor = { version = "0.15.0", default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster"], path = "../ractor" }
 ractor_cluster_derive = { version = "0.15.0", path = "../ractor_cluster_derive" }
-rand = "0.8"
+rand = "0.10"
 socket2 = { version = "0.6", features = ["all"] }
 sha2 = "0.11"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "io-util", "tracing"]}
