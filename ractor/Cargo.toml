@@ -94,7 +94,7 @@ wasm-bindgen-test = "0.3.50"
 # 'getrandom' isn't used directly, but it's used by a dependency, and, for WASM, we need to enable the feature 'js'.
 #   https://docs.rs/getrandom/latest/getrandom/#webassembly-support
 #
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.4", features = ["js"] }
 criterion = { version = "0.8", default-features = false }
 
 [[bench]]
