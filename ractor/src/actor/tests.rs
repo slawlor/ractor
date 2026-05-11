@@ -212,6 +212,9 @@ async fn test_kill_terminates_work() {
     crate::concurrency::sleep(Duration::from_millis(10)).await;
 
     assert_eq!(ActorStatus::Stopped, actor.get_status());
+
+    assert!(actor.send_message(EmptyMessage).is_err());
+
     assert!(handle.is_finished());
 }
 
@@ -431,7 +434,7 @@ async fn test_sending_message_to_dead_actor() {
     tracing_test::traced_test
 )]
 async fn test_serialized_cast() {
-    use crate::message::BoxedDowncastErr;
+    use crate::message::DowncastErr;
     use crate::message::SerializedMessage;
     use crate::Message;
 
@@ -446,10 +449,10 @@ async fn test_serialized_cast() {
         fn serializable() -> bool {
             true
         }
-        fn deserialize(_bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+        fn deserialize(_bytes: SerializedMessage) -> Result<Self, DowncastErr> {
             Ok(TestMessage)
         }
-        fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
+        fn serialize(self) -> Result<SerializedMessage, DowncastErr> {
             Ok(crate::message::SerializedMessage::Cast {
                 variant: "Cast".to_string(),
                 args: vec![],
@@ -508,6 +511,9 @@ async fn test_serialized_cast() {
     // cleanup
     actor.stop(None);
     handle.await.unwrap();
+
+    let serialized = (TestMessage).serialize().unwrap();
+    assert!(actor.send_serialized(serialized).is_err());
 }
 
 #[cfg(feature = "cluster")]
@@ -550,7 +556,7 @@ where
     tracing_test::traced_test
 )]
 async fn test_serialized_rpc() {
-    use crate::message::BoxedDowncastErr;
+    use crate::message::DowncastErr;
     use crate::message::SerializedMessage;
     use crate::Message;
     use crate::RpcReplyPort;
@@ -569,7 +575,7 @@ async fn test_serialized_rpc() {
         fn serializable() -> bool {
             true
         }
-        fn deserialize(bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+        fn deserialize(bytes: SerializedMessage) -> Result<Self, DowncastErr> {
             match bytes {
                 SerializedMessage::Call { reply, .. } => {
                     let tx = port_forward(reply, |data: String| data.into_bytes());
@@ -578,7 +584,7 @@ async fn test_serialized_rpc() {
                 _ => panic!("whoopsie"),
             }
         }
-        fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
+        fn serialize(self) -> Result<SerializedMessage, DowncastErr> {
             match self {
                 Self::Rpc(port) => {
                     let tx = port_forward(port, |data| String::from_utf8(data).unwrap());
@@ -665,7 +671,7 @@ async fn test_serialized_rpc() {
     tracing_test::traced_test
 )]
 async fn test_remote_actor() {
-    use crate::message::BoxedDowncastErr;
+    use crate::message::DowncastErr;
     use crate::message::SerializedMessage;
     use crate::ActorId;
     use crate::ActorRuntime;
@@ -697,10 +703,10 @@ async fn test_remote_actor() {
         fn serializable() -> bool {
             true
         }
-        fn deserialize(_bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+        fn deserialize(_bytes: SerializedMessage) -> Result<Self, DowncastErr> {
             Ok(TestRemoteMessage)
         }
-        fn serialize(self) -> Result<SerializedMessage, BoxedDowncastErr> {
+        fn serialize(self) -> Result<SerializedMessage, DowncastErr> {
             Ok(crate::message::SerializedMessage::Cast {
                 args: vec![],
                 variant: "Cast".to_string(),
