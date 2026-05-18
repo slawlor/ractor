@@ -278,14 +278,28 @@ impl ActorCell {
             return Err(SpawnErr::StartupFailed(From::from("Cannot create a new remote actor handler without the actor id being marked as a remote actor!")));
         }
 
+        let registered_name = name.clone();
         let (props, rx1, rx2, rx3, rx4) = ActorProperties::new_remote::<TActor>(name, id);
         let cell = Self {
             inner: Arc::new(props),
         };
-        // NOTE: remote actors don't appear in the name registry
-        // if let Some(r_name) = name {
-        //     crate::registry::register(r_name, cell.clone())?;
-        // }
+
+        if let Some(r_name) = registered_name {
+            if let Err(crate::registry::ActorRegistryErr::AlreadyRegistered(_)) =
+                crate::registry::register(r_name.clone(), cell.clone())
+            {
+                // A local actor (or a previous remote shim) already holds this name.
+                // Skip registration and log — do not fail the spawn. The actor is still
+                // reachable by pid; callers must use `registry::where_is` rather than
+                // `ActorRef::where_is` to avoid message-type mismatches anyway.
+                tracing::warn!(
+                    "Remote actor name '{}' is already taken in the local registry; \
+                     spawning shim without registering the name",
+                    r_name
+                );
+            }
+        }
+
         Ok((
             cell,
             ActorPortSet {

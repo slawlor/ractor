@@ -114,6 +114,13 @@ where
     /// Try and retrieve a strongly-typed actor from the registry.
     ///
     /// Alias of [crate::registry::where_is]
+    ///
+    /// **Note on remote actors:** when the `cluster` feature is enabled, named remote actors
+    /// are registered in the same global registry. However, remote actor shims are internally
+    /// typed as `RemoteActorMessage`, not the original actor's message type. This means calling
+    /// `ActorRef::<MyMsg>::where_is(name)` for a remote actor will return `None` even if the
+    /// name is registered. To look up a remote actor by name, use [`crate::registry::where_is`]
+    /// directly to obtain the untyped [`crate::ActorCell`].
     pub fn where_is(name: ActorName) -> Option<crate::actor::ActorRef<TMessage>> {
         if let Some(actor) = crate::registry::where_is(name) {
             // check the type id when pulling from the registry

@@ -228,6 +228,117 @@ mod pid_registry_tests {
         not(all(target_arch = "wasm32", target_os = "unknown")),
         tracing_test::traced_test
     )]
+    async fn remote_actor_with_name_is_registered() {
+        struct EmptyActor;
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
+        impl Actor for EmptyActor {
+            type Msg = ();
+            type State = ();
+            type Arguments = ();
+            async fn pre_start(
+                &self,
+                _this_actor: crate::ActorRef<Self::Msg>,
+                _: (),
+            ) -> Result<Self::State, ActorProcessingErr> {
+                Ok(())
+            }
+        }
+
+        let remote_pid = ActorId::Remote { node_id: 1, pid: 2 };
+        let remote_name = "pid_registry_remote_actor_with_name".to_string();
+
+        let (actor, handle) = Actor::spawn(None, EmptyActor, ())
+            .await
+            .expect("Actor failed to start");
+
+        let (remote_actor, remote_handle) = crate::ActorRuntime::spawn_linked_remote(
+            Some(remote_name.clone()),
+            RemoteActor,
+            remote_pid,
+            (),
+            actor.get_cell(),
+        )
+        .await
+        .expect("Failed to start remote actor");
+
+        assert!(crate::registry::where_is(remote_name.clone()).is_some());
+        assert!(crate::registry::where_is_pid(remote_actor.get_id()).is_none());
+
+        remote_actor.stop(None);
+        remote_handle.await.expect("Failed to stop remote actor");
+        actor.stop(None);
+        handle.await.expect("Failed to clean stop the actor");
+
+        assert!(crate::registry::where_is(remote_name).is_none());
+    }
+
+    #[crate::concurrency::test]
+    #[cfg_attr(
+        not(all(target_arch = "wasm32", target_os = "unknown")),
+        tracing_test::traced_test
+    )]
+    async fn remote_actor_name_collision_with_local_does_not_fail_spawn() {
+        struct LocalActor;
+        #[cfg_attr(feature = "async-trait", crate::async_trait)]
+        impl Actor for LocalActor {
+            type Msg = ();
+            type State = ();
+            type Arguments = ();
+            async fn pre_start(
+                &self,
+                _: crate::ActorRef<Self::Msg>,
+                _: (),
+            ) -> Result<Self::State, ActorProcessingErr> {
+                Ok(())
+            }
+        }
+
+        let shared_name = "collision_test_actor".to_string();
+        let remote_pid = ActorId::Remote {
+            node_id: 1,
+            pid: 99,
+        };
+
+        let (local_actor, local_handle) = Actor::spawn(Some(shared_name.clone()), LocalActor, ())
+            .await
+            .expect("Failed to start local actor");
+
+        assert!(crate::registry::where_is(shared_name.clone()).is_some());
+
+        let (supervisor, sup_handle) = Actor::spawn(None, LocalActor, ())
+            .await
+            .expect("Failed to start supervisor");
+
+        // Spawning a remote actor whose name is already taken must not fail.
+        let (remote_actor, remote_handle) = crate::ActorRuntime::spawn_linked_remote(
+            Some(shared_name.clone()),
+            RemoteActor,
+            remote_pid,
+            (),
+            supervisor.get_cell(),
+        )
+        .await
+        .expect("Remote spawn must succeed even when the name is already registered");
+
+        // The local actor still owns the name — the remote shim did not evict it.
+        let registered =
+            crate::registry::where_is(shared_name.clone()).expect("Name must still be registered");
+        assert_eq!(
+            registered.get_id(),
+            local_actor.get_id(),
+            "Local actor must still own the name after remote spawn collision"
+        );
+
+        // The remote shim itself is still alive and functional.
+        assert_eq!(remote_actor.get_id(), remote_pid);
+
+        remote_actor.stop(None);
+        remote_handle.await.expect("Failed to stop remote actor");
+        local_actor.stop(None);
+        local_handle.await.expect("Failed to stop local actor");
+        supervisor.stop(None);
+        sup_handle.await.expect("Failed to stop supervisor");
+    }
     async fn test_basic_registation() {
         struct EmptyActor;
 

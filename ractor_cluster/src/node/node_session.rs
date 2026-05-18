@@ -584,12 +584,20 @@ impl NodeSession {
                 }
                 control_protocol::control_message::Msg::PgLeave(leave) => {
                     let mut cells = vec![];
-                    for control_protocol::Actor { pid, .. } in leave.actors {
+                    for control_protocol::Actor { pid, name } in leave.actors {
                         if let Some(actor) = state.remote_actors.get(&pid) {
                             cells.push(actor.get_cell());
+                        } else {
+                            tracing::debug!(
+                                "Ignoring PG leave for unknown remote actor {:?} on node {}",
+                                name,
+                                self.node_id
+                            );
                         }
                     }
-                    // join the remote actors to the local PG group
+                    // Remove the remote actors from the local PG group if we still have a live shim.
+                    // If the actor already terminated locally, there is no shim left to update and
+                    // the group membership will already have been cleaned up by the actor shutdown path.
                     if !cells.is_empty() {
                         tracing::debug!(
                             "PG Leave scope '{}' and group '{}' for {} remote actors",
@@ -1039,15 +1047,9 @@ impl Actor for NodeSession {
                         actor.get_id(),
                     );
                     actor.kill();
-
-                    // NOTE: This is a legitimate panic of the `RemoteActor`, not the actor on the remote machine panicking (which
-                    // is handled by the remote actor's supervisor). Therefore we should re-spawn the actor, and if we can't we
-                    // should ourself die. Something is seriously wrong...
-                    let pid = actor.get_id().pid();
-                    let name = actor.get_name();
-                    let _ = self
-                        .get_or_spawn_remote_actor(&myself, name, pid, state)
-                        .await?;
+                    // Do not immediately respawn the remote shim here. The actor may still have
+                    // late lifecycle / process-group messages in flight, and respawning with the
+                    // same pid reintroduces stale-message races and registry collisions.
                 } else {
                     tracing::error!("NodeSesion {:?} received an unknown child panic superivision message from {} - '{msg}'",
                         state.name,
