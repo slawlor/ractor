@@ -82,6 +82,8 @@
 
 use std::sync::Arc;
 
+use dashmap::mapref::entry::Entry::Occupied;
+use dashmap::mapref::entry::Entry::Vacant;
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
@@ -118,13 +120,14 @@ fn get_actor_registry<'a>() -> &'a Arc<DashMap<ActorName, ActorCell>> {
 /// Put an actor into the registry
 pub(crate) fn register<K>(name: K, actor: ActorCell) -> Result<(), ActorRegistryErr>
 where
-    K: Into<String> + AsRef<str>,
+    K: Into<String>,
 {
-    if get_actor_registry().get(name.as_ref()).is_some() {
-        Err(ActorRegistryErr::AlreadyRegistered(name.into()))
-    } else {
-        get_actor_registry().insert(name.into(), actor);
-        Ok(())
+    match get_actor_registry().entry(name.into()) {
+        Occupied(occupied) => Err(ActorRegistryErr::AlreadyRegistered(occupied.key().clone())),
+        Vacant(vacancy) => {
+            vacancy.insert(actor);
+            Ok(())
+        }
     }
 }
 
