@@ -82,8 +82,6 @@
 
 use std::sync::Arc;
 
-use dashmap::mapref::entry::Entry::Occupied;
-use dashmap::mapref::entry::Entry::Vacant;
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
@@ -118,20 +116,25 @@ fn get_actor_registry<'a>() -> &'a Arc<DashMap<ActorName, ActorCell>> {
 }
 
 /// Put an actor into the registry
-pub(crate) fn register(name: ActorName, actor: ActorCell) -> Result<(), ActorRegistryErr> {
-    match get_actor_registry().entry(name.clone()) {
-        Occupied(_) => Err(ActorRegistryErr::AlreadyRegistered(name)),
-        Vacant(vacancy) => {
-            vacancy.insert(actor);
-            Ok(())
-        }
+pub(crate) fn register<K>(name: K, actor: ActorCell) -> Result<(), ActorRegistryErr>
+where
+    K: Into<String> + AsRef<str>,
+{
+    if get_actor_registry().get(name.as_ref()).is_some() {
+        Err(ActorRegistryErr::AlreadyRegistered(name.into()))
+    } else {
+        get_actor_registry().insert(name.into(), actor);
+        Ok(())
     }
 }
 
 /// Remove an actor from the registry given it's actor name
-pub(crate) fn unregister(name: ActorName) {
+pub(crate) fn unregister<K>(name: K)
+where
+    K: AsRef<str>,
+{
     if let Some(reg) = ACTOR_REGISTRY.get() {
-        let _ = reg.remove(&name);
+        let _ = reg.remove(name.as_ref());
     }
 }
 
@@ -141,9 +144,12 @@ pub(crate) fn unregister(name: ActorName) {
 ///
 /// Returns: Some(actor) on successful identification of an actor, None if
 /// actor not registered
-pub fn where_is(name: ActorName) -> Option<ActorCell> {
+pub fn where_is<K>(name: K) -> Option<ActorCell>
+where
+    K: AsRef<str>,
+{
     let reg = get_actor_registry();
-    reg.get(&name).map(|v| v.value().clone())
+    reg.get(name.as_ref()).map(|v| v.value().clone())
 }
 
 /// Returns a list of names that have been registered
