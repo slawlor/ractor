@@ -8,7 +8,6 @@
 use std::marker::PhantomData;
 
 use super::ActorCell;
-use crate::ActorName;
 use crate::Message;
 use crate::MessagingErr;
 use crate::SupervisionEvent;
@@ -114,7 +113,10 @@ where
     /// Try and retrieve a strongly-typed actor from the registry.
     ///
     /// Alias of [crate::registry::where_is]
-    pub fn where_is(name: ActorName) -> Option<crate::actor::ActorRef<TMessage>> {
+    pub fn where_is<K>(name: K) -> Option<crate::actor::ActorRef<TMessage>>
+    where
+        K: AsRef<str>,
+    {
         if let Some(actor) = crate::registry::where_is(name) {
             // check the type id when pulling from the registry
             let check = actor.is_message_type_of::<TMessage>();
