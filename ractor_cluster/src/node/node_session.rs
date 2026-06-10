@@ -26,7 +26,7 @@ use ractor::ActorProcessingErr;
 use ractor::ActorRef;
 use ractor::SpawnErr;
 use ractor::SupervisionEvent;
-use rand::Rng;
+use rand::RngExt;
 use tokio::time::Duration;
 
 use super::auth;
@@ -878,9 +878,7 @@ impl NodeSessionState {
     }
 
     fn get_send_delay() -> Duration {
-        Duration::from_millis(
-            rand::thread_rng().gen_range(MIN_PING_LATENCY_MS..MAX_PING_LATENCY_MS),
-        )
+        Duration::from_millis(rand::rng().random_range(MIN_PING_LATENCY_MS..MAX_PING_LATENCY_MS))
     }
 }
 

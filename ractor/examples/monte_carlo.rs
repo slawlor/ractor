@@ -24,8 +24,8 @@ use ractor::Actor;
 use ractor::ActorId;
 use ractor::ActorProcessingErr;
 use ractor::ActorRef;
-use rand::thread_rng;
-use rand::Rng;
+use rand::rng;
+use rand::RngExt;
 
 // ================== Player Actor ================== //
 
@@ -59,8 +59,8 @@ impl GameState {
     /// On average, the player will win their roll 49 out of 100 times, resulting in a house edge
     /// of 2%
     fn roll_dice() -> bool {
-        let mut rng = thread_rng();
-        matches!(rng.gen_range(0..101), x if x > 51)
+        let mut rng = rng();
+        matches!(rng.random_range(0..101), x if x > 51)
     }
 }
 

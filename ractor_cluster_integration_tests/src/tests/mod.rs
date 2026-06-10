@@ -6,9 +6,9 @@
 //! Different test scenarios are defined here
 
 use clap::Parser;
-use rand::distributions::Alphanumeric;
-use rand::thread_rng;
-use rand::Rng;
+use rand::distr::Alphanumeric;
+use rand::rng;
+use rand::RngExt;
 
 pub mod auth_handshake;
 pub mod dist_connect;
@@ -19,7 +19,7 @@ pub mod external_unix;
 pub mod pg_groups;
 
 fn random_name() -> String {
-    thread_rng()
+    rng()
         .sample_iter(&Alphanumeric)
         .take(30)
         .map(char::from)
