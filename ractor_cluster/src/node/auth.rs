@@ -6,7 +6,7 @@
 //! Define's a node's authentication process between peers. Definition
 //! can be found in [Erlang's handshake](https://www.erlang.org/doc/apps/erts/erl_dist_protocol.html)
 
-use rand::RngCore;
+use rand::Rng;
 
 use crate::hash::Digest;
 use crate::protocol::auth as proto;
@@ -50,7 +50,7 @@ impl ServerAuthenticationProcess {
 
     pub(crate) fn start_challenge(&self, cookie: &'_ str) -> Self {
         if matches!(self, Self::WaitingOnClientStatus | Self::HavePeerName(_)) {
-            let challenge = rand::thread_rng().next_u32();
+            let challenge = rand::rng().next_u32();
             let digest = crate::hash::challenge_digest(cookie, challenge);
             Self::WaitingOnClientChallengeReply(challenge, digest)
         } else {
@@ -142,7 +142,7 @@ impl ClientAuthenticationProcess {
                     if let Self::WaitingForServerChallenge(_) = &self {
                         let server_digest =
                             crate::hash::challenge_digest(cookie, challenge_msg.challenge);
-                        let challenge = rand::thread_rng().next_u32();
+                        let challenge = rand::rng().next_u32();
                         let expected_digest = crate::hash::challenge_digest(cookie, challenge);
                         return Self::WaitingForServerChallengeAck(
                             challenge_msg,

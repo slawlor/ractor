@@ -203,16 +203,16 @@ mod impls {
 
 #[cfg(test)]
 mod tests {
-    use rand::distributions::Alphanumeric;
-    use rand::thread_rng;
-    use rand::Rng;
+    use rand::distr::Alphanumeric;
+    use rand::rng;
+    use rand::RngExt;
 
     use super::BytesConvertable;
     use crate::message::BoxedDowncastErr;
     use crate::Message;
 
     fn random_string() -> String {
-        thread_rng()
+        rng()
             .sample_iter(&Alphanumeric)
             .take(30)
             .map(char::from)
@@ -224,7 +224,7 @@ mod tests {
             paste::item! {
                 #[test]
                 fn [< test_bytes_conversion_ $ty >] () {
-                    let test_data: $ty = rand::thread_rng().gen();
+                    let test_data: $ty = rand::rng().random();
                     let bytes = test_data.clone().into_bytes();
                     let back = <$ty as BytesConvertable>::from_bytes(bytes);
                     assert_eq!(test_data, back);
@@ -242,9 +242,9 @@ mod tests {
             paste::item! {
                 #[test]
                 fn [< test_bytes_conversion_vec_ $ty >] () {
-                    let mut rng = rand::thread_rng();
-                    let num_pts: usize = rng.gen_range(10..50);
-                    let test_data = (0..num_pts).into_iter().map(|_| rng.gen()).collect::<Vec<$ty>>();
+                    let mut rng = rand::rng();
+                    let num_pts: usize = rng.random_range(10..50);
+                    let test_data = (0..num_pts).into_iter().map(|_| rng.random()).collect::<Vec<$ty>>();
 
                     let bytes = test_data.clone().into_bytes();
                     let back = <Vec<$ty> as BytesConvertable>::from_bytes(bytes);
