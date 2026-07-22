@@ -30,7 +30,11 @@ impl crate::Message for TestMessage {}
 
 struct TestWorker {
     counters: [Arc<AtomicU16>; 5],
-    signal: Arc<Notify>,
+    // Bidirectional signalling with a *single* `Notify` is racy: a `notify_one`
+    // stores a permit when there's no waiter, and can be self-consumed by the
+    // same side's next `notified().await`. Keep the two directions separate.
+    batch_done: Arc<Notify>,
+    resume: Arc<Notify>,
 }
 
 struct TestPriorityManager;
@@ -86,9 +90,9 @@ impl Actor for TestWorker {
 
                 state.1 += 1;
                 if state.1 == 5 {
-                    self.signal.notify_one();
+                    self.batch_done.notify_one();
                     // wait to be notified back
-                    self.signal.notified().await;
+                    self.resume.notified().await;
                     // reset the counter
                     state.1 = 0;
                 }
@@ -100,7 +104,8 @@ impl Actor for TestWorker {
 
 struct TestWorkerBuilder {
     counters: [Arc<AtomicU16>; 5],
-    signal: Arc<Notify>,
+    batch_done: Arc<Notify>,
+    resume: Arc<Notify>,
 }
 
 impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
@@ -108,7 +113,8 @@ impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
         (
             TestWorker {
                 counters: self.counters.clone(),
-                signal: self.signal.clone(),
+                batch_done: self.batch_done.clone(),
+                resume: self.resume.clone(),
             },
             (),
         )
@@ -130,7 +136,8 @@ async fn test_basic_priority_queueing() {
         Arc::new(AtomicU16::new(0)),
         Arc::new(AtomicU16::new(0)),
     ];
-    let signal = Arc::new(Notify::new());
+    let batch_done = Arc::new(Notify::new());
+    let resume = Arc::new(Notify::new());
 
     let factory_definition = Factory::<
         TestKey,
@@ -151,7 +158,8 @@ async fn test_basic_priority_queueing() {
         .router(Default::default())
         .worker_builder(Box::new(TestWorkerBuilder {
             counters: counters.clone(),
-            signal: signal.clone(),
+            batch_done: batch_done.clone(),
+            resume: resume.clone(),
         }))
         .build();
     let (factory, factory_handle) = Actor::spawn(None, factory_definition, args)
@@ -185,7 +193,7 @@ async fn test_basic_priority_queueing() {
     }
 
     // wait for the factory to signal
-    signal.notified().await;
+    batch_done.notified().await;
 
     // check the counters
     let hpc = counters[0].load(Ordering::Relaxed);
@@ -194,11 +202,11 @@ async fn test_basic_priority_queueing() {
     assert_eq!(lpc, 0);
 
     // tell the factory to continue
-    signal.notify_one();
+    resume.notify_one();
 
     // wait for the next batch to complete
-    signal.notified().await;
-    signal.notify_one();
+    batch_done.notified().await;
+    resume.notify_one();
 
     let hpc = counters[0].load(Ordering::Relaxed);
     let lpc = counters[4].load(Ordering::Relaxed);
