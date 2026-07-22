@@ -116,3 +116,9 @@ required-features = []
 name = "factory"
 harness = false
 required-features = []
+
+## Enable only for specific usage, very heavy in CI
+# [[bench]]
+# name = "output_ports"
+# harness = false
+# required-features = []

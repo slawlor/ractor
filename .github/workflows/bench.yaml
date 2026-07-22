@@ -24,7 +24,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run benchmarks on main
-        run: CI=1 cargo bench -p ractor
+        run: cargo bench -p ractor
         env:
           CI: 1
 
@@ -32,7 +32,7 @@ jobs:
         run: cargo install critcmp --locked
 
       - name: Export main baseline
-        run: critcmp --export new > main.json
+        run: critcmp --export new | jq '.name = "main" | .benchmarks[].baseline = "main" | .benchmarks[].fullname |= sub("^new/"; "main/")' > main.json
 
       - name: Upload main baseline
         uses: actions/upload-artifact@v7

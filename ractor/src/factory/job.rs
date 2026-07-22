@@ -17,7 +17,7 @@ use super::FactoryMessage;
 use crate::concurrency::Duration;
 use crate::concurrency::SystemTime;
 #[cfg(feature = "cluster")]
-use crate::message::BoxedDowncastErr;
+use crate::message::DowncastErr;
 use crate::ActorRef;
 #[cfg(feature = "cluster")]
 use crate::BytesConvertable;
@@ -244,9 +244,7 @@ where
         (meta, self.msg)
     }
 
-    fn deserialize_meta(
-        maybe_bytes: Option<Vec<u8>>,
-    ) -> Result<(TKey, JobOptions), BoxedDowncastErr> {
+    fn deserialize_meta(maybe_bytes: Option<Vec<u8>>) -> Result<(TKey, JobOptions), DowncastErr> {
         if let Some(mut meta_bytes) = maybe_bytes {
             let key_bytes = meta_bytes.split_off(16);
             Ok((
@@ -254,7 +252,7 @@ where
                 JobOptions::from_bytes(meta_bytes),
             ))
         } else {
-            Err(BoxedDowncastErr)
+            Err(DowncastErr)
         }
     }
 }
@@ -271,13 +269,13 @@ where
         TMsg::serializable()
     }
 
-    fn serialize(self) -> Result<crate::message::SerializedMessage, BoxedDowncastErr> {
+    fn serialize(self) -> Result<crate::message::SerializedMessage, DowncastErr> {
         let (meta_bytes, msg) = self.serialize_meta();
         // A serialized message so as-expected
         let inner_message = msg.serialize()?;
 
         match inner_message {
-            crate::message::SerializedMessage::CallReply(_, _) => Err(BoxedDowncastErr),
+            crate::message::SerializedMessage::CallReply(_, _) => Err(DowncastErr),
             crate::message::SerializedMessage::Call {
                 variant,
                 args,
@@ -299,9 +297,9 @@ where
         }
     }
 
-    fn deserialize(bytes: crate::message::SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+    fn deserialize(bytes: crate::message::SerializedMessage) -> Result<Self, DowncastErr> {
         match bytes {
-            crate::message::SerializedMessage::CallReply(_, _) => Err(BoxedDowncastErr),
+            crate::message::SerializedMessage::CallReply(_, _) => Err(DowncastErr),
             crate::message::SerializedMessage::Cast {
                 variant,
                 args,
@@ -659,7 +657,7 @@ mod tests {
         }
         fn serialize(
             self,
-        ) -> Result<crate::message::SerializedMessage, crate::message::BoxedDowncastErr> {
+        ) -> Result<crate::message::SerializedMessage, crate::message::DowncastErr> {
             match self {
                 Self::A(args) => Ok(crate::message::SerializedMessage::Cast {
                     variant: "A".to_string(),
@@ -679,12 +677,12 @@ mod tests {
         }
         fn deserialize(
             bytes: crate::message::SerializedMessage,
-        ) -> Result<Self, crate::message::BoxedDowncastErr> {
+        ) -> Result<Self, crate::message::DowncastErr> {
             match bytes {
                 crate::message::SerializedMessage::Cast { variant, args, .. } => {
                     match variant.as_str() {
                         "A" => Ok(Self::A(<String as BytesConvertable>::from_bytes(args))),
-                        _ => Err(crate::message::BoxedDowncastErr),
+                        _ => Err(crate::message::DowncastErr),
                     }
                 }
                 crate::message::SerializedMessage::Call { variant, args, .. } => {
@@ -696,10 +694,10 @@ mod tests {
                                 tx.into(),
                             ))
                         }
-                        _ => Err(crate::message::BoxedDowncastErr),
+                        _ => Err(crate::message::DowncastErr),
                     }
                 }
-                _ => Err(crate::message::BoxedDowncastErr),
+                _ => Err(crate::message::DowncastErr),
             }
         }
     }
