@@ -717,7 +717,7 @@ where
                 "Updating discard handler: HashValue={}",
                 discard_handler.is_some()
             );
-            for (_, worker) in self.pool.iter_mut() {
+            for worker in self.pool.values_mut() {
                 worker.discard_handler = discard_handler.clone();
             }
             self.discard_handler = discard_handler;
@@ -729,7 +729,7 @@ where
             } else {
                 discard_settings.get_worker_settings()
             };
-            for (_, worker) in self.pool.iter_mut() {
+            for worker in self.pool.values_mut() {
                 worker.discard_settings = worker_discard_settings.clone();
             }
             self.discard_settings = discard_settings;

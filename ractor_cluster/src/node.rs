@@ -335,7 +335,7 @@ pub struct NodeServerState {
 
 impl NodeServerState {
     fn check_peers(&self, new_peer: auth_protocol::NameMessage) -> SessionCheckReply {
-        for (_key, value) in self.node_sessions.iter() {
+        for value in self.node_sessions.values() {
             if let Some(existing_peer) = &value.peer_name {
                 if existing_peer.name == new_peer.name {
                     match (
@@ -432,7 +432,7 @@ impl Actor for NodeServer {
                         node_id,
                         peer_addr,
                     );
-                    for (_, sub) in state.subscriptions.iter() {
+                    for sub in state.subscriptions.values() {
                         sub.node_session_opened(ses.clone());
                     }
                     state.node_sessions.insert(actor.get_id(), ses);
@@ -481,7 +481,7 @@ impl Actor for NodeServer {
                         node_id,
                         peer_addr,
                     );
-                    for (_, sub) in state.subscriptions.iter() {
+                    for sub in state.subscriptions.values() {
                         sub.node_session_opened(ses.clone());
                     }
                     state.node_sessions.insert(actor.get_id(), ses);
@@ -494,14 +494,14 @@ impl Actor for NodeServer {
             }
             Self::Msg::ConnectionAuthenticated(actor_id) => {
                 if let Some(entry) = state.node_sessions.get(&actor_id) {
-                    for (_, sub) in state.subscriptions.iter() {
+                    for sub in state.subscriptions.values() {
                         sub.node_session_authenicated(entry.clone());
                     }
                 }
             }
             Self::Msg::ConnectionReady(actor_id) => {
                 if let Some(entry) = state.node_sessions.get(&actor_id) {
-                    for (_, sub) in state.subscriptions.iter() {
+                    for sub in state.subscriptions.values() {
                         sub.node_session_ready(entry.clone());
                     }
                 }
@@ -568,7 +568,7 @@ impl Actor for NodeServer {
                                 o.get().peer_name
                             );
                             let ses = o.remove();
-                            for (_, sub) in state.subscriptions.iter() {
+                            for sub in state.subscriptions.values() {
                                 sub.node_session_disconnected(ses.clone());
                             }
                         }
@@ -609,7 +609,7 @@ impl Actor for NodeServer {
                                 maybe_reason
                             );
                             let ses = o.remove();
-                            for (_, sub) in state.subscriptions.iter() {
+                            for sub in state.subscriptions.values() {
                                 sub.node_session_disconnected(ses.clone());
                             }
                         }
