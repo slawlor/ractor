@@ -112,9 +112,13 @@ async fn test_thread_local_child() {
         .await
         .expect("Child panicked on startup");
 
-    let maybe_sup = child_ref.try_get_supervisor();
-    assert!(maybe_sup.is_some());
-    assert_eq!(maybe_sup.map(|a| a.get_id()), Some(supervisor_ref.get_id()));
+    // NOTE: we intentionally do NOT check `child_ref.try_get_supervisor()` here.
+    // The child panics in `post_start`, which runs on the spawner OS thread and
+    // races against this thread. Cleanup on that thread calls `unlink(sup)`
+    // (clearing the supervisor field) and can complete before we resume here,
+    // making the check flaky. The synchronous-linking guarantee is covered by
+    // `test_thread_local_child_panic_handle` (which sends a message to trigger
+    // the panic, so the child is still alive when the check runs).
 
     let (_, _) = tokio::join!(s_handle, c_handle);
 
