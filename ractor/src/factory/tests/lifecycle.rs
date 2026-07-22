@@ -186,8 +186,8 @@ async fn test_lifecycle_hooks() {
     .await
     .expect("Failed to spawn factory");
 
-    // startup has some delay creating workers, so we shouldn't see on_started called immediately
-    assert_eq!(0, hooks.state.load(Ordering::SeqCst));
+    // on_factory_started runs after workers spin up; wait for it rather than
+    // asserting on the pre-run state (which races the scheduler).
     periodic_check(
         || hooks.state.load(Ordering::SeqCst) == 1,
         Duration::from_millis(500),
