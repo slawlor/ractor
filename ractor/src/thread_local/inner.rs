@@ -13,6 +13,7 @@ use std::sync::Mutex;
 
 use futures::FutureExt;
 use futures::TryFutureExt;
+#[cfg(feature = "message_span_propogation")]
 use tracing::Instrument;
 
 use super::ThreadLocalActor;
@@ -532,7 +533,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         myself: ActorRef<TActor::Msg>,
         state: &mut TActor::State,
         handler: &TActor,
-        mut msg: crate::message::BoxedMessage,
+        msg: crate::message::BoxedMessage,
     ) -> Result<(), ActorProcessingErr> {
         // panic in order to kill the actor
         #[cfg(feature = "cluster")]
@@ -556,20 +557,30 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
             }
         }
 
-        // The current [tracing::Span] is retrieved, boxed, and included in every
-        // `BoxedMessage` during the conversion of this `TActor::Msg`. It is used
-        // to automatically continue tracing span nesting when sending messages to Actors.
+        // When span propagation is enabled, an active [tracing::Span] is included in
+        // `BoxedMessage` during the conversion of this `TActor::Msg`. It is used to
+        // automatically continue tracing span nesting when sending messages to actors.
+        #[cfg(feature = "message_span_propogation")]
+        let mut msg = msg;
+        #[cfg(feature = "message_span_propogation")]
         let current_span_when_message_was_sent = msg.span.take();
 
         // An error here will bubble up to terminate the actor
         let typed_msg = TActor::Msg::from_boxed(msg)?;
 
-        if let Some(span) = current_span_when_message_was_sent {
-            handler
-                .handle(myself, typed_msg, state)
-                .instrument(span)
-                .await
-        } else {
+        #[cfg(feature = "message_span_propogation")]
+        {
+            if let Some(span) = current_span_when_message_was_sent {
+                handler
+                    .handle(myself, typed_msg, state)
+                    .instrument(span)
+                    .await
+            } else {
+                handler.handle(myself, typed_msg, state).await
+            }
+        }
+        #[cfg(not(feature = "message_span_propogation"))]
+        {
             handler.handle(myself, typed_msg, state).await
         }
     }
