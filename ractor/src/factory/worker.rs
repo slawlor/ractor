@@ -512,11 +512,8 @@ where
     /// A function to be called for each job to be dropped.
     pub(crate) discard_handler: Option<Arc<dyn DiscardHandler<TKey, TMsg>>>,
 
-    /// Flag indicating if this worker has a ping currently pending
-    is_ping_pending: bool,
-
-    /// Time the last ping went out to the worker to track ping metrics
-    last_ping: Instant,
+    /// Tracks when a heartbeat was sent and is still awaiting a reply.
+    heartbeat: WorkerHeartbeat,
 
     /// Statistics for the worker
     stats: Option<Arc<dyn FactoryStatsLayer>>,
@@ -580,11 +577,10 @@ where
             message_queue: VecDeque::new(),
             curr_jobs: HashMap::new(),
             wid,
-            is_ping_pending: false,
+            heartbeat: WorkerHeartbeat::default(),
             stats,
             handle: Some(handle),
             is_draining: false,
-            last_ping: Instant::now(),
         }
     }
 
@@ -609,8 +605,7 @@ where
         handle: JoinHandle<()>,
     ) -> Result<(), ActorProcessingErr> {
         // these jobs are now "lost" as the worker is going to be killed
-        self.is_ping_pending = false;
-        self.last_ping = Instant::now();
+        self.heartbeat.clear();
         self.curr_jobs.clear();
 
         self.actor = nworker;
@@ -635,7 +630,7 @@ where
 
     /// Denotes if the worker is stuck (i.e. unable to complete it's current job)
     pub(crate) fn is_stuck(&self, duration: Duration) -> bool {
-        if Instant::now() - self.last_ping > duration {
+        if self.heartbeat.is_stuck(duration) {
             let key_strings = self
                 .curr_jobs
                 .keys()
@@ -704,11 +699,11 @@ where
     pub(crate) fn send_factory_ping(
         &mut self,
     ) -> Result<(), Box<MessagingErr<WorkerMessage<TKey, TMsg>>>> {
-        if !self.is_ping_pending {
-            self.is_ping_pending = true;
-            Ok(self
-                .actor
-                .cast(WorkerMessage::FactoryPing(Instant::now()))?)
+        if !self.heartbeat.is_pending() {
+            let sent_at = Instant::now();
+            self.actor.cast(WorkerMessage::FactoryPing(sent_at))?;
+            self.heartbeat.sent(sent_at);
+            Ok(())
         } else {
             // don't send a new ping if one is currently pending
             Ok(())
@@ -719,7 +714,7 @@ where
     pub(crate) fn ping_received(&mut self, time: Duration, discard_limit: usize) {
         self.discard_settings.update_worker_limit(discard_limit);
         self.stats.worker_ping_received(&self.factory_name, time);
-        self.is_ping_pending = false;
+        self.heartbeat.clear();
     }
 
     /// Called when the factory is notified a worker completed a job. Will push the next message
@@ -743,5 +738,70 @@ where
     /// Set the draining status of the worker
     pub(crate) fn set_draining(&mut self, is_draining: bool) {
         self.is_draining = is_draining;
+    }
+}
+
+/// State for the single heartbeat that may be outstanding for a worker.
+#[derive(Default)]
+struct WorkerHeartbeat {
+    sent_at: Option<Instant>,
+}
+
+impl WorkerHeartbeat {
+    fn is_pending(&self) -> bool {
+        self.sent_at.is_some()
+    }
+
+    fn sent(&mut self, sent_at: Instant) {
+        self.sent_at = Some(sent_at);
+    }
+
+    fn clear(&mut self) {
+        self.sent_at = None;
+    }
+
+    fn is_stuck(&self, timeout: Duration) -> bool {
+        self.is_stuck_at(Instant::now(), timeout)
+    }
+
+    fn is_stuck_at(&self, now: Instant, timeout: Duration) -> bool {
+        match self.sent_at {
+            Some(sent_at) => now.saturating_duration_since(sent_at) > timeout,
+            None => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod heartbeat_tests {
+    use super::*;
+
+    #[test]
+    fn idle_worker_without_a_pending_heartbeat_is_not_stuck() {
+        let heartbeat = WorkerHeartbeat::default();
+        let now = Instant::now();
+
+        assert!(!heartbeat.is_stuck_at(now + Duration::from_secs(60), Duration::ZERO));
+    }
+
+    #[test]
+    fn replied_heartbeat_is_not_stuck() {
+        let sent_at = Instant::now();
+        let mut heartbeat = WorkerHeartbeat::default();
+        heartbeat.sent(sent_at);
+        heartbeat.clear();
+
+        assert!(!heartbeat.is_stuck_at(sent_at + Duration::from_secs(60), Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn unanswered_heartbeat_is_stuck_only_after_timeout() {
+        let sent_at = Instant::now();
+        let timeout = Duration::from_secs(5);
+        let mut heartbeat = WorkerHeartbeat::default();
+        heartbeat.sent(sent_at);
+
+        assert!(!heartbeat.is_stuck_at(sent_at + timeout, timeout));
+        assert!(heartbeat.is_stuck_at(sent_at + timeout + Duration::from_nanos(1), timeout));
     }
 }
