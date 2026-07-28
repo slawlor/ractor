@@ -24,7 +24,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run benchmarks on main
-        run: CI=1 cargo bench -p ractor
+        run: |
+          cargo bench -p ractor \
+            --bench actor \
+            --bench async_traits \
+            --bench factory \
+            --bench simple_advanced_benchmarks \
+            -- --save-baseline main
+          if [ -f ractor_cluster/benches/message_serialization.rs ]; then
+            cargo bench -p ractor_cluster \
+              --bench message_serialization \
+              -- --save-baseline main
+          fi
         env:
           CI: 1
 
@@ -32,7 +43,7 @@ jobs:
         run: cargo install critcmp --locked
 
       - name: Export main baseline
-        run: critcmp --export new > main.json
+        run: critcmp --export main > main.json
 
       - name: Upload main baseline
         uses: actions/upload-artifact@v7
@@ -62,7 +73,16 @@ jobs:
           name: bench-baseline-main
 
       - name: Run benchmarks on PR branch
-        run: CI=1 cargo bench -p ractor
+        run: |
+          cargo bench -p ractor \
+            --bench actor \
+            --bench async_traits \
+            --bench factory \
+            --bench simple_advanced_benchmarks \
+            -- --save-baseline pr
+          cargo bench -p ractor_cluster \
+            --bench message_serialization \
+            -- --save-baseline pr
         env:
           CI: 1
 
@@ -74,8 +94,8 @@ jobs:
         run: |
           # run the comparison twice: default multi-column output and a flattened
           # list view for easier per-benchmark deltas
-          RESULT=$(critcmp main.json new)
-          LIST=$(critcmp main.json new --list)
+          RESULT=$(critcmp main.json pr)
+          LIST=$(critcmp main.json pr --list)
           echo "$RESULT"
           echo
           echo "Flat results (see per-benchmark deltas):"
@@ -118,6 +138,10 @@ jobs:
             regression). Benchmarks are grouped (e.g., `small_messages`,
             `spawn_throughput`); the flattened list below shows every
             individual comparison for clearer deltas._
+
+            _Benchmarks introduced by the current PR appear only in the `pr`
+            column. Once merged, subsequent PRs will compare them against the
+            `main` baseline normally._
 
             === per-benchmark breakdown ===
 
