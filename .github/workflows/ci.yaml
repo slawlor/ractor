@@ -41,6 +41,10 @@ jobs:
           - name: Test ractor_cluster with native async traits
             package: ractor_cluster
             # flags:
+          - name: Test ractor_cluster without message span propagation
+            package: ractor_cluster
+            flags: --no-default-features
+            verify_no_span: true
           - name: Test ractor_cluster with async_trait
             package: ractor_cluster
             flags: -F async-trait
@@ -68,6 +72,16 @@ jobs:
         with:
           command: test
           args: --package ${{matrix.package}} ${{matrix.flags}}
+
+      - name: Verify message span propagation is disabled
+        if: matrix.verify_no_span
+        shell: bash
+        run: |
+          if cargo tree --package ractor_cluster --no-default-features --edges features --invert ractor \
+            | grep -Fq 'ractor feature "message_span_propogation"'; then
+            echo 'ractor/message_span_propogation was unexpectedly enabled' >&2
+            exit 1
+          fi
 
       - name: Test everything
         uses: actions-rs/cargo@v1
