@@ -215,6 +215,7 @@ impl ActorProperties {
         let boxed = BoxedMessage {
             msg: None,
             serialized_msg: Some(message),
+            #[cfg(feature = "message_span_propogation")]
             span: None,
         };
         Ok(self

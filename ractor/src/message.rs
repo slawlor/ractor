@@ -64,6 +64,7 @@ pub struct BoxedMessage {
     /// A serialized message for a remote actor, accessed only by the `RemoteActorRuntime`
     #[cfg(feature = "cluster")]
     pub serialized_msg: Option<SerializedMessage>,
+    #[cfg(feature = "message_span_propogation")]
     pub(crate) span: Option<tracing::Span>,
 }
 
@@ -132,28 +133,20 @@ pub trait Message: Any + Send + Sized + 'static {
     /// Convert this message to a [BoxedMessage]
     #[cfg(feature = "cluster")]
     fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
-        let span = {
-            #[cfg(feature = "message_span_propogation")]
-            {
-                Some(tracing::Span::current())
-            }
-            #[cfg(not(feature = "message_span_propogation"))]
-            {
-                None
-            }
-        };
         if Self::serializable() && !pid.is_local() {
             // it's a message to a remote actor, serialize it and send it over the wire!
             Ok(BoxedMessage {
                 msg: None,
                 serialized_msg: Some(self.serialize()?),
+                #[cfg(feature = "message_span_propogation")]
                 span: None,
             })
         } else if pid.is_local() {
             Ok(BoxedMessage {
                 msg: Some(Box::new(self)),
                 serialized_msg: None,
-                span,
+                #[cfg(feature = "message_span_propogation")]
+                span: current_message_span(),
             })
         } else {
             Err(BoxedDowncastErr)
@@ -164,19 +157,10 @@ pub trait Message: Any + Send + Sized + 'static {
     #[cfg(not(feature = "cluster"))]
     #[allow(unused_variables)]
     fn box_message(self, pid: &ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
-        let span = {
-            #[cfg(feature = "message_span_propogation")]
-            {
-                Some(tracing::Span::current())
-            }
-            #[cfg(not(feature = "message_span_propogation"))]
-            {
-                None
-            }
-        };
         Ok(BoxedMessage {
             msg: Some(Box::new(self)),
-            span,
+            #[cfg(feature = "message_span_propogation")]
+            span: current_message_span(),
         })
     }
 
@@ -226,5 +210,36 @@ impl<T: Any + Send + Sized + 'static + crate::serialization::BytesConvertable> M
             SerializedMessage::Cast { args, .. } => Ok(T::from_bytes(args)),
             _ => Err(BoxedDowncastErr),
         }
+    }
+}
+
+#[cfg(feature = "message_span_propogation")]
+fn current_message_span() -> Option<tracing::Span> {
+    let span = tracing::Span::current();
+    if span.is_disabled() {
+        None
+    } else {
+        Some(span)
+    }
+}
+
+#[cfg(all(test, feature = "message_span_propogation"))]
+mod tests {
+    use super::Message;
+    use crate::ActorId;
+
+    #[test]
+    fn box_message_only_captures_enabled_spans() {
+        tracing::subscriber::with_default(tracing::subscriber::NoSubscriber::default(), || {
+            let message = 1_u8.box_message(&ActorId::Local(1)).unwrap();
+            assert!(message.span.is_none());
+        });
+
+        tracing::subscriber::with_default(tracing_subscriber::registry(), || {
+            let span = tracing::info_span!("message_parent");
+            let _entered = span.enter();
+            let message = 1_u8.box_message(&ActorId::Local(1)).unwrap();
+            assert!(message.span.is_some());
+        });
     }
 }
