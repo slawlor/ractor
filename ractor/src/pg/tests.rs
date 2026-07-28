@@ -1120,3 +1120,280 @@ async fn test_stopped_actor_not_inserted() {
     let members = pg::get_members(&group);
     assert_eq!(0, members.len());
 }
+
+#[named]
+#[test]
+fn test_idempotent_membership_calls_preserve_notification_payloads() {
+    let group = function_name!().to_owned();
+    let (listener, mut listener_ports) =
+        crate::ActorCell::new::<TestActor>(None).expect("Failed to create listener");
+    let (member, _member_ports) =
+        crate::ActorCell::new::<TestActor>(None).expect("Failed to create member");
+
+    pg::monitor(group.clone(), listener.clone());
+    pg::join(group.clone(), vec![member.clone(), member.clone()]);
+    pg::join(group.clone(), vec![member.clone()]);
+
+    let first_join = listener_ports
+        .supervisor_rx
+        .try_recv()
+        .expect("join notification missing");
+    assert!(matches!(
+        first_join,
+        SupervisionEvent::ProcessGroupChanged(pg::GroupChangeMessage::Join(_, _, actors))
+            if actors.len() == 2 && actors.iter().all(|actor| actor.get_id() == member.get_id())
+    ));
+    let second_join = listener_ports
+        .supervisor_rx
+        .try_recv()
+        .expect("idempotent join notification missing");
+    assert!(matches!(
+        second_join,
+        SupervisionEvent::ProcessGroupChanged(pg::GroupChangeMessage::Join(_, _, actors))
+            if actors.len() == 1 && actors[0].get_id() == member.get_id()
+    ));
+
+    pg::leave(group.clone(), vec![member.clone(), member.clone()]);
+    pg::leave(group, vec![member.clone()]);
+
+    let first_leave = listener_ports
+        .supervisor_rx
+        .try_recv()
+        .expect("leave notification missing");
+    assert!(matches!(
+        first_leave,
+        SupervisionEvent::ProcessGroupChanged(pg::GroupChangeMessage::Leave(_, _, actors))
+            if actors.len() == 2 && actors.iter().all(|actor| actor.get_id() == member.get_id())
+    ));
+    let second_leave = listener_ports
+        .supervisor_rx
+        .try_recv()
+        .expect("idempotent leave notification missing");
+    assert!(matches!(
+        second_leave,
+        SupervisionEvent::ProcessGroupChanged(pg::GroupChangeMessage::Leave(_, _, actors))
+            if actors.len() == 1 && actors[0].get_id() == member.get_id()
+    ));
+    assert!(listener_ports.supervisor_rx.try_recv().is_err());
+
+    listener.set_status(crate::ActorStatus::Stopped);
+    member.set_status(crate::ActorStatus::Stopped);
+}
+
+#[named]
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+async fn test_shutdown_cleans_only_the_actors_pg_relationships() {
+    let (departing, departing_handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to spawn departing actor");
+    let (remaining, remaining_handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to spawn remaining actor");
+
+    let scope = format!("{}_scope", function_name!());
+    let other_scope = format!("{}_other_scope", function_name!());
+    let default_group = format!("{}_default", function_name!());
+    let departing_group = format!("{}_departing", function_name!());
+    let shared_group = format!("{}_shared", function_name!());
+    let untouched_group = format!("{}_untouched", function_name!());
+    let monitored_group = format!("{}_monitored", function_name!());
+    let departing_monitored_group = format!("{}_departing_monitored", function_name!());
+
+    pg::join(
+        default_group.clone(),
+        vec![departing.clone().into(), remaining.clone().into()],
+    );
+    pg::join_scoped(
+        scope.clone(),
+        departing_group.clone(),
+        vec![departing.clone().into()],
+    );
+    pg::join_scoped(
+        scope.clone(),
+        shared_group.clone(),
+        vec![departing.clone().into(), remaining.clone().into()],
+    );
+    pg::join_scoped(
+        other_scope.clone(),
+        untouched_group.clone(),
+        vec![remaining.clone().into()],
+    );
+    pg::monitor(monitored_group.clone(), departing.clone().into());
+    pg::monitor(monitored_group.clone(), remaining.clone().into());
+    pg::monitor(departing_monitored_group.clone(), departing.clone().into());
+    pg::monitor_scope(scope.clone(), departing.clone().into());
+    pg::monitor_scope(scope.clone(), remaining.clone().into());
+    pg::monitor_scope(
+        pg::ALL_SCOPES_NOTIFICATION.to_owned(),
+        departing.clone().into(),
+    );
+    pg::monitor_scope(
+        pg::ALL_SCOPES_NOTIFICATION.to_owned(),
+        remaining.clone().into(),
+    );
+
+    departing.stop(None);
+    departing_handle.await.expect("Actor cleanup failed");
+
+    let default_members = pg::get_members(&default_group);
+    assert_eq!(1, default_members.len());
+    assert_eq!(remaining.get_id(), default_members[0].get_id());
+    assert!(pg::get_scoped_members(&scope, &departing_group).is_empty());
+
+    let shared_members = pg::get_scoped_members(&scope, &shared_group);
+    assert_eq!(1, shared_members.len());
+    assert_eq!(remaining.get_id(), shared_members[0].get_id());
+
+    let untouched_members = pg::get_scoped_members(&other_scope, &untouched_group);
+    assert_eq!(1, untouched_members.len());
+    assert_eq!(remaining.get_id(), untouched_members[0].get_id());
+    assert!(!pg::which_scoped_groups(&scope).contains(&departing_group));
+    let monitor = pg::get_monitor();
+    let group_key = pg::ScopeGroupKey {
+        scope: pg::DEFAULT_SCOPE.to_owned(),
+        group: monitored_group.clone(),
+    };
+    let group_state = monitor.map.get(&group_key).expect("group monitor missing");
+    assert!(group_state
+        .listeners
+        .iter()
+        .any(|listener| listener.get_id() == remaining.get_id()));
+    assert!(group_state
+        .listeners
+        .iter()
+        .all(|listener| listener.get_id() != departing.get_id()));
+    drop(group_state);
+
+    let departing_group_key = pg::ScopeGroupKey {
+        scope: pg::DEFAULT_SCOPE.to_owned(),
+        group: departing_monitored_group,
+    };
+    assert!(monitor.map.get(&departing_group_key).is_none());
+
+    for world_key in [
+        pg::ScopeGroupKey {
+            scope: scope.clone(),
+            group: pg::ALL_GROUPS_NOTIFICATION.to_owned(),
+        },
+        pg::ScopeGroupKey {
+            scope: pg::ALL_SCOPES_NOTIFICATION.to_owned(),
+            group: pg::ALL_GROUPS_NOTIFICATION.to_owned(),
+        },
+    ] {
+        let listeners = monitor
+            .world_listeners
+            .get(&world_key)
+            .expect("world monitor missing");
+        assert!(listeners
+            .iter()
+            .any(|listener| listener.get_id() == remaining.get_id()));
+        assert!(listeners
+            .iter()
+            .all(|listener| listener.get_id() != departing.get_id()));
+    }
+    assert!(monitor.actor_relations.get(&departing.get_id()).is_none());
+
+    {
+        let remaining_relations = pg::get_actor_relations(monitor, remaining.get_id())
+            .expect("remaining actor reverse index missing");
+        let remaining_relations = pg::lock_relations(&remaining_relations);
+        let expected_memberships = [
+            pg::ScopeGroupKey {
+                scope: pg::DEFAULT_SCOPE.to_owned(),
+                group: default_group,
+            },
+            pg::ScopeGroupKey {
+                scope: scope.clone(),
+                group: shared_group,
+            },
+            pg::ScopeGroupKey {
+                scope: other_scope,
+                group: untouched_group,
+            },
+        ];
+        assert_eq!(
+            expected_memberships.len(),
+            remaining_relations.memberships.len()
+        );
+        assert!(expected_memberships
+            .iter()
+            .all(|key| remaining_relations.memberships.contains(key)));
+        assert_eq!(1, remaining_relations.group_monitors.len());
+        assert!(remaining_relations
+            .group_monitors
+            .contains(&pg::ScopeGroupKey {
+                scope: pg::DEFAULT_SCOPE.to_owned(),
+                group: monitored_group,
+            }));
+        assert_eq!(2, remaining_relations.world_monitors.len());
+        assert!(remaining_relations
+            .world_monitors
+            .contains(&pg::ScopeGroupKey {
+                scope,
+                group: pg::ALL_GROUPS_NOTIFICATION.to_owned(),
+            }));
+        assert!(remaining_relations
+            .world_monitors
+            .contains(&pg::ScopeGroupKey {
+                scope: pg::ALL_SCOPES_NOTIFICATION.to_owned(),
+                group: pg::ALL_GROUPS_NOTIFICATION.to_owned(),
+            }));
+    }
+
+    remaining.stop(None);
+    remaining_handle.await.expect("Actor cleanup failed");
+}
+
+#[named]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[test]
+#[tracing_test::traced_test]
+fn test_stopping_actor_rejects_registration_blocked_on_relations() {
+    let group = format!("{}_group", function_name!());
+    let scope = format!("{}_scope", function_name!());
+    let world_key = pg::ScopeGroupKey {
+        scope: scope.clone(),
+        group: pg::ALL_GROUPS_NOTIFICATION.to_owned(),
+    };
+    let (actor, _ports) = crate::ActorCell::new::<TestActor>(None).expect("Failed to create actor");
+    pg::join(group.clone(), vec![actor.clone()]);
+
+    let monitor = pg::get_monitor();
+    let relations =
+        pg::get_actor_relations(monitor, actor.get_id()).expect("actor reverse index missing");
+    let relations_guard = pg::lock_relations(&relations);
+
+    let stopping_actor = actor.clone();
+    let stop_thread =
+        std::thread::spawn(move || stopping_actor.set_status(crate::ActorStatus::Stopping));
+    while actor.get_status() != crate::ActorStatus::Stopping {
+        std::thread::yield_now();
+    }
+
+    let registering_actor = actor.clone();
+    let registration = std::thread::spawn(move || {
+        pg::monitor_scope(scope, registering_actor);
+    });
+    while !monitor.world_listeners.try_get(&world_key).is_locked() {
+        std::thread::yield_now();
+    }
+
+    drop(relations_guard);
+    let previous_status = stop_thread.join().expect("stop thread panicked");
+    assert!(previous_status < crate::ActorStatus::Stopping);
+    registration.join().expect("registration thread panicked");
+
+    assert!(pg::get_members(&group).is_empty());
+    assert!(monitor
+        .world_listeners
+        .get(&world_key)
+        .map_or(true, |listeners| listeners
+            .iter()
+            .all(|listener| listener.get_id() != actor.get_id())));
+    assert!(monitor.actor_relations.get(&actor.get_id()).is_none());
+    actor.set_status(crate::ActorStatus::Stopped);
+}

@@ -28,6 +28,89 @@ struct EmptyMessage;
 #[cfg(feature = "cluster")]
 impl crate::Message for EmptyMessage {}
 
+struct StatusTestActor;
+
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
+impl Actor for StatusTestActor {
+    type Msg = EmptyMessage;
+    type Arguments = ();
+    type State = ();
+
+    async fn pre_start(
+        &self,
+        _this_actor: ActorRef<Self::Msg>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
+}
+
+#[test]
+fn actor_status_transitions_are_monotonic() {
+    let actor = ActorCell::new::<StatusTestActor>(None).unwrap().0;
+
+    assert_eq!(
+        ActorStatus::Unstarted,
+        actor.set_status(ActorStatus::Starting)
+    );
+    assert_eq!(
+        ActorStatus::Starting,
+        actor.set_status(ActorStatus::Draining)
+    );
+    assert_eq!(
+        ActorStatus::Draining,
+        actor.set_status(ActorStatus::Running)
+    );
+    assert_eq!(ActorStatus::Draining, actor.get_status());
+    assert_eq!(
+        ActorStatus::Draining,
+        actor.set_status(ActorStatus::Stopped)
+    );
+    assert_eq!(
+        ActorStatus::Stopped,
+        actor.set_status(ActorStatus::Stopping)
+    );
+    assert_eq!(ActorStatus::Stopped, actor.get_status());
+}
+
+#[test]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn concurrent_shutdown_transitions_elect_cleanup_once() {
+    use std::sync::Barrier;
+
+    let actor = ActorCell::new::<StatusTestActor>(None).unwrap().0;
+    actor.set_status(ActorStatus::Running);
+    let barrier = Arc::new(Barrier::new(3));
+
+    let stopping_actor = actor.clone();
+    let stopping_barrier = barrier.clone();
+    let stopping = std::thread::spawn(move || {
+        stopping_barrier.wait();
+        stopping_actor.set_status(ActorStatus::Stopping)
+    });
+
+    let stopped_actor = actor.clone();
+    let stopped_barrier = barrier.clone();
+    let stopped = std::thread::spawn(move || {
+        stopped_barrier.wait();
+        stopped_actor.set_status(ActorStatus::Stopped)
+    });
+
+    barrier.wait();
+    let previous_statuses = [
+        stopping.join().expect("stopping thread panicked"),
+        stopped.join().expect("stopped thread panicked"),
+    ];
+    assert_eq!(
+        1,
+        previous_statuses
+            .iter()
+            .filter(|status| **status < ActorStatus::Stopping)
+            .count()
+    );
+    assert_eq!(ActorStatus::Stopped, actor.get_status());
+}
+
 #[crate::concurrency::test]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_os = "unknown")),

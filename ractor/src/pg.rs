@@ -72,6 +72,9 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use dashmap::mapref::entry::Entry::Occupied;
 use dashmap::DashMap;
@@ -154,6 +157,31 @@ struct GroupState {
     listeners: Vec<ActorCell>,
 }
 
+/// The process-group relationships owned by one actor.
+///
+/// Ordinary mutations hold the forward group entry while updating this reverse
+/// index. Shutdown first publishes `Stopping`, drains this index, and then
+/// removes the forward entries; registrations racing with that drain observe
+/// the new status and are rejected. The lock order is forward group/world
+/// entry, actor relations, then the scope index; shutdown releases the actor
+/// relations lock before acquiring any forward entry.
+#[derive(Default)]
+struct ActorRelations {
+    memberships: HashSet<ScopeGroupKey>,
+    group_monitors: HashSet<ScopeGroupKey>,
+    world_monitors: HashSet<ScopeGroupKey>,
+}
+
+impl ActorRelations {
+    fn is_empty(&self) -> bool {
+        self.memberships.is_empty()
+            && self.group_monitors.is_empty()
+            && self.world_monitors.is_empty()
+    }
+}
+
+type SharedActorRelations = Arc<Mutex<ActorRelations>>;
+
 struct PgState {
     /// Maps (scope, group) to the group's state (members + per-group listeners)
     map: DashMap<ScopeGroupKey, GroupState>,
@@ -161,6 +189,8 @@ struct PgState {
     index: DashMap<ScopeName, HashSet<GroupName>>,
     /// Scope-level and global monitors (sentinel keys only)
     world_listeners: DashMap<ScopeGroupKey, Vec<ActorCell>>,
+    /// Reverse index used to clean up only the relationships owned by an actor
+    actor_relations: DashMap<ActorId, SharedActorRelations>,
 }
 
 static PG_MONITOR: OnceCell<PgState> = OnceCell::new();
@@ -170,7 +200,65 @@ fn get_monitor<'a>() -> &'a PgState {
         map: DashMap::new(),
         index: DashMap::new(),
         world_listeners: DashMap::new(),
+        actor_relations: DashMap::new(),
     })
+}
+
+fn lock_relations(relations: &SharedActorRelations) -> MutexGuard<'_, ActorRelations> {
+    relations
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn get_or_create_actor_relations(monitor: &PgState, actor: ActorId) -> SharedActorRelations {
+    monitor.actor_relations.entry(actor).or_default().clone()
+}
+
+fn get_actor_relations(monitor: &PgState, actor: ActorId) -> Option<SharedActorRelations> {
+    monitor
+        .actor_relations
+        .get(&actor)
+        .map(|relations| relations.value().clone())
+}
+
+/// Removes the reverse-index entry once an actor owns no relationships.
+///
+/// A caller may already hold a clone of the same `Arc`, but it cannot add a new
+/// relationship once `Stopping` has been published. Callers must therefore use
+/// this only for stopping actors. Pointer comparison prevents removing a
+/// replacement entry created by a concurrent caller.
+fn remove_empty_actor_relations(
+    monitor: &PgState,
+    actor: ActorId,
+    relations: &SharedActorRelations,
+) {
+    let relations_guard = lock_relations(relations);
+    if !relations_guard.is_empty() {
+        return;
+    }
+
+    if let Occupied(entry) = monitor.actor_relations.entry(actor) {
+        if Arc::ptr_eq(entry.get(), relations) {
+            entry.remove();
+        }
+    }
+}
+
+fn add_group_to_index(monitor: &PgState, key: &ScopeGroupKey) {
+    monitor
+        .index
+        .entry(key.scope.clone())
+        .or_default()
+        .insert(key.group.clone());
+}
+
+fn remove_group_from_index(monitor: &PgState, key: &ScopeGroupKey) {
+    if let Occupied(mut entry) = monitor.index.entry(key.scope.clone()) {
+        entry.get_mut().remove(&key.group);
+        if entry.get().is_empty() {
+            entry.remove();
+        }
+    }
 }
 
 /// Sends notifications to scope-level and global world listeners.
@@ -229,42 +317,73 @@ pub fn join_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) {
     };
     let monitor = get_monitor();
 
-    // Filter out actors that are already stopping or stopped
-    let actors: Vec<ActorCell> = actors
+    // Preserve the existing notification contract: every caller-provided actor
+    // that is not already stopping remains in the event payload, including
+    // duplicate or already-joined actors.
+    let actors = actors
         .into_iter()
-        .filter(|a| (a.get_status() as u8) <= (ActorStatus::Draining as u8))
-        .collect();
-
+        .filter(|actor| actor.get_status() <= ActorStatus::Draining)
+        .collect::<Vec<_>>();
     if actors.is_empty() {
         return;
     }
 
-    // Lock map entry, insert members, clone per-group listeners, then drop the guard
-    let listeners = {
-        let mut entry = monitor.map.entry(key).or_default();
-        let gs = entry.value_mut();
-        for actor in actors.iter() {
-            gs.members.insert(actor.get_id(), actor.clone());
+    let mut stopped_relations = Vec::new();
+    let (joined, listeners) = {
+        let mut entry = monitor.map.entry(key.clone()).or_default();
+        let group_state = entry.value_mut();
+        let mut processed = HashSet::with_capacity(actors.len());
+        let mut accepted = HashSet::with_capacity(actors.len());
+
+        for actor in &actors {
+            if !processed.insert(actor.get_id()) {
+                continue;
+            }
+            let relations = get_or_create_actor_relations(monitor, actor.get_id());
+            let mut relations_guard = lock_relations(&relations);
+            if actor.get_status() <= ActorStatus::Draining {
+                relations_guard.memberships.insert(key.clone());
+                accepted.insert(actor.get_id());
+            } else if relations_guard.is_empty() {
+                stopped_relations.push((actor.get_id(), relations.clone()));
+            }
         }
-        gs.listeners.clone()
+
+        let joined = actors
+            .into_iter()
+            .filter(|actor| accepted.contains(&actor.get_id()))
+            .collect::<Vec<_>>();
+        for actor in &joined {
+            group_state.members.insert(actor.get_id(), actor.clone());
+        }
+
+        if !joined.is_empty() {
+            add_group_to_index(monitor, &key);
+        }
+
+        (joined, group_state.listeners.clone())
     };
 
-    // Update index
-    monitor
-        .index
-        .entry(scope.to_owned())
-        .or_default()
-        .insert(group.to_owned());
+    for (actor, relations) in stopped_relations {
+        remove_empty_actor_relations(monitor, actor, &relations);
+    }
 
-    // Notify per-group listeners (guard already dropped)
+    if joined.is_empty() {
+        if let Occupied(entry) = monitor.map.entry(key) {
+            if entry.get().members.is_empty() && entry.get().listeners.is_empty() {
+                entry.remove();
+            }
+        }
+        return;
+    }
+
     for listener in &listeners {
         let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
-            GroupChangeMessage::Join(scope.to_owned(), group.clone(), actors.clone()),
+            GroupChangeMessage::Join(scope.to_owned(), group.clone(), joined.clone()),
         ));
     }
 
-    // Notify world listeners
-    notify_world_listeners(monitor, &scope, &group, &actors, true);
+    notify_world_listeners(monitor, &scope, &group, &joined, true);
 }
 
 /// Leaves the specified [crate::Actor]s from the PG group in the default scope
@@ -287,46 +406,38 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
     };
     let monitor = get_monitor();
 
-    // Lock map entry, remove members, clone listeners, check emptiness
-    let result = if let Occupied(mut occupied) = monitor.map.entry(key) {
-        let gs = occupied.get_mut();
-        for actor in actors.iter() {
-            gs.members.remove(&actor.get_id());
+    let result = if let Occupied(mut entry) = monitor.map.entry(key.clone()) {
+        let group_state = entry.get_mut();
+
+        for actor in &actors {
+            if let Some(relations) = get_actor_relations(monitor, actor.get_id()) {
+                lock_relations(&relations).memberships.remove(&key);
+            }
+            group_state.members.remove(&actor.get_id());
         }
-        let listeners = gs.listeners.clone();
-        let all_members_left = gs.members.is_empty();
-        let fully_empty = all_members_left && gs.listeners.is_empty();
-        if fully_empty {
-            occupied.remove();
+
+        let listeners = group_state.listeners.clone();
+        if group_state.members.is_empty() {
+            remove_group_from_index(monitor, &key);
+            if group_state.listeners.is_empty() {
+                entry.remove();
+            }
         }
-        Some((listeners, all_members_left))
+        Some(listeners)
     } else {
         None
     };
 
-    let Some((listeners, all_members_left)) = result else {
+    let Some(listeners) = result else {
         return;
     };
 
-    // Update index only if all members left
-    if all_members_left {
-        if let Some(mut groups) = monitor.index.get_mut(&scope) {
-            groups.remove(&group);
-            if groups.is_empty() {
-                drop(groups);
-                monitor.index.remove(&scope);
-            }
-        }
-    }
-
-    // Notify per-group listeners (guard already dropped)
     for listener in &listeners {
         let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
             GroupChangeMessage::Leave(scope.to_owned(), group.clone(), actors.clone()),
         ));
     }
 
-    // Notify world listeners
     notify_world_listeners(monitor, &scope, &group, &actors, false);
 }
 
@@ -334,46 +445,33 @@ pub fn leave_scoped(scope: ScopeName, group: GroupName, actors: Vec<ActorCell>) 
 /// Used only during actor shutdown
 pub(crate) fn leave_all(actor: ActorId) {
     let monitor = get_monitor();
+    let Some(relations) = get_actor_relations(monitor, actor) else {
+        return;
+    };
+    let mut relations_guard = lock_relations(&relations);
+    let memberships = std::mem::take(&mut relations_guard.memberships);
+    drop(relations_guard);
+    let mut removal_events = Vec::with_capacity(memberships.len());
 
-    // Phase 1: iterate, remove actor from members, collect notification info
-    let mut removal_events: Vec<(ScopeGroupKey, ActorCell, Vec<ActorCell>)> = vec![];
-    let mut empty_member_keys: Vec<ScopeGroupKey> = vec![];
-
-    for mut kv in monitor.map.iter_mut() {
-        let key = kv.key().clone();
-        let gs = kv.value_mut();
-        if let Some(actor_cell) = gs.members.remove(&actor) {
-            let listeners = gs.listeners.clone();
-            removal_events.push((key.clone(), actor_cell, listeners));
-        }
-        if gs.members.is_empty() {
-            empty_member_keys.push(key);
-        }
-    }
-
-    // Phase 2: clean up empty entries (re-check under lock to handle concurrent joins)
-    for key in empty_member_keys {
-        if let Occupied(entry) = monitor.map.entry(key.clone()) {
-            if entry.get().members.is_empty() {
-                // Update index
-                if let Some(mut groups) = monitor.index.get_mut(&key.scope) {
-                    groups.remove(&key.group);
-                    if groups.is_empty() {
-                        drop(groups);
-                        monitor.index.remove(&key.scope);
+    for key in memberships {
+        if let Occupied(mut entry) = monitor.map.entry(key.clone()) {
+            let group_state = entry.get_mut();
+            if let Some(actor_cell) = group_state.members.remove(&actor) {
+                let listeners = group_state.listeners.clone();
+                if group_state.members.is_empty() {
+                    remove_group_from_index(monitor, &key);
+                    if group_state.listeners.is_empty() {
+                        entry.remove();
                     }
                 }
-                // Only remove map entry if listeners are also empty
-                if entry.get().listeners.is_empty() {
-                    entry.remove();
-                }
+                removal_events.push((key, actor_cell, listeners));
             }
         }
     }
 
-    // Phase 3: send notifications (outside all locks)
-    for (scope_and_group, cell, per_group_listeners) in removal_events.iter() {
-        // Notify per-group listeners
+    remove_empty_actor_relations(monitor, actor, &relations);
+
+    for (scope_and_group, cell, per_group_listeners) in &removal_events {
         for listener in per_group_listeners {
             let _ = listener.send_supervisor_evt(SupervisionEvent::ProcessGroupChanged(
                 GroupChangeMessage::Leave(
@@ -384,7 +482,6 @@ pub(crate) fn leave_all(actor: ActorId) {
             ));
         }
 
-        // Notify world listeners (scoped + global)
         notify_world_listeners(
             monitor,
             &scope_and_group.scope,
@@ -528,7 +625,25 @@ pub fn monitor(group: GroupName, actor: ActorCell) {
         group,
     };
     let monitor = get_monitor();
-    monitor.map.entry(key).or_default().listeners.push(actor);
+    let relations = get_or_create_actor_relations(monitor, actor.get_id());
+    let mut entry = monitor.map.entry(key.clone()).or_default();
+    let mut relations_guard = lock_relations(&relations);
+
+    if actor.get_status() <= ActorStatus::Draining {
+        entry.listeners.push(actor.clone());
+        relations_guard.group_monitors.insert(key.clone());
+    }
+
+    drop(relations_guard);
+    drop(entry);
+    if actor.get_status() >= ActorStatus::Stopping {
+        if let Occupied(entry) = monitor.map.entry(key) {
+            if entry.get().members.is_empty() && entry.get().listeners.is_empty() {
+                entry.remove();
+            }
+        }
+        remove_empty_actor_relations(monitor, actor.get_id(), &relations);
+    }
 }
 
 /// Subscribes the provided [crate::Actor] to the scope for updates
@@ -541,8 +656,26 @@ pub fn monitor_scope(scope: ScopeName, actor: ActorCell) {
         group: ALL_GROUPS_NOTIFICATION.to_owned(),
     };
     let monitor = get_monitor();
-    // Register ONLY in world_listeners (not per-group) to avoid duplicate notifications
-    monitor.world_listeners.entry(key).or_default().push(actor);
+    let relations = get_or_create_actor_relations(monitor, actor.get_id());
+    let mut entry = monitor.world_listeners.entry(key.clone()).or_default();
+    let mut relations_guard = lock_relations(&relations);
+
+    if actor.get_status() <= ActorStatus::Draining {
+        // Register ONLY in world_listeners (not per-group) to avoid duplicate notifications
+        entry.push(actor.clone());
+        relations_guard.world_monitors.insert(key.clone());
+    }
+
+    drop(relations_guard);
+    drop(entry);
+    if actor.get_status() >= ActorStatus::Stopping {
+        if let Occupied(entry) = monitor.world_listeners.entry(key) {
+            if entry.get().is_empty() {
+                entry.remove();
+            }
+        }
+        remove_empty_actor_relations(monitor, actor.get_id(), &relations);
+    }
 }
 
 /// Unsubscribes the provided [crate::Actor] for updates from the group
@@ -556,8 +689,22 @@ pub fn demonitor(group_name: GroupName, actor: ActorId) {
         group: group_name,
     };
     let monitor = get_monitor();
-    if let Some(mut gs) = monitor.map.get_mut(&key) {
-        gs.listeners.retain(|a| a.get_id() != actor);
+    let relations = get_actor_relations(monitor, actor);
+
+    if let Occupied(mut entry) = monitor.map.entry(key.clone()) {
+        let mut relations_guard = relations.as_ref().map(lock_relations);
+        let group_state = entry.get_mut();
+        group_state
+            .listeners
+            .retain(|listener| listener.get_id() != actor);
+        if let Some(relations_guard) = relations_guard.as_mut() {
+            relations_guard.group_monitors.remove(&key);
+        }
+        if group_state.members.is_empty() && group_state.listeners.is_empty() {
+            entry.remove();
+        }
+    } else if let Some(relations) = relations {
+        lock_relations(&relations).group_monitors.remove(&key);
     }
 }
 
@@ -571,12 +718,20 @@ pub fn demonitor_scope(scope: ScopeName, actor: ActorId) {
         group: ALL_GROUPS_NOTIFICATION.to_owned(),
     };
     let monitor = get_monitor();
-    if let Occupied(mut entry) = monitor.world_listeners.entry(key) {
+    let relations = get_actor_relations(monitor, actor);
+
+    if let Occupied(mut entry) = monitor.world_listeners.entry(key.clone()) {
+        let mut relations_guard = relations.as_ref().map(lock_relations);
         let listeners = entry.get_mut();
         listeners.retain(|a| a.get_id() != actor);
+        if let Some(relations_guard) = relations_guard.as_mut() {
+            relations_guard.world_monitors.remove(&key);
+        }
         if listeners.is_empty() {
             entry.remove();
         }
+    } else if let Some(relations) = relations {
+        lock_relations(&relations).world_monitors.remove(&key);
     }
 }
 
@@ -584,42 +739,34 @@ pub fn demonitor_scope(scope: ScopeName, actor: ActorId) {
 /// Used only during actor shutdown
 pub(crate) fn demonitor_all(actor: ActorId) {
     let monitor = get_monitor();
+    let Some(relations) = get_actor_relations(monitor, actor) else {
+        return;
+    };
+    let mut relations_guard = lock_relations(&relations);
+    let group_monitors = std::mem::take(&mut relations_guard.group_monitors);
+    let world_monitors = std::mem::take(&mut relations_guard.world_monitors);
+    drop(relations_guard);
 
-    // Remove from per-group listeners and track potentially empty entries
-    let mut maybe_empty = vec![];
-    for mut kv in monitor.map.iter_mut() {
-        let gs = kv.value_mut();
-        gs.listeners.retain(|a| a.get_id() != actor);
-        if gs.members.is_empty() && gs.listeners.is_empty() {
-            maybe_empty.push(kv.key().clone());
-        }
-    }
-
-    // Clean up fully empty entries
-    for key in maybe_empty {
-        if let Occupied(entry) = monitor.map.entry(key.clone()) {
-            if entry.get().members.is_empty() && entry.get().listeners.is_empty() {
+    for key in group_monitors {
+        if let Occupied(mut entry) = monitor.map.entry(key) {
+            let group_state = entry.get_mut();
+            group_state
+                .listeners
+                .retain(|listener| listener.get_id() != actor);
+            if group_state.members.is_empty() && group_state.listeners.is_empty() {
                 entry.remove();
-                if let Some(mut groups) = monitor.index.get_mut(&key.scope) {
-                    groups.remove(&key.group);
-                    if groups.is_empty() {
-                        drop(groups);
-                        monitor.index.remove(&key.scope);
-                    }
-                }
             }
         }
     }
 
-    // Remove from world listeners
-    let mut empty_world_keys = vec![];
-    for mut kv in monitor.world_listeners.iter_mut() {
-        kv.value_mut().retain(|a| a.get_id() != actor);
-        if kv.value().is_empty() {
-            empty_world_keys.push(kv.key().clone());
+    for key in world_monitors {
+        if let Occupied(mut entry) = monitor.world_listeners.entry(key) {
+            entry
+                .get_mut()
+                .retain(|listener| listener.get_id() != actor);
+            if entry.get().is_empty() {
+                entry.remove();
+            }
         }
-    }
-    for key in empty_world_keys {
-        monitor.world_listeners.remove(&key);
     }
 }
