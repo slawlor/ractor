@@ -35,21 +35,25 @@ impl Actor for DummyNodeServer {
         message: Self::Msg,
         _state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        if let crate::node::NodeServerMessage::CheckSession { reply, peer_name } = message {
-            match peer_name.name.as_str() {
-                "other_continues" => {
-                    let _ = reply.send(crate::node::SessionCheckReply::OtherConnectionContinues);
-                }
-                "this_continues" => {
-                    let _ = reply.send(crate::node::SessionCheckReply::ThisConnectionContinues);
-                }
-                "duplicate" => {
-                    let _ = reply.send(crate::node::SessionCheckReply::DuplicateConnection);
-                }
-                _ => {
-                    let _ = reply.send(crate::node::SessionCheckReply::NoOtherConnection);
+        match message {
+            crate::node::NodeServerMessage::CheckSession { reply, peer_name } => {
+                match peer_name.name.as_str() {
+                    "other_continues" => {
+                        let _ =
+                            reply.send(crate::node::SessionCheckReply::OtherConnectionContinues);
+                    }
+                    "this_continues" => {
+                        let _ = reply.send(crate::node::SessionCheckReply::ThisConnectionContinues);
+                    }
+                    "duplicate" => {
+                        let _ = reply.send(crate::node::SessionCheckReply::DuplicateConnection);
+                    }
+                    _ => {
+                        let _ = reply.send(crate::node::SessionCheckReply::NoOtherConnection);
+                    }
                 }
             }
+            _ => {}
         }
         Ok(())
     }
@@ -100,10 +104,12 @@ async fn node_sesison_client_auth_success() {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
             connection_string: "localhost:123".to_string(),
+            connection_id: 0,
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
         max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
+        connection_id: 0,
     };
 
     let mut state = NodeSessionState {
@@ -112,6 +118,7 @@ async fn node_sesison_client_auth_success() {
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
+        connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
         epoch: Instant::now(),
@@ -247,10 +254,12 @@ async fn node_session_client_auth_session_state_failures() {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
             connection_string: "localhost:123".to_string(),
+            connection_id: 0,
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
         max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
+        connection_id: 0,
     };
 
     let mut state = NodeSessionState {
@@ -259,6 +268,7 @@ async fn node_session_client_auth_session_state_failures() {
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
+        connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
         epoch: Instant::now(),
@@ -378,10 +388,12 @@ async fn node_session_server_auth_success() {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
             connection_string: "localhost:123".to_string(),
+            connection_id: 0,
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
         max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
+        connection_id: 0,
     };
 
     // let addr = SocketAddr::
@@ -391,6 +403,7 @@ async fn node_session_server_auth_success() {
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
+        connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
         epoch: Instant::now(),
@@ -403,6 +416,7 @@ async fn node_session_server_auth_success() {
                 name: "peer".to_string(),
                 flags: Some(auth_protocol::NodeFlags { version: 1 }),
                 connection_string: "localhost:123".to_string(),
+                connection_id: 11,
             },
         )),
     };
@@ -475,10 +489,12 @@ async fn node_session_server_auth_session_state_failures() {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
             connection_string: "localhost:123".to_string(),
+            connection_id: 0,
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
         max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
+        connection_id: 0,
     };
 
     let mut state = NodeSessionState {
@@ -487,6 +503,7 @@ async fn node_session_server_auth_session_state_failures() {
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
+        connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
         epoch: Instant::now(),
@@ -499,6 +516,7 @@ async fn node_session_server_auth_session_state_failures() {
                 name: "other_continues".to_string(),
                 flags: Some(auth_protocol::NodeFlags { version: 1 }),
                 connection_string: "localhost:123".to_string(),
+                connection_id: 12,
             },
         )),
     };
@@ -518,6 +536,7 @@ async fn node_session_server_auth_session_state_failures() {
                 name: "this_continues".to_string(),
                 flags: Some(auth_protocol::NodeFlags { version: 1 }),
                 connection_string: "localhost:123".to_string(),
+                connection_id: 13,
             },
         )),
     };
@@ -626,10 +645,12 @@ async fn node_session_handle_node_msg() {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
             connection_string: "localhost:123".to_string(),
+            connection_id: 0,
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
         max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
+        connection_id: 0,
     };
 
     let mut state = NodeSessionState {
@@ -638,6 +659,7 @@ async fn node_session_handle_node_msg() {
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
+        connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
         epoch: Instant::now(),
@@ -725,10 +747,12 @@ async fn node_session_handle_control() {
             name: "myself".to_string(),
             flags: Some(auth_protocol::NodeFlags { version: 1 }),
             connection_string: "localhost:123".to_string(),
+            connection_id: 0,
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
         max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
+        connection_id: 0,
     };
 
     let mut state = NodeSessionState {
@@ -737,6 +761,7 @@ async fn node_session_handle_control() {
         local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
         name: None,
+        connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
         epoch: Instant::now(),
