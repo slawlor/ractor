@@ -808,7 +808,10 @@ where
 
         let myself_clone = myself.clone();
 
-        let future = async move {
+        // Box the processing loop once per actor. This indirection prevents deeply
+        // nested actor graphs from overflowing rustc's layout query depth without allocating
+        // a new box for every message handled by the loop.
+        let future = Box::pin(async move {
             // the message processing loop. If we get an exit flag, try and capture the exit reason if there
             // is one
             loop {
@@ -816,7 +819,7 @@ where
                     should_exit,
                     exit_reason,
                     was_killed,
-                } = Box::pin(Self::process_message(&myself, state, handler, &mut ports))
+                } = Self::process_message(&myself, state, handler, &mut ports)
                     .await
                     .map_err(ActorErr::Failed)?;
                 // processing loop exit
@@ -824,7 +827,7 @@ where
                     return Ok((state, exit_reason, was_killed));
                 }
             }
-        };
+        });
 
         // capture any panics in this future and convert to an ActorErr
         let loop_done = futures::FutureExt::catch_unwind(AssertUnwindSafe(future))
