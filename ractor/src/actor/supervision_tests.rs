@@ -5,6 +5,7 @@
 
 //! Supervisor tests
 
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
@@ -15,6 +16,7 @@ use crate::message::BoxedDowncastErr;
 use crate::periodic_check;
 use crate::Actor;
 use crate::ActorCell;
+use crate::ActorId;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
 use crate::ActorStatus;
@@ -27,7 +29,10 @@ use crate::SupervisionEvent;
 )]
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 async fn test_supervision_panic_in_post_startup() {
-    struct Child;
+    struct Child {
+        supervisor_id: ActorId,
+        linked_to_supervisor: Arc<AtomicBool>,
+    }
     struct Supervisor {
         flag: Arc<AtomicU64>,
     }
@@ -46,9 +51,14 @@ async fn test_supervision_panic_in_post_startup() {
         }
         async fn post_start(
             &self,
-            _this_actor: ActorRef<Self::Msg>,
+            this_actor: ActorRef<Self::Msg>,
             _state: &mut Self::State,
         ) -> Result<(), ActorProcessingErr> {
+            self.linked_to_supervisor.store(
+                this_actor.try_get_supervisor().map(|actor| actor.get_id())
+                    == Some(self.supervisor_id),
+                Ordering::SeqCst,
+            );
             panic!("Boom");
         }
     }
@@ -92,22 +102,27 @@ async fn test_supervision_panic_in_post_startup() {
     }
 
     let flag = Arc::new(AtomicU64::new(0));
+    let linked_to_supervisor = Arc::new(AtomicBool::new(false));
 
     let (supervisor_ref, s_handle) = Actor::spawn(None, Supervisor { flag: flag.clone() }, ())
         .await
         .expect("Supervisor panicked on startup");
 
     let (child_ref, c_handle) = supervisor_ref
-        .spawn_linked(None, Child, ())
+        .spawn_linked(
+            None,
+            Child {
+                supervisor_id: supervisor_ref.get_id(),
+                linked_to_supervisor: linked_to_supervisor.clone(),
+            },
+            (),
+        )
         .await
         .expect("Child panicked on startup");
 
-    let maybe_sup = child_ref.try_get_supervisor();
-    assert!(maybe_sup.is_some());
-    assert_eq!(maybe_sup.map(|a| a.get_id()), Some(supervisor_ref.get_id()));
-
     let (_, _) = tokio::join!(s_handle, c_handle);
 
+    assert!(linked_to_supervisor.load(Ordering::SeqCst));
     assert_eq!(child_ref.get_id().pid(), flag.load(Ordering::SeqCst));
 
     // supervisor relationship cleaned up correctly
