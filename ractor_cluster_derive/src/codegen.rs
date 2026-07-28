@@ -287,6 +287,7 @@ fn pack_args(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
         {
             let __arg_data = <#target_type as ractor::BytesConvertable>::into_bytes(#field);
             let __arg_len = (__arg_data.len() as u64).to_be_bytes();
+            __data.reserve(8 + __arg_data.len());
             __data.extend(__arg_len);
             __data.extend(__arg_data);
         }
