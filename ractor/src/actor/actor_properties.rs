@@ -50,6 +50,18 @@ pub(crate) struct ActorProperties {
 }
 
 impl ActorProperties {
+    fn status_from_u8(status: u8) -> ActorStatus {
+        match status {
+            0u8 => ActorStatus::Unstarted,
+            1u8 => ActorStatus::Starting,
+            2u8 => ActorStatus::Running,
+            3u8 => ActorStatus::Upgrading,
+            4u8 => ActorStatus::Draining,
+            5u8 => ActorStatus::Stopping,
+            _ => ActorStatus::Stopped,
+        }
+    }
+
     pub(crate) fn new<TActor>(
         name: Option<ActorName>,
     ) -> (
@@ -105,19 +117,15 @@ impl ActorProperties {
     }
 
     pub(crate) fn get_status(&self) -> ActorStatus {
-        match self.status.load(Ordering::SeqCst) {
-            0u8 => ActorStatus::Unstarted,
-            1u8 => ActorStatus::Starting,
-            2u8 => ActorStatus::Running,
-            3u8 => ActorStatus::Upgrading,
-            4u8 => ActorStatus::Draining,
-            5u8 => ActorStatus::Stopping,
-            _ => ActorStatus::Stopped,
-        }
+        Self::status_from_u8(self.status.load(Ordering::SeqCst))
     }
 
-    pub(crate) fn set_status(&self, status: ActorStatus) {
-        self.status.store(status as u8, Ordering::SeqCst);
+    /// Advances the lifecycle status without allowing a concurrent or stale
+    /// transition to move it backwards.
+    ///
+    /// Returns the status observed immediately before this update.
+    pub(crate) fn set_status(&self, status: ActorStatus) -> ActorStatus {
+        Self::status_from_u8(self.status.fetch_max(status as u8, Ordering::SeqCst))
     }
 
     pub(crate) fn send_signal(&self, signal: Signal) -> Result<(), MessagingErr<()>> {

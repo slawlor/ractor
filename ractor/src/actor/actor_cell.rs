@@ -322,19 +322,22 @@ impl ActorCell {
         self.inner.supports_remoting
     }
 
-    /// Set the status of the [super::Actor]. If the status is set to
+    /// Advance the status of the [super::Actor]. Requests to move backward in
+    /// the lifecycle are ignored. If the status advances to
     /// [ActorStatus::Stopping] or [ActorStatus::Stopped] the actor
     /// will also be unenrolled from both the named registry ([crate::registry])
     /// and the PG groups ([crate::pg]) if it's enrolled in any
     ///
     /// * `status` - The [ActorStatus] to set
-    pub(crate) fn set_status(&self, status: ActorStatus) {
+    ///
+    /// Returns the status observed immediately before the update.
+    pub(crate) fn set_status(&self, status: ActorStatus) -> ActorStatus {
+        let previous_status = self.inner.set_status(status);
+
         // The actor is shut down — only run cleanup once, on the first transition
-        // to Stopping. This avoids redundant full-DashMap iterations on the
-        // Stopping → Stopped transition.
-        if (status == ActorStatus::Stopped || status == ActorStatus::Stopping)
-            && self.get_status() < ActorStatus::Stopping
-        {
+        // to Stopping. Publish the new status before cleanup so concurrent PG
+        // registrations cannot be added after the reverse indexes are drained.
+        if status >= ActorStatus::Stopping && previous_status < ActorStatus::Stopping {
             #[cfg(feature = "cluster")]
             {
                 // stop monitoring for updates
@@ -353,12 +356,12 @@ impl ActorCell {
 
         // Fix for #254. We should only notify the stop listener AFTER post_stop
         // has executed, which is when the state gets set to `Stopped`.
-        if status == ActorStatus::Stopped {
+        if status == ActorStatus::Stopped && previous_status < ActorStatus::Stopped {
             // notify whoever might be waiting on the stop signal
             self.inner.notify_stop_listener();
         }
 
-        self.inner.set_status(status)
+        previous_status
     }
 
     /// Terminate this [super::Actor] and all it's children
