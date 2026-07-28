@@ -111,6 +111,7 @@ pub struct NodeSession {
     this_node_name: auth_protocol::NameMessage,
     connection_mode: super::NodeConnectionMode,
     max_inbound_frame_size: u64,
+    connection_id: u64,
 }
 
 impl NodeSession {
@@ -139,6 +140,21 @@ impl NodeSession {
             this_node_name: node_name,
             connection_mode,
             max_inbound_frame_size: super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
+            connection_id: if is_server {
+                0
+            } else {
+                Self::new_connection_id()
+            },
+        }
+    }
+
+    fn new_connection_id() -> u64 {
+        let mut rng = rand::rng();
+        loop {
+            let connection_id = rng.random();
+            if connection_id != 0 {
+                return connection_id;
+            }
         }
     }
 
@@ -225,14 +241,17 @@ impl NodeSession {
                             name: server_challenge_value.name.clone(),
                             flags: server_challenge_value.flags,
                             connection_string: server_challenge_value.connection_string.clone(),
+                            connection_id: 0,
                         };
                         state.name = Some(name_message.clone());
+                        let mut registered_name = name_message;
+                        registered_name.connection_id = self.connection_id;
                         // tell the node server that we now know this peer's name information
                         let _ = self
                             .node_server
                             .cast(super::NodeServerMessage::UpdateSession {
                                 actor_id: myself.get_id(),
-                                name: name_message,
+                                name: registered_name,
                             });
                         // send the client challenge to the server
                         let reply = auth_protocol::AuthenticationMessage {
@@ -268,26 +287,33 @@ impl NodeSession {
 
                 match &next {
                     auth::ServerAuthenticationProcess::HavePeerName(peer_name) => {
+                        let connection_id = peer_name.connection_id;
+                        let mut peer_name = peer_name.clone();
+                        peer_name.connection_id = 0;
+                        let mut registered_name = peer_name.clone();
+                        registered_name.connection_id = connection_id;
                         // store the peer node's name in the session state
                         state.name = Some(peer_name.clone());
+                        state.connection_id = connection_id;
+                        // Publish identity before checking. Messages from this
+                        // actor retain mailbox order at the NodeServer.
+                        let _ = self
+                            .node_server
+                            .cast(super::NodeServerMessage::UpdateSession {
+                                actor_id: myself.get_id(),
+                                name: registered_name.clone(),
+                            });
                         // send the status message, followed by the server's challenge
                         let server_status_result = self
                             .node_server
                             .call(
                                 |tx| super::NodeServerMessage::CheckSession {
-                                    peer_name: peer_name.clone(),
+                                    peer_name: registered_name,
                                     reply: tx,
                                 },
                                 Some(Duration::from_millis(500)),
                             )
                             .await;
-                        // tell the node server that we now know this peer's name information
-                        let _ = self
-                            .node_server
-                            .cast(super::NodeServerMessage::UpdateSession {
-                                actor_id: myself.get_id(),
-                                name: peer_name.clone(),
-                            });
                         match server_status_result {
                             Err(_) | Ok(CallResult::Timeout) | Ok(CallResult::SenderError) => {
                                 next = auth::ServerAuthenticationProcess::Close;
@@ -822,6 +848,7 @@ pub struct NodeSessionState {
     local_addr: SocketAddr,
     epoch: Instant,
     name: Option<auth_protocol::NameMessage>,
+    connection_id: u64,
     auth: AuthenticationState,
     ready: ReadyState,
     remote_actors: HashMap<u64, ActorRef<RemoteActorMessage>>,
@@ -920,6 +947,7 @@ impl Actor for NodeSession {
         let state = Self::State {
             tcp: Some(actor),
             name: None,
+            connection_id: self.connection_id,
             auth: if self.is_server {
                 AuthenticationState::AsServer(auth::ServerAuthenticationProcess::init())
             } else {
@@ -934,10 +962,10 @@ impl Actor for NodeSession {
 
         // If a client-connection, startup the handshake
         if !self.is_server {
+            let mut name = self.this_node_name.clone();
+            name.connection_id = self.connection_id;
             state.tcp_send_auth(auth_protocol::AuthenticationMessage {
-                msg: Some(auth_protocol::authentication_message::Msg::Name(
-                    self.this_node_name.clone(),
-                )),
+                msg: Some(auth_protocol::authentication_message::Msg::Name(name)),
             });
         }
 
@@ -992,11 +1020,36 @@ impl Actor for NodeSession {
                                 self.node_server.cast(
                                     NodeServerMessage::ConnectionAuthenticated(myself.get_id()),
                                 )?;
-                                self.after_authenticated(myself.clone(), state);
-                                if state.ready.is_ok() {
-                                    self.node_server.cast(NodeServerMessage::ConnectionReady(
-                                        myself.get_id(),
-                                    ))?;
+                                let elected = if let Some(peer_name) = &state.name {
+                                    let mut peer_name = peer_name.clone();
+                                    peer_name.connection_id = state.connection_id;
+                                    matches!(
+                                        self.node_server
+                                            .call(
+                                            |reply| NodeServerMessage::CheckSession {
+                                                peer_name,
+                                                reply,
+                                            },
+                                            Some(Duration::from_millis(500)),
+                                        )
+                                            .await,
+                                        Ok(CallResult::Success(
+                                            crate::node::SessionCheckReply::NoOtherConnection
+                                                | crate::node::SessionCheckReply::ThisConnectionContinues
+                                        ))
+                                    )
+                                } else {
+                                    false
+                                };
+                                if elected {
+                                    self.after_authenticated(myself.clone(), state);
+                                    if state.ready.is_ok() {
+                                        self.node_server.cast(
+                                            NodeServerMessage::ConnectionReady(myself.get_id()),
+                                        )?;
+                                    }
+                                } else {
+                                    myself.stop(Some("session_election_lost".to_string()));
                                 }
                             }
                         }

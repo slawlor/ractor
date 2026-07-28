@@ -211,6 +211,7 @@ mod tests {
                         name: "howdy".to_string(),
                         flags: Some(NodeFlags { version: 1 }),
                         connection_string: "localhost:123".to_string(),
+                        connection_id: 0,
                     },
                 )),
             },
