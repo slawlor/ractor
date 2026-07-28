@@ -110,6 +110,7 @@ pub struct NodeSession {
     node_server: ActorRef<NodeServerMessage>,
     this_node_name: auth_protocol::NameMessage,
     connection_mode: super::NodeConnectionMode,
+    max_inbound_frame_size: u64,
 }
 
 impl NodeSession {
@@ -137,7 +138,17 @@ impl NodeSession {
             node_server,
             this_node_name: node_name,
             connection_mode,
+            max_inbound_frame_size: super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
         }
+    }
+
+    /// Set the maximum accepted size, in bytes, of one inbound cluster frame.
+    ///
+    /// Frames over this limit terminate the session before a payload buffer is
+    /// allocated. The default is [`super::DEFAULT_MAX_INBOUND_FRAME_SIZE`].
+    pub fn with_max_inbound_frame_size(mut self, max_frame_size: u64) -> Self {
+        self.max_inbound_frame_size = max_frame_size;
+        self
     }
 }
 
@@ -901,6 +912,7 @@ impl Actor for NodeSession {
             stream,
             peer_addr,
             local_addr,
+            self.max_inbound_frame_size,
             myself.get_cell(),
         )
         .await?;
