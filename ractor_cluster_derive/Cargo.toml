@@ -1,6 +1,6 @@
 [package]
 name = "ractor_cluster_derive"
-version = "0.15.13"
+version.workspace = true
 authors = ["Sean Lawlor <slawlor>"]
 description = "Derives for ractor_cluster"
 license = "MIT"
@@ -9,7 +9,7 @@ categories = []
 keywords = ["actor", "ractor"]
 repository = "https://github.com/slawlor/ractor"
 readme = "../README.md"
-rust-version = "1.64"
+rust-version.workspace = true
 
 [lib]
 name = "ractor_cluster_derive"

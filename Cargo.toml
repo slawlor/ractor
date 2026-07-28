@@ -8,4 +8,8 @@ members = [
     "ractor_example_entry_proc",
     "xtask",
 ]
-resolver = "2"
+resolver = "3"
+
+[workspace.package]
+rust-version = "1.85"
+version = "0.16.0"

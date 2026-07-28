@@ -4,6 +4,7 @@ default-run = "xtask"
 version = "0.1.0"
 edition = "2021"
 publish = false
+rust-version.workspace = true
 
 [dependencies]
 xtaskops = "0.4"
