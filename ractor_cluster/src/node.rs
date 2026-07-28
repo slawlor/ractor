@@ -66,6 +66,13 @@ use crate::RactorMessage;
 
 const PROTOCOL_VERSION: u32 = 1;
 
+/// Default maximum size, in bytes, of a single inbound cluster frame.
+///
+/// Frames larger than this limit are rejected before allocating a payload
+/// buffer. Use [`NodeServer::with_max_inbound_frame_size`] to override the
+/// limit when cluster messages legitimately exceed 16 MiB.
+pub const DEFAULT_MAX_INBOUND_FRAME_SIZE: u64 = 16 * 1024 * 1024;
+
 /// Reply to a [NodeServerMessage::CheckSession] message
 #[derive(Debug)]
 pub enum SessionCheckReply {
@@ -202,6 +209,9 @@ pub enum NodeConnectionMode {
 /// responsible for hosting a server port for incoming `node()` connections. It also supervises
 /// all of the [NodeSession] actors which are tied to tcp sessions and manage the FSM around `node()`s
 /// establishing inter connections.
+///
+/// Inbound frames are limited to [`DEFAULT_MAX_INBOUND_FRAME_SIZE`] bytes by default.
+/// The limit can be changed with [`NodeServer::with_max_inbound_frame_size`].
 #[derive(Debug)]
 pub struct NodeServer {
     port: crate::net::NetworkPort,
@@ -211,6 +221,7 @@ pub struct NodeServer {
     encryption_mode: IncomingEncryptionMode,
     connection_mode: NodeConnectionMode,
     listen_addr: Option<IpAddr>,
+    max_inbound_frame_size: u64,
 }
 
 impl NodeServer {
@@ -238,6 +249,7 @@ impl NodeServer {
             encryption_mode: encryption_mode.unwrap_or(IncomingEncryptionMode::Raw),
             connection_mode: connection_mode.unwrap_or(NodeConnectionMode::Isolated),
             listen_addr: None,
+            max_inbound_frame_size: DEFAULT_MAX_INBOUND_FRAME_SIZE,
         }
     }
 
@@ -249,6 +261,17 @@ impl NodeServer {
     /// interface or only on IPv4.
     pub fn with_listen_addr(mut self, addr: IpAddr) -> Self {
         self.listen_addr = Some(addr);
+        self
+    }
+
+    /// Set the maximum accepted size, in bytes, of one inbound cluster frame.
+    ///
+    /// The limit applies before payload allocation and protobuf decoding. A
+    /// peer that sends a larger frame is disconnected. This setting does not
+    /// constrain outbound frames, so every peer must be configured to accept
+    /// the largest message used by the cluster.
+    pub fn with_max_inbound_frame_size(mut self, max_frame_size: u64) -> Self {
+        self.max_inbound_frame_size = max_frame_size;
         self
     }
 }
@@ -420,7 +443,8 @@ impl Actor for NodeServer {
                         myself.clone(),
                         state.this_node_name.clone(),
                         self.connection_mode,
-                    ),
+                    )
+                    .with_max_inbound_frame_size(self.max_inbound_frame_size),
                     *stream,
                     myself.get_cell(),
                 )
@@ -469,7 +493,8 @@ impl Actor for NodeServer {
                         myself.clone(),
                         state.this_node_name.clone(),
                         self.connection_mode,
-                    ),
+                    )
+                    .with_max_inbound_frame_size(self.max_inbound_frame_size),
                     *external_stream,
                     myself.get_cell(),
                 )
@@ -653,6 +678,7 @@ mod tests {
         assert_eq!(node.hostname, "localhost");
         // listen_addr should default to None
         assert!(node.listen_addr.is_none());
+        assert_eq!(node.max_inbound_frame_size, DEFAULT_MAX_INBOUND_FRAME_SIZE);
     }
 
     #[test]
@@ -751,5 +777,20 @@ mod tests {
         assert_eq!(node.listen_addr, Some(ipv4_addr));
         assert_eq!(node.port, 9090);
         assert_eq!(node.node_name, "test_node");
+    }
+
+    #[test]
+    fn test_node_server_with_max_inbound_frame_size() {
+        let node = NodeServer::new(
+            9090,
+            "test_cookie".to_string(),
+            "test_node".to_string(),
+            "localhost".to_string(),
+            None,
+            None,
+        )
+        .with_max_inbound_frame_size(1024);
+
+        assert_eq!(node.max_inbound_frame_size, 1024);
     }
 }

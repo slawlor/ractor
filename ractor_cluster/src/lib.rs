@@ -84,6 +84,7 @@ pub use node::NodeServer;
 pub use node::NodeServerMessage;
 pub use node::NodeSession;
 pub use node::NodeSessionMessage;
+pub use node::DEFAULT_MAX_INBOUND_FRAME_SIZE;
 pub use ractor::serialization::*;
 // Re-export the procedural macros so people don't need to reference them directly
 pub use ractor_cluster_derive::RactorClusterMessage;

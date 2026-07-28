@@ -31,7 +31,14 @@ use crate::RactorMessage;
 /// Helper method to read exactly `len` bytes from the stream into a pre-allocated buffer
 /// of bytes
 async fn read_n_bytes(stream: &mut ActorReadHalf, len: usize) -> Result<Vec<u8>, tokio::io::Error> {
-    let mut buf = vec![0u8; len];
+    let mut buf = Vec::new();
+    buf.try_reserve_exact(len).map_err(|reserve_err| {
+        tokio::io::Error::new(
+            ErrorKind::InvalidData,
+            format!("cluster frame length {len} could not be allocated: {reserve_err}"),
+        )
+    })?;
+    buf.resize(len, 0);
     let mut c_len = 0;
     if let ActorReadHalf::Regular(r) = stream {
         r.readable().await?;
@@ -66,6 +73,7 @@ pub(crate) struct Session {
     pub(crate) handler: ActorRef<crate::node::NodeSessionMessage>,
     pub(crate) peer_addr: SocketAddr,
     pub(crate) local_addr: SocketAddr,
+    max_inbound_frame_size: u64,
 }
 
 impl Session {
@@ -74,6 +82,7 @@ impl Session {
         stream: super::NetworkStream,
         peer_addr: SocketAddr,
         local_addr: SocketAddr,
+        max_inbound_frame_size: u64,
         supervisor: ActorCell,
     ) -> Result<ActorRef<SessionMessage>, SpawnErr> {
         match Actor::spawn_linked(
@@ -82,6 +91,7 @@ impl Session {
                 handler,
                 peer_addr,
                 local_addr,
+                max_inbound_frame_size,
             },
             stream,
             supervisor,
@@ -163,6 +173,7 @@ impl Actor for Session {
             None,
             SessionReader {
                 session: myself.clone(),
+                max_inbound_frame_size: self.max_inbound_frame_size,
             },
             read,
             myself.get_cell(),
@@ -301,7 +312,7 @@ impl ActorReadHalf {
 /// Encode a single network message into the buffer using the length-prefixed
 /// wire format (u64 big-endian length + protobuf payload).
 fn encode_network_message(msg: &crate::protocol::NetworkMessage, buf: &mut Vec<u8>) {
-    let len = msg.encoded_len();
+    let len = u64::try_from(msg.encoded_len()).expect("encoded message length exceeds u64");
     buf.write_all(&len.to_be_bytes())
         .expect("Vec write should not fail");
     msg.encode(buf).expect("Vec write should not fail");
@@ -353,18 +364,51 @@ async fn run_write_task(
 
 struct SessionReader {
     session: ActorRef<SessionMessage>,
+    max_inbound_frame_size: u64,
 }
 
 /// The node connection messages
 pub(crate) enum SessionReaderMessage {
     /// Wait for an object from the stream
     WaitForObject,
-
-    /// Read next object off the stream
-    ReadObject(u64),
 }
 
 impl ractor::Message for SessionReaderMessage {}
+
+fn checked_frame_length(length: u64, max_frame_size: u64) -> tokio::io::Result<usize> {
+    if length > max_frame_size {
+        return Err(tokio::io::Error::new(
+            ErrorKind::InvalidData,
+            format!("cluster frame length {length} exceeds configured limit {max_frame_size}"),
+        ));
+    }
+
+    usize::try_from(length).map_err(|_| {
+        tokio::io::Error::new(
+            ErrorKind::InvalidData,
+            format!("cluster frame length {length} cannot fit in memory on this platform"),
+        )
+    })
+}
+
+async fn read_network_message(
+    stream: &mut ActorReadHalf,
+    max_frame_size: u64,
+) -> tokio::io::Result<crate::protocol::NetworkMessage> {
+    let wire_length = stream.read_u64().await?;
+    tracing::trace!("Payload length message ({wire_length}) received");
+
+    let frame_length = checked_frame_length(wire_length, max_frame_size)?;
+    let bytes = Bytes::from(read_n_bytes(stream, frame_length).await?);
+    tracing::trace!("Payload of length({}) received", bytes.len());
+
+    crate::protocol::NetworkMessage::decode(bytes).map_err(|decode_err| {
+        tokio::io::Error::new(
+            ErrorKind::InvalidData,
+            format!("invalid cluster protobuf frame: {decode_err}"),
+        )
+    })
+}
 
 struct SessionReaderState {
     reader: Option<ActorReadHalf>,
@@ -405,70 +449,34 @@ impl Actor for SessionReader {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            Self::Msg::WaitForObject if state.reader.is_some() => {
-                if let Some(stream) = &mut state.reader {
-                    match stream.read_u64().await {
-                        Ok(length) => {
-                            tracing::trace!("Payload length message ({length}) received");
-                            let _ = myself.cast(SessionReaderMessage::ReadObject(length));
-                            return Ok(());
-                        }
-                        Err(err) if err.kind() == ErrorKind::UnexpectedEof => {
-                            tracing::trace!("Error (EOF) on stream");
-                            // EOF, close the stream by dropping the stream
-                            drop(state.reader.take());
-                            myself.stop(Some("channel_closed".to_string()));
-                        }
-                        Err(_other_err) => {
-                            tracing::trace!("Error ({_other_err:?}) on stream");
-                            // some other TCP error, more handling necessary
-                        }
+            Self::Msg::WaitForObject => {
+                let read_result = match state.reader.as_mut() {
+                    Some(stream) => read_network_message(stream, self.max_inbound_frame_size).await,
+                    None => {
+                        myself.stop(Some("channel_closed".to_string()));
+                        return Ok(());
+                    }
+                };
+
+                match read_result {
+                    Ok(msg) => {
+                        let _ = self.session.cast(SessionMessage::ObjectAvailable(msg));
+                        let _ = myself.cast(SessionReaderMessage::WaitForObject);
+                    }
+                    Err(read_err) => {
+                        let stop_reason = if read_err.kind() == ErrorKind::UnexpectedEof {
+                            tracing::trace!("Cluster stream closed while reading a frame");
+                            "channel_closed"
+                        } else {
+                            tracing::warn!(
+                                "Closing cluster stream after framing error: {read_err}"
+                            );
+                            "frame_read_error"
+                        };
+                        drop(state.reader.take());
+                        myself.stop(Some(stop_reason.to_string()));
                     }
                 }
-
-                let _ = myself.cast(SessionReaderMessage::WaitForObject);
-            }
-            Self::Msg::ReadObject(length) if state.reader.is_some() => {
-                if let Some(stream) = &mut state.reader {
-                    match read_n_bytes(stream, length as usize).await {
-                        Ok(buf) => {
-                            tracing::trace!("Payload of length({}) received", buf.len());
-                            // NOTE: Our implementation writes 2 messages when sending something over the wire, the first
-                            // is exactly 8 bytes which constitute the length of the payload message (u64 in big endian format),
-                            // followed by the payload. This tells our TCP reader how much data to read off the wire
-
-                            // [buf] here should contain the exact amount of data to decode an object properly.
-                            let bytes = Bytes::from(buf);
-                            match crate::protocol::NetworkMessage::decode(bytes) {
-                                Ok(msg) => {
-                                    // we decoded a message, pass it up the chain
-                                    let _ = self.session.cast(SessionMessage::ObjectAvailable(msg));
-                                }
-                                Err(decode_err) => {
-                                    tracing::error!(
-                                        "Error decoding network message: '{decode_err}'. Discarding"
-                                    );
-                                }
-                            }
-                        }
-                        Err(err) if err.kind() == ErrorKind::UnexpectedEof => {
-                            // EOF, close the stream by dropping the stream
-                            drop(state.reader.take());
-                            myself.stop(Some("channel_closed".to_string()));
-                            return Ok(());
-                        }
-                        Err(_other_err) => {
-                            // TODO: some other TCP error, more handling necessary
-                        }
-                    }
-                }
-
-                // we've read the object, now wait for next object
-                let _ = myself.cast(SessionReaderMessage::WaitForObject);
-            }
-            _ => {
-                // no stream is available, keep looping until one is available
-                let _ = myself.cast(SessionReaderMessage::WaitForObject);
             }
         }
         Ok(())
@@ -477,105 +485,243 @@ impl Actor for SessionReader {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+    use std::mem::size_of;
+    use std::pin::Pin;
+    use std::task::Context;
+    use std::task::Poll;
+
     use super::*;
+    use tokio::io::AsyncRead;
+    use tokio::io::ReadBuf;
+
+    fn test_network_message() -> crate::protocol::NetworkMessage {
+        crate::protocol::NetworkMessage {
+            message: Some(crate::protocol::meta::network_message::Message::Node(
+                crate::protocol::node::NodeMessage {
+                    msg: Some(crate::protocol::node::node_message::Msg::Cast(
+                        crate::protocol::node::Cast {
+                            to: 42,
+                            what: vec![1, 2, 3, 4],
+                            variant: "test".to_string(),
+                            metadata: None,
+                        },
+                    )),
+                },
+            )),
+        }
+    }
+
+    fn encode_frame(msg: &crate::protocol::NetworkMessage) -> Vec<u8> {
+        let payload = msg.encode_to_vec();
+        let payload_len = u64::try_from(payload.len()).expect("test payload should fit in u64");
+        let mut frame = Vec::with_capacity(size_of::<u64>() + payload.len());
+        frame.extend_from_slice(&payload_len.to_be_bytes());
+        frame.extend_from_slice(&payload);
+        frame
+    }
 
     #[test]
-    fn test_encode_network_message_creates_valid_buffer() {
-        // Test that encode_network_message properly encodes a message
-        let msg = crate::protocol::NetworkMessage::default();
+    fn encode_network_message_uses_portable_u64_prefix() {
+        let msg = test_network_message();
         let mut buf = Vec::new();
 
         encode_network_message(&msg, &mut buf);
 
-        // Verify buffer has at least 8 bytes (u64 length prefix)
-        assert!(
-            buf.len() >= 8,
-            "Encoded message should have at least 8 bytes for length prefix"
-        );
-
-        // Verify the length prefix matches the rest of the buffer
-        let len_bytes = &buf[0..8];
-        let length = u64::from_be_bytes([
-            len_bytes[0],
-            len_bytes[1],
-            len_bytes[2],
-            len_bytes[3],
-            len_bytes[4],
-            len_bytes[5],
-            len_bytes[6],
-            len_bytes[7],
-        ]);
-
-        // The payload starts at byte 8 and should match the encoded length
-        assert_eq!(
-            buf.len() - 8,
-            length as usize,
-            "Length prefix should match actual payload size"
-        );
+        let encoded_len = msg.encoded_len();
+        let wire_len = u64::try_from(encoded_len).expect("test payload should fit in u64");
+        assert_eq!(&buf[..size_of::<u64>()], &wire_len.to_be_bytes());
+        assert_eq!(buf.len(), size_of::<u64>() + encoded_len);
     }
 
     #[test]
-    fn test_encode_network_message_batching() {
-        // Test that multiple messages can be batched into a single buffer
-        let msg1 = crate::protocol::NetworkMessage::default();
-        let msg2 = crate::protocol::NetworkMessage::default();
+    fn encode_network_message_appends_complete_frames() {
+        let msg1 = test_network_message();
+        let msg2 = test_network_message();
 
         let mut buf = Vec::new();
         encode_network_message(&msg1, &mut buf);
         let size_after_first = buf.len();
 
         encode_network_message(&msg2, &mut buf);
-        let size_after_second = buf.len();
-
-        // Second message should have been appended
-        assert!(size_after_second > size_after_first);
-    }
-
-    #[test]
-    fn test_read_n_bytes_zero_count() {
-        // Test that read_n_bytes handles zero-length reads without hanging
-        // This is a boundary condition test
+        assert_eq!(buf.len(), size_after_first * 2);
     }
 
     #[tokio::test]
-    async fn test_read_n_bytes_eof() {
-        // Test that read_n_bytes returns UnexpectedEof when stream closes early
-        // Create a TcpListener and connect to it to get properly typed streams
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+    async fn frame_at_configured_limit_is_accepted() {
+        let expected = test_network_message();
+        let payload_len =
+            u64::try_from(expected.encoded_len()).expect("test payload should fit in u64");
+        let frame = encode_frame(&expected);
+        let mut reader = ActorReadHalf::External(Box::new(Cursor::new(frame)));
+
+        let actual = read_network_message(&mut reader, payload_len)
             .await
-            .expect("Failed to create listener");
+            .expect("frame at configured limit should be accepted");
 
-        let addr = listener.local_addr().expect("Failed to get local addr");
+        assert_eq!(actual, expected);
+    }
 
-        let client_handle = tokio::spawn(async move {
-            // Connect as client and immediately close
-            let _stream = tokio::net::TcpStream::connect(addr)
-                .await
-                .expect("Failed to connect");
-            // Stream will close when dropped
-        });
+    struct HeaderOnlyReader {
+        header: [u8; size_of::<u64>()],
+        offset: usize,
+    }
 
-        // Accept the connection on server side
-        let (stream, _) = listener.accept().await.expect("Failed to accept");
-        let (mut read_half, _) = stream.into_split();
-
-        // Attempting to read should get EOF
-        let mut buf = vec![0u8; 100];
-        let result = read_half.read(&mut buf).await;
-
-        // We should get either an error or 0 bytes (EOF)
-        match result {
-            Ok(0) => {
-                // EOF
+    impl AsyncRead for HeaderOnlyReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<tokio::io::Result<()>> {
+            if self.offset == self.header.len() {
+                panic!("oversized frame payload must not be read");
             }
-            Err(_e) => {
-                // Also acceptable - connection closed
-            }
-            Ok(_n) => {
-                panic!("Expected EOF or error but got bytes");
-            }
+
+            let count = buf
+                .remaining()
+                .min(self.header.len().saturating_sub(self.offset));
+            let end = self.offset + count;
+            buf.put_slice(&self.header[self.offset..end]);
+            self.offset = end;
+            Poll::Ready(Ok(()))
         }
+    }
 
-        let _ = client_handle.await;
+    #[tokio::test]
+    async fn oversized_frame_is_rejected_before_payload_read() {
+        let max_frame_size = 4_u64;
+        let mut reader = ActorReadHalf::External(Box::new(HeaderOnlyReader {
+            header: (max_frame_size + 1).to_be_bytes(),
+            offset: 0,
+        }));
+
+        let error = read_network_message(&mut reader, max_frame_size)
+            .await
+            .expect_err("oversized frame should be rejected");
+
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert!(error.to_string().contains("exceeds configured limit"));
+    }
+
+    #[tokio::test]
+    async fn unallocatable_frame_is_rejected_before_payload_read() {
+        let unallocatable_length = u64::try_from(isize::MAX)
+            .expect("isize should fit in the wire length")
+            .checked_add(1)
+            .expect("supported platforms have an isize narrower than u64");
+        let mut reader = ActorReadHalf::External(Box::new(HeaderOnlyReader {
+            header: unallocatable_length.to_be_bytes(),
+            offset: 0,
+        }));
+
+        let error = read_network_message(&mut reader, u64::MAX)
+            .await
+            .expect_err("an unallocatable frame should be rejected");
+
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert!(error.to_string().contains("could not be allocated"));
+    }
+
+    #[tokio::test]
+    async fn truncated_frame_is_rejected() {
+        let message = test_network_message();
+        let payload_len = message.encoded_len();
+        let mut frame = encode_frame(&message);
+        frame.pop();
+        let mut reader = ActorReadHalf::External(Box::new(Cursor::new(frame)));
+
+        let error = read_network_message(
+            &mut reader,
+            u64::try_from(payload_len).expect("test payload should fit in u64"),
+        )
+        .await
+        .expect_err("truncated frame should be rejected");
+
+        assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
+    }
+
+    struct FrameSink;
+
+    #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+    impl Actor for FrameSink {
+        type Msg = SessionMessage;
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _args: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    async fn assert_reader_stops(reader: ActorReadHalf, max_inbound_frame_size: u64) {
+        let (sink, sink_handle) = Actor::spawn(None, FrameSink, ())
+            .await
+            .expect("frame sink should start");
+        let (_reader, reader_handle) = Actor::spawn(
+            None,
+            SessionReader {
+                session: sink.clone(),
+                max_inbound_frame_size,
+            },
+            reader,
+        )
+        .await
+        .expect("session reader should start");
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), reader_handle)
+            .await
+            .expect("framing error should stop the reader")
+            .expect("session reader task should exit cleanly");
+
+        sink.stop(None);
+        sink_handle.await.expect("frame sink should stop cleanly");
+    }
+
+    #[ractor::concurrency::test]
+    async fn reader_stops_after_invalid_protobuf_frame() {
+        let invalid_frame = vec![0, 0, 0, 0, 0, 0, 0, 1, 0xff];
+        let reader = ActorReadHalf::External(Box::new(Cursor::new(invalid_frame)));
+        assert_reader_stops(reader, 1).await;
+    }
+
+    struct ErrorAfterHeaderReader {
+        header: [u8; size_of::<u64>()],
+        offset: usize,
+    }
+
+    impl AsyncRead for ErrorAfterHeaderReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<tokio::io::Result<()>> {
+            if self.offset == self.header.len() {
+                return Poll::Ready(Err(tokio::io::Error::new(
+                    ErrorKind::ConnectionReset,
+                    "injected read failure",
+                )));
+            }
+
+            let count = buf
+                .remaining()
+                .min(self.header.len().saturating_sub(self.offset));
+            let end = self.offset + count;
+            buf.put_slice(&self.header[self.offset..end]);
+            self.offset = end;
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[ractor::concurrency::test]
+    async fn reader_stops_after_nonrecoverable_io_error() {
+        let reader = ActorReadHalf::External(Box::new(ErrorAfterHeaderReader {
+            header: 1_u64.to_be_bytes(),
+            offset: 0,
+        }));
+        assert_reader_stops(reader, 1).await;
     }
 }

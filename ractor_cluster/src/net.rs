@@ -57,7 +57,7 @@ pub enum NetworkStream {
     /// This variant enables custom transports to be used while preserving
     /// the existing TCP/TLS paths. The provided reader/writer must be a
     /// connected, bidirectional byte stream using the same framing
-    /// (u64/usize big-endian length prefix + prost payload).
+    /// (u64 big-endian length prefix + prost payload).
     External {
         /// Optional label for the peer (used for diagnostics)
         peer_label: Option<String>,

@@ -103,6 +103,7 @@ async fn node_sesison_client_auth_success() {
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
+        max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
     };
 
     let mut state = NodeSessionState {
@@ -249,6 +250,7 @@ async fn node_session_client_auth_session_state_failures() {
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
+        max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
     };
 
     let mut state = NodeSessionState {
@@ -379,6 +381,7 @@ async fn node_session_server_auth_success() {
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
+        max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
     };
 
     // let addr = SocketAddr::
@@ -475,6 +478,7 @@ async fn node_session_server_auth_session_state_failures() {
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
+        max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
     };
 
     let mut state = NodeSessionState {
@@ -625,6 +629,7 @@ async fn node_session_handle_node_msg() {
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
+        max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
     };
 
     let mut state = NodeSessionState {
@@ -723,6 +728,7 @@ async fn node_session_handle_control() {
         },
         node_server: server_ref.clone(),
         connection_mode: NodeConnectionMode::Isolated,
+        max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
     };
 
     let mut state = NodeSessionState {
