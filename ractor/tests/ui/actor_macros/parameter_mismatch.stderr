@@ -1,0 +1,5 @@
+error: handler parameters must match the message pattern bindings, with an optional leading `ActorRef` and optional trailing state reference
+  --> tests/ui/actor_macros/parameter_mismatch.rs:10:8
+   |
+10 |     fn add(&self, value: u64) {}
+   |        ^^^

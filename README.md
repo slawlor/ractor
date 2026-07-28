@@ -83,11 +83,51 @@ The minimum supported Rust version (MSRV) of `ractor` is `1.85`.
 2. `async-std`, which enables usage of `async-std`'s asynchronous runtime instead of the `tokio` runtime. **However** `tokio` with the `sync` feature remains a dependency because we utilize the messaging synchronization primatives from `tokio` regardless of runtime as they are not specific to the `tokio` runtime. This work is tracked in [#173](https://github.com/slawlor/ractor/pull/173). You can remove default features to "minimize" the tokio dependencies to just the synchronization primatives.
 3. `monitors`, Adds support for an erlang-style monitoring api which is an alternative to direct linkage. Akin to [Process Monitors](https://www.erlang.org/doc/system/ref_man_processes.html#monitors)
 4. `message_span_propogation`, Propagates the span through the message between actors to keep tracing context.
+5. `actor-macros`, which provides opt-in attribute macros for defining actors with one small method per message variant. See the [actor macro guide](docs/actor-macros.md).
 
 ## Working with Actors
 
 Actors in `ractor` are very lightweight and can be treated as thread-safe. Each actor will only call one of its handler functions at a time, and they will
 never be executed in parallel. Following the actor model leads to microservices with well-defined state and processing logic.
+
+### Reducing actor boilerplate
+
+Enable the `actor-macros` feature to generate the `Actor` implementation from an inherent
+implementation whose methods describe the messages they handle:
+
+```toml
+[dependencies]
+ractor = { version = "0.16", features = ["actor-macros"] }
+```
+
+```rust
+struct Counter;
+
+enum CounterMessage {
+    Add(u64),
+}
+
+#[ractor::actor(message = CounterMessage, state = u64)]
+impl Counter {
+    async fn pre_start(
+        &self,
+        _myself: ractor::ActorRef<CounterMessage>,
+        _arguments: (),
+    ) -> Result<u64, ractor::ActorProcessingErr> {
+        Ok(0)
+    }
+
+    #[ractor::message(CounterMessage::Add(amount))]
+    fn add(&self, amount: u64, state: &mut u64) {
+        *state += amount;
+    }
+}
+```
+
+The generated dispatch remains an exhaustive match, so adding an unhandled enum variant is a
+compile error. The explicit trait-based API remains available when its flexibility is preferable.
+See the [guide](docs/actor-macros.md) and the
+[`actor_macro` example](ractor/examples/actor_macro.rs) for the supported method shapes.
 
 An example `ping-pong` actor might be the following
 

@@ -27,7 +27,8 @@ message_span_propogation = []
 output-port-v2 = []
 tokio_runtime = ["tokio/time", "tokio/rt", "tokio/macros", "tokio/tracing"]
 blanket_serde = ["serde", "pot", "cluster"]
-async-trait = ["dep:async-trait"]
+async-trait = ["dep:async-trait", "ractor_macros?/async-trait"]
+actor-macros = ["dep:ractor_macros"]
 
 default = ["tokio_runtime", "message_span_propogation"]
 
@@ -44,6 +45,7 @@ strum = { version = "0.28", features = ["derive"] }
 # async-std feature 'unstable' is required for spawn_local: https://docs.rs/async-std/latest/async_std/task/fn.spawn_local.html
 async-std = { version = "1", features = ["attributes", "unstable"], optional = true }
 async-trait = { version = "0.1", optional = true }
+ractor_macros = { path = "../ractor_macros", version = "0.16.0", optional = true }
 tokio = { version = "1", features = ["sync"] }
 tracing = { version = "0.1", features = ["attributes"] }
 
@@ -73,6 +75,7 @@ serial_test = "3.5"
 rand = "0.10"
 tracing-glog = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+trybuild = "1"
 
 ractor_example_entry_proc = { path = "../ractor_example_entry_proc" }
 
@@ -116,3 +119,11 @@ required-features = []
 name = "factory"
 harness = false
 required-features = []
+
+[[test]]
+name = "actor_macros"
+required-features = ["actor-macros"]
+
+[[example]]
+name = "actor_macro"
+required-features = ["actor-macros"]

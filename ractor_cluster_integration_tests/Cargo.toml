@@ -22,7 +22,7 @@ default = []
 anyhow = "1"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
-ractor = { default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster"], path = "../ractor" }
+ractor = { default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster", "actor-macros"], path = "../ractor" }
 ractor_cluster = { path = "../ractor_cluster" }
 rand = "0.10"
 tokio-rustls = { version = "0.26" }

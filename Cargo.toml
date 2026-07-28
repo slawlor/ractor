@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "ractor",
+    "ractor_macros",
     "ractor_cluster",
     "ractor_cluster_derive",
     "ractor_playground",
