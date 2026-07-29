@@ -336,7 +336,7 @@ pub trait NodeEventSubscription: Send + 'static {
     ///
     /// * `ses`: The [NodeServerSessionInformation] representing the current state
     ///   of the node session
-    fn node_session_authenicated(&self, ses: NodeServerSessionInformation);
+    fn node_session_authenticated(&self, ses: NodeServerSessionInformation);
 
     /// A node session is ready
     ///
@@ -726,7 +726,7 @@ impl Actor for NodeServer {
                     }
                     let entry = &state.node_sessions[&actor_id];
                     for sub in state.subscriptions.values() {
-                        sub.node_session_authenicated(entry.clone());
+                        sub.node_session_authenticated(entry.clone());
                     }
                 }
             }
@@ -1025,7 +1025,7 @@ mod tests {
             ));
         }
 
-        fn node_session_authenicated(&self, _session: NodeServerSessionInformation) {}
+        fn node_session_authenticated(&self, _session: NodeServerSessionInformation) {}
 
         fn node_session_ready(&self, session: NodeServerSessionInformation) {
             let _ = self
