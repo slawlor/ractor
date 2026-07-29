@@ -1,0 +1,5 @@
+error: define either a raw `handle_supervisor_evt` method or `#[ractor::supervision(...)]` handlers, not both
+  --> tests/ui/actor_macros/mixed_supervision_dispatch.rs:16:14
+   |
+16 |     async fn handle_supervisor_evt(
+   |              ^^^^^^^^^^^^^^^^^^^^^

@@ -11,11 +11,11 @@ use quote::{quote, ToTokens};
 use syn::parse::Parser;
 use syn::spanned::Spanned;
 use syn::{
-    punctuated::Punctuated, Attribute, FnArg, ImplItem, ImplItemFn, ItemImpl, Meta, Pat, PatIdent,
-    Path, ReturnType, Signature, Token, Type, TypeReference, Visibility,
+    punctuated::Punctuated, Attribute, FieldPat, FnArg, ImplItem, ImplItemFn, ItemImpl, Member,
+    Meta, Pat, PatIdent, Path, ReturnType, Signature, Token, Type, TypeReference, Visibility,
 };
 
-use crate::config::ActorConfig;
+use crate::config::{ActorConfig, GeneratedMessageConfig, MessageConfig};
 
 const LIFECYCLE_METHODS: &[&str] = &[
     "pre_start",
@@ -31,12 +31,24 @@ pub(crate) fn expand_actor(
     mut actor_impl: ItemImpl,
 ) -> syn::Result<TokenStream> {
     validate_impl(&actor_impl)?;
+    if matches!(&config.message, MessageConfig::Generated(_))
+        && !actor_impl.generics.params.is_empty()
+    {
+        return Err(syn::Error::new(
+            actor_impl.generics.span(),
+            "generated message enums do not yet support generic actor implementations; use `message = ExistingType`",
+        ));
+    }
+    let generated_enum_cfg_attributes = match_arm_cfg_attributes(&actor_impl.attrs)?;
 
     let ractor = resolve_ractor_path(config.crate_path.as_ref());
+    let message_type = config.message.ty();
     let mut inherent_items = Vec::new();
     let mut trait_methods = Vec::new();
-    let mut handlers = Vec::new();
+    let mut message_handlers = Vec::new();
+    let mut supervision_handlers = Vec::new();
     let mut raw_handle_span = None;
+    let mut raw_supervision_span = None;
 
     for item in actor_impl.items {
         let ImplItem::Fn(mut method) = item else {
@@ -44,17 +56,41 @@ pub(crate) fn expand_actor(
             continue;
         };
 
-        let message_attributes = take_message_attributes(&mut method.attrs, &ractor);
+        let message_attributes = take_handler_attributes(&mut method.attrs, &ractor, "message");
+        let supervision_attributes =
+            take_handler_attributes(&mut method.attrs, &ractor, "supervision");
         if message_attributes.len() > 1 {
             return Err(syn::Error::new(
                 message_attributes[1].span(),
                 "message handler methods may only have one `#[ractor::message(...)]` attribute",
             ));
         }
+        if supervision_attributes.len() > 1 {
+            return Err(syn::Error::new(
+                supervision_attributes[1].span(),
+                "supervision handler methods may only have one `#[ractor::supervision(...)]` attribute",
+            ));
+        }
+        if !message_attributes.is_empty() && !supervision_attributes.is_empty() {
+            return Err(syn::Error::new(
+                supervision_attributes[0].span(),
+                "a method cannot be both a message and supervision handler",
+            ));
+        }
 
         if let Some(attribute) = message_attributes.first() {
+            let mut pattern = attribute.parse_args_with(Pat::parse_single)?;
+            if let MessageConfig::Generated(config) = &config.message {
+                qualify_generated_message_pattern(&mut pattern, &config.ident)?;
+            }
+            message_handlers.push(parse_handler(&method, pattern, HandlerKind::Message)?);
+            inherent_items.push(ImplItem::Fn(method));
+            continue;
+        }
+
+        if let Some(attribute) = supervision_attributes.first() {
             let pattern = attribute.parse_args_with(Pat::parse_single)?;
-            handlers.push(parse_handler(&method, pattern)?);
+            supervision_handlers.push(parse_handler(&method, pattern, HandlerKind::Supervision)?);
             inherent_items.push(ImplItem::Fn(method));
             continue;
         }
@@ -63,6 +99,8 @@ pub(crate) fn expand_actor(
             validate_lifecycle_method(&method)?;
             if method.sig.ident == "handle" {
                 raw_handle_span = Some(method.sig.ident.span());
+            } else if method.sig.ident == "handle_supervisor_evt" {
+                raw_supervision_span = Some(method.sig.ident.span());
             }
             trait_methods.push(method);
         } else {
@@ -71,21 +109,30 @@ pub(crate) fn expand_actor(
     }
 
     if let Some(span) = raw_handle_span {
-        if !handlers.is_empty() {
+        if !message_handlers.is_empty() {
             return Err(syn::Error::new(
                 span,
                 "define either a raw `handle` method or `#[ractor::message(...)]` handlers, not both",
             ));
         }
     }
-    if raw_handle_span.is_none() && handlers.is_empty() {
+    if raw_handle_span.is_none() && message_handlers.is_empty() {
         return Err(syn::Error::new(
             actor_impl.self_ty.span(),
             "actor implementation requires a raw `handle` method or at least one `#[ractor::message(...)]` handler",
         ));
     }
+    if let Some(span) = raw_supervision_span {
+        if !supervision_handlers.is_empty() {
+            return Err(syn::Error::new(
+                span,
+                "define either a raw `handle_supervisor_evt` method or `#[ractor::supervision(...)]` handlers, not both",
+            ));
+        }
+    }
 
-    validate_unique_patterns(&handlers)?;
+    validate_unique_patterns(&message_handlers, HandlerKind::Message)?;
+    validate_unique_patterns(&supervision_handlers, HandlerKind::Supervision)?;
 
     let has_pre_start = trait_methods
         .iter()
@@ -101,7 +148,13 @@ pub(crate) fn expand_actor(
     }
 
     if raw_handle_span.is_none() {
-        trait_methods.push(generated_handle(&ractor, &handlers)?);
+        trait_methods.push(generated_handle(&ractor, &message_handlers)?);
+    }
+    if raw_supervision_span.is_none() && !supervision_handlers.is_empty() {
+        trait_methods.push(generated_supervision_handler(
+            &ractor,
+            &supervision_handlers,
+        )?);
     }
 
     let ActorConfig {
@@ -111,6 +164,12 @@ pub(crate) fn expand_actor(
         arguments,
         crate_path: _,
     } = config;
+    let generated_message = match &message {
+        MessageConfig::Existing(_) => TokenStream::new(),
+        MessageConfig::Generated(config) => {
+            generate_message_enum(config, &message_handlers, &generated_enum_cfg_attributes)?
+        }
+    };
     let trait_path = if thread_local {
         quote!(#ractor::thread_local::ThreadLocalActor)
     } else {
@@ -129,7 +188,7 @@ pub(crate) fn expand_actor(
         #(#attrs)*
         #async_trait_attribute
         impl #impl_generics #trait_path for #self_ty #where_clause {
-            type Msg = #message;
+            type Msg = #message_type;
             type State = #state;
             type Arguments = #arguments;
 
@@ -145,6 +204,7 @@ pub(crate) fn expand_actor(
     };
 
     Ok(quote! {
+        #generated_message
         #inherent_impl
         #trait_impl
     })
@@ -265,21 +325,25 @@ mod resolve_ractor_path_tests {
     }
 }
 
-fn take_message_attributes(attributes: &mut Vec<Attribute>, ractor: &Path) -> Vec<Attribute> {
-    let mut message_attributes = Vec::new();
+fn take_handler_attributes(
+    attributes: &mut Vec<Attribute>,
+    ractor: &Path,
+    handler_attribute: &str,
+) -> Vec<Attribute> {
+    let mut handler_attributes = Vec::new();
     attributes.retain(|attribute| {
-        let is_message = is_message_attribute(attribute, ractor);
-        if is_message {
-            message_attributes.push(attribute.clone());
+        let is_handler = is_handler_attribute(attribute, ractor, handler_attribute);
+        if is_handler {
+            handler_attributes.push(attribute.clone());
         }
-        !is_message
+        !is_handler
     });
-    message_attributes
+    handler_attributes
 }
 
-fn is_message_attribute(attribute: &Attribute, ractor: &Path) -> bool {
+fn is_handler_attribute(attribute: &Attribute, ractor: &Path, handler_attribute: &str) -> bool {
     let path = attribute.path();
-    if path.is_ident("message") {
+    if path.is_ident(handler_attribute) {
         return true;
     }
     if path.segments.len() != ractor.segments.len() + 1 {
@@ -293,7 +357,7 @@ fn is_message_attribute(attribute: &Attribute, ractor: &Path) -> bool {
         && path
             .segments
             .last()
-            .is_some_and(|segment| segment.ident == "message")
+            .is_some_and(|segment| segment.ident == handler_attribute)
 }
 
 fn is_lifecycle_method(ident: &syn::Ident) -> bool {
@@ -325,11 +389,48 @@ enum StateAccess {
     Mutable,
 }
 
+#[derive(Clone, Copy)]
+enum HandlerKind {
+    Message,
+    Supervision,
+}
+
+impl HandlerKind {
+    fn method_description(self) -> &'static str {
+        match self {
+            Self::Message => "message handler methods",
+            Self::Supervision => "supervision handler methods",
+        }
+    }
+
+    fn parameter_label(self) -> &'static str {
+        match self {
+            Self::Message => "handler",
+            Self::Supervision => "supervision handler",
+        }
+    }
+
+    fn pattern_label(self) -> &'static str {
+        match self {
+            Self::Message => "message pattern",
+            Self::Supervision => "supervision pattern",
+        }
+    }
+
+    fn event_label(self) -> &'static str {
+        match self {
+            Self::Message => "message",
+            Self::Supervision => "supervision event",
+        }
+    }
+}
+
 struct Handler {
     method_name: syn::Ident,
     pattern: Pat,
     pattern_key: String,
     binding_names: Vec<syn::Ident>,
+    binding_types: Vec<Type>,
     wants_actor_ref: bool,
     state_access: Option<StateAccess>,
     is_async: bool,
@@ -337,12 +438,28 @@ struct Handler {
     cfg_attributes: Vec<Attribute>,
 }
 
-fn parse_handler(method: &ImplItemFn, pattern: Pat) -> syn::Result<Handler> {
-    validate_method_shape(&method.sig, "message handler methods")?;
-    let (pattern_key, binding_names) = parse_message_pattern(&pattern)?;
-    let parameters = typed_parameters(&method.sig)?;
-    let (wants_actor_ref, state_access) =
-        classify_handler_parameters(&parameters, &binding_names, method.sig.ident.span())?;
+fn parse_handler(
+    method: &ImplItemFn,
+    pattern: Pat,
+    handler_kind: HandlerKind,
+) -> syn::Result<Handler> {
+    validate_method_shape(&method.sig, handler_kind.method_description())?;
+    let (pattern_key, binding_names) = parse_handler_pattern(&pattern, handler_kind)?;
+    let parameter_label = handler_kind.parameter_label();
+    let parameters = typed_parameters(&method.sig, parameter_label)?;
+    let (wants_actor_ref, state_access) = classify_handler_parameters(
+        &parameters,
+        &binding_names,
+        method.sig.ident.span(),
+        parameter_label,
+        handler_kind.pattern_label(),
+    )?;
+    let payload_start = usize::from(wants_actor_ref);
+    let payload_end = parameters.len() - usize::from(state_access.is_some());
+    let binding_types = parameters[payload_start..payload_end]
+        .iter()
+        .map(|parameter| (*parameter.ty).clone())
+        .collect();
 
     let cfg_attributes = match_arm_cfg_attributes(&method.attrs)?;
 
@@ -351,6 +468,7 @@ fn parse_handler(method: &ImplItemFn, pattern: Pat) -> syn::Result<Handler> {
         pattern,
         pattern_key,
         binding_names,
+        binding_types,
         wants_actor_ref,
         state_access,
         is_async: method.sig.asyncness.is_some(),
@@ -452,7 +570,10 @@ struct Parameter<'a> {
     ty: &'a Type,
 }
 
-fn typed_parameters(signature: &Signature) -> syn::Result<Vec<Parameter<'_>>> {
+fn typed_parameters<'a>(
+    signature: &'a Signature,
+    handler_label: &str,
+) -> syn::Result<Vec<Parameter<'a>>> {
     signature
         .inputs
         .iter()
@@ -468,7 +589,7 @@ fn typed_parameters(signature: &Signature) -> syn::Result<Vec<Parameter<'_>>> {
                 else {
                     return Err(syn::Error::new(
                         argument.pat.span(),
-                        "handler parameters must be simple identifier bindings",
+                        format!("{handler_label} parameters must be simple identifier bindings"),
                     ));
                 };
                 Ok(Parameter {
@@ -478,7 +599,7 @@ fn typed_parameters(signature: &Signature) -> syn::Result<Vec<Parameter<'_>>> {
             }
             FnArg::Receiver(receiver) => Err(syn::Error::new(
                 receiver.span(),
-                "message handler methods may only have one receiver",
+                format!("{handler_label} methods may only have one receiver"),
             )),
         })
         .collect()
@@ -488,6 +609,8 @@ fn classify_handler_parameters(
     parameters: &[Parameter<'_>],
     bindings: &[syn::Ident],
     error_span: Span,
+    handler_label: &str,
+    pattern_label: &str,
 ) -> syn::Result<(bool, Option<StateAccess>)> {
     let without_state = match_handler_parameters(parameters, bindings, None);
     let with_state = parameters.last().and_then(|parameter| {
@@ -500,11 +623,11 @@ fn classify_handler_parameters(
         (Some(result), None) | (None, Some(result)) => Ok(result),
         (Some(_), Some(_)) => Err(syn::Error::new(
             error_span,
-            "handler parameters are ambiguous; rename the actor reference or state parameter so payload bindings remain explicit",
+            format!("{handler_label} parameters are ambiguous; rename the actor reference or state parameter so payload bindings remain explicit"),
         )),
         (None, None) => Err(syn::Error::new(
             error_span,
-            "handler parameters must match the message pattern bindings, with an optional leading `ActorRef` and optional trailing state reference",
+            format!("{handler_label} parameters must match the {pattern_label} bindings, with an optional leading `ActorRef` and optional trailing state reference"),
         )),
     }
 }
@@ -564,7 +687,63 @@ fn is_actor_ref(ty: &Type) -> bool {
         .is_some_and(|segment| segment.ident == "ActorRef")
 }
 
-fn parse_message_pattern(pattern: &Pat) -> syn::Result<(String, Vec<syn::Ident>)> {
+fn qualify_generated_message_pattern(
+    pattern: &mut Pat,
+    message_ident: &syn::Ident,
+) -> syn::Result<()> {
+    if let Pat::Ident(PatIdent {
+        attrs,
+        by_ref: None,
+        mutability: None,
+        ident,
+        subpat: None,
+    }) = pattern
+    {
+        if attrs.is_empty() {
+            let variant = ident.clone();
+            *pattern = syn::parse_quote!(#message_ident::#variant);
+            return Ok(());
+        }
+    }
+
+    let path = match pattern {
+        Pat::Path(path) if path.qself.is_none() => &mut path.path,
+        Pat::TupleStruct(tuple) if tuple.qself.is_none() => &mut tuple.path,
+        Pat::Struct(structure) if structure.qself.is_none() => &mut structure.path,
+        _ => {
+            return Err(syn::Error::new(
+                pattern.span(),
+                "generated message patterns must name a unit, tuple, or struct enum variant",
+            ));
+        }
+    };
+
+    match path.segments.len() {
+        1 => {
+            let variant = path.segments[0].ident.clone();
+            *path = syn::parse_quote!(#message_ident::#variant);
+        }
+        2 if path.segments[0].ident == *message_ident => {}
+        _ => {
+            return Err(syn::Error::new(
+                path.span(),
+                format!(
+                    "generated message patterns must use `Variant` or `{message_ident}::Variant`"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn parse_handler_pattern(
+    pattern: &Pat,
+    handler_kind: HandlerKind,
+) -> syn::Result<(String, Vec<syn::Ident>)> {
+    let pattern_description = match handler_kind {
+        HandlerKind::Message => "message patterns",
+        HandlerKind::Supervision => "supervision patterns",
+    };
     let (path, fields): (&Path, Vec<&Pat>) = match pattern {
         Pat::Path(path) if path.qself.is_none() && path.attrs.is_empty() => {
             (&path.path, Vec::new())
@@ -589,13 +768,13 @@ fn parse_message_pattern(pattern: &Pat) -> syn::Result<(String, Vec<syn::Ident>)
         Pat::Struct(structure) if structure.rest.is_some() => {
             return Err(syn::Error::new(
                 structure.span(),
-                "message patterns must list every struct variant field; `..` is not supported",
+                format!("{pattern_description} must list every struct variant field; `..` is not supported"),
             ));
         }
         _ => {
             return Err(syn::Error::new(
                 pattern.span(),
-                "message patterns must be a unit, tuple, or struct enum variant with identifier or `_` fields",
+                format!("{pattern_description} must be a unit, tuple, or struct enum variant with identifier or `_` fields"),
             ));
         }
     };
@@ -614,7 +793,9 @@ fn parse_message_pattern(pattern: &Pat) -> syn::Result<(String, Vec<syn::Ident>)
             _ => {
                 return Err(syn::Error::new(
                     field.span(),
-                    "message pattern fields must be plain identifier bindings or `_`",
+                    format!(
+                        "{pattern_description} fields must be plain identifier bindings or `_`"
+                    ),
                 ));
             }
         }
@@ -623,17 +804,120 @@ fn parse_message_pattern(pattern: &Pat) -> syn::Result<(String, Vec<syn::Ident>)
     Ok((path.to_token_stream().to_string(), bindings))
 }
 
-fn validate_unique_patterns(handlers: &[Handler]) -> syn::Result<()> {
+fn validate_unique_patterns(handlers: &[Handler], handler_kind: HandlerKind) -> syn::Result<()> {
     let mut patterns = HashSet::new();
     for handler in handlers {
         if !patterns.insert(&handler.pattern_key) {
             return Err(syn::Error::new(
                 handler.pattern.span(),
-                "this message variant already has a handler",
+                format!(
+                    "this {} variant already has a handler",
+                    handler_kind.event_label()
+                ),
             ));
         }
     }
     Ok(())
+}
+
+fn generate_message_enum(
+    config: &GeneratedMessageConfig,
+    handlers: &[Handler],
+    cfg_attributes: &[Attribute],
+) -> syn::Result<TokenStream> {
+    let visibility = &config.visibility;
+    let enum_ident = &config.ident;
+    let variants = handlers
+        .iter()
+        .map(generate_message_variant)
+        .collect::<syn::Result<Vec<_>>>()?;
+
+    Ok(quote! {
+        #(#cfg_attributes)*
+        #[allow(missing_debug_implementations, missing_docs)]
+        #visibility enum #enum_ident {
+            #(#variants),*
+        }
+    })
+}
+
+fn generate_message_variant(handler: &Handler) -> syn::Result<TokenStream> {
+    let cfg_attributes = &handler.cfg_attributes;
+    let variant_ident = match &handler.pattern {
+        Pat::Path(path) => path.path.segments.last().map(|segment| &segment.ident),
+        Pat::TupleStruct(tuple) => tuple.path.segments.last().map(|segment| &segment.ident),
+        Pat::Struct(structure) => structure.path.segments.last().map(|segment| &segment.ident),
+        _ => None,
+    }
+    .ok_or_else(|| {
+        syn::Error::new(
+            handler.pattern.span(),
+            "generated message pattern is missing a variant name",
+        )
+    })?;
+
+    match &handler.pattern {
+        Pat::Path(_) => Ok(quote! {
+            #(#cfg_attributes)*
+            #variant_ident
+        }),
+        Pat::TupleStruct(tuple) => {
+            if tuple
+                .elems
+                .iter()
+                .any(|element| matches!(element, Pat::Wild(_)))
+            {
+                return Err(syn::Error::new(
+                    tuple.span(),
+                    "generated message patterns cannot discard fields with `_` because every field needs a type",
+                ));
+            }
+            let field_types = &handler.binding_types;
+            Ok(quote! {
+                #(#cfg_attributes)*
+                #variant_ident(#(#field_types),*)
+            })
+        }
+        Pat::Struct(structure) => {
+            if structure
+                .fields
+                .iter()
+                .any(|field| matches!(field.pat.as_ref(), Pat::Wild(_)))
+            {
+                return Err(syn::Error::new(
+                    structure.span(),
+                    "generated message patterns cannot discard fields with `_` because every field needs a type",
+                ));
+            }
+            let fields = structure
+                .fields
+                .iter()
+                .zip(&handler.binding_types)
+                .map(|(field, ty)| generated_named_field(field, ty))
+                .collect::<syn::Result<Vec<_>>>()?;
+            Ok(quote! {
+                #(#cfg_attributes)*
+                #variant_ident { #(#fields),* }
+            })
+        }
+        _ => unreachable!("handler patterns were validated before enum generation"),
+    }
+}
+
+fn generated_named_field(field: &FieldPat, ty: &Type) -> syn::Result<TokenStream> {
+    if matches!(field.pat.as_ref(), Pat::Wild(_)) {
+        return Err(syn::Error::new(
+            field.span(),
+            "generated message patterns cannot discard fields with `_` because every field needs a type",
+        ));
+    }
+    let Member::Named(field_ident) = &field.member else {
+        return Err(syn::Error::new(
+            field.member.span(),
+            "generated struct message fields must be named",
+        ));
+    };
+    Ok(quote!(#field_ident: #ty))
 }
 
 fn returns_unit(output: &ReturnType) -> bool {
@@ -663,32 +947,7 @@ fn generated_handle(ractor: &Path, handlers: &[Handler]) -> syn::Result<ImplItem
     let myself_ident = syn::Ident::new("__ractor_myself", Span::mixed_site());
     let message_ident = syn::Ident::new("__ractor_message", Span::mixed_site());
     let state_ident = syn::Ident::new("__ractor_state", Span::mixed_site());
-    let arms = handlers.iter().map(|handler| {
-        let cfg_attributes = &handler.cfg_attributes;
-        let pattern = &handler.pattern;
-        let method_name = &handler.method_name;
-        let mut arguments = Vec::new();
-        if handler.wants_actor_ref {
-            arguments.push(quote!(#myself_ident));
-        }
-        arguments.extend(handler.binding_names.iter().map(|binding| quote!(#binding)));
-        if let Some(state_access) = handler.state_access {
-            arguments.push(match state_access {
-                StateAccess::Shared => quote!(&*#state_ident),
-                StateAccess::Mutable => quote!(&mut *#state_ident),
-            });
-        }
-
-        let await_suffix = handler.is_async.then(|| quote!(.await));
-        let try_suffix = handler.is_fallible.then(|| quote!(?));
-        quote! {
-            #(#cfg_attributes)*
-            #pattern => {
-                self.#method_name(#(#arguments),*) #await_suffix #try_suffix;
-                ::core::result::Result::Ok(())
-            }
-        }
-    });
+    let arms = generated_handler_arms(handlers, &myself_ident, &state_ident);
 
     syn::parse2(quote! {
         #[allow(unused_variables)]
@@ -703,4 +962,71 @@ fn generated_handle(ractor: &Path, handlers: &[Handler]) -> syn::Result<ImplItem
             }
         }
     })
+}
+
+fn generated_supervision_handler(ractor: &Path, handlers: &[Handler]) -> syn::Result<ImplItemFn> {
+    let myself_ident = syn::Ident::new("__ractor_myself", Span::mixed_site());
+    let event_ident = syn::Ident::new("__ractor_supervision_event", Span::mixed_site());
+    let state_ident = syn::Ident::new("__ractor_state", Span::mixed_site());
+    let arms = generated_handler_arms(handlers, &myself_ident, &state_ident);
+
+    syn::parse2(quote! {
+        #[allow(unused_variables)]
+        async fn handle_supervisor_evt(
+            &self,
+            #myself_ident: #ractor::ActorRef<Self::Msg>,
+            #event_ident: #ractor::SupervisionEvent,
+            #state_ident: &mut Self::State,
+        ) -> ::core::result::Result<(), #ractor::ActorProcessingErr> {
+            match #event_ident {
+                #(#arms),*,
+                __ractor_unhandled_event => {
+                    match __ractor_unhandled_event {
+                        #ractor::SupervisionEvent::ActorTerminated(_, _, _)
+                        | #ractor::SupervisionEvent::ActorFailed(_, _) => {
+                            #myself_ident.stop(::core::option::Option::None);
+                        }
+                        _ => {}
+                    }
+                    ::core::result::Result::Ok(())
+                }
+            }
+        }
+    })
+}
+
+fn generated_handler_arms(
+    handlers: &[Handler],
+    myself_ident: &syn::Ident,
+    state_ident: &syn::Ident,
+) -> Vec<TokenStream> {
+    handlers
+        .iter()
+        .map(|handler| {
+            let cfg_attributes = &handler.cfg_attributes;
+            let pattern = &handler.pattern;
+            let method_name = &handler.method_name;
+            let mut arguments = Vec::new();
+            if handler.wants_actor_ref {
+                arguments.push(quote!(#myself_ident));
+            }
+            arguments.extend(handler.binding_names.iter().map(|binding| quote!(#binding)));
+            if let Some(state_access) = handler.state_access {
+                arguments.push(match state_access {
+                    StateAccess::Shared => quote!(&*#state_ident),
+                    StateAccess::Mutable => quote!(&mut *#state_ident),
+                });
+            }
+
+            let await_suffix = handler.is_async.then(|| quote!(.await));
+            let try_suffix = handler.is_fallible.then(|| quote!(?));
+            quote! {
+                #(#cfg_attributes)*
+                #pattern => {
+                    self.#method_name(#(#arguments),*) #await_suffix #try_suffix;
+                    ::core::result::Result::Ok(())
+                }
+            }
+        })
+        .collect()
 }

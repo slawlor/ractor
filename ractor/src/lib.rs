@@ -224,7 +224,9 @@ pub use port::OutputPort;
 pub use port::RpcReplyPort;
 #[cfg(feature = "actor-macros")]
 /// Generate an [`Actor`] or [`thread_local::ThreadLocalActor`] implementation
-/// from an inherent implementation block and explicit message handlers.
+/// from an inherent implementation block and focused message or supervision
+/// handlers. Local message enums can optionally be generated from handler
+/// patterns and parameter types.
 ///
 /// Dispatch is exhaustive: adding a message variant without a corresponding
 /// handler does not compile.
