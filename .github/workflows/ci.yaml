@@ -7,6 +7,35 @@ on:
     types: [opened, reopened, synchronize]
 
 jobs:
+  msrv:
+    name: Rust 1.85 MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Install Rust 1.85
+        uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Check workspace defaults and all targets
+        run: cargo check --workspace --all-targets
+
+      - name: Check async traits with Tokio
+        run: cargo check --package ractor --features async-trait
+
+      - name: Check async traits with async-std
+        run: cargo check --package ractor --no-default-features --features async-std,async-trait
+
+      - name: Check optional ractor APIs
+        run: cargo check --package ractor --features cluster,monitors,blanket_serde,output-port-v2
+
+      - name: Check ractor_cluster with async traits
+        run: cargo check --package ractor_cluster --features async-trait
+
+      - name: Check the ractor WASM library
+        run: cargo check --package ractor --lib --target wasm32-unknown-unknown
+
   test:
     name: ${{matrix.name}}
     runs-on: ubuntu-latest

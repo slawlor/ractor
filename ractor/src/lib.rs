@@ -12,11 +12,10 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ractor = "0.15"
+//! ractor = "0.16"
 //! ```
 //!
-//! The minimum supported Rust version (MSRV) is 1.64. However if you disable the `async-trait` feature, then you need Rust >= 1.75 due to the native
-//! use of `async fn` in traits. See the [Rust blog](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html).
+//! The minimum supported Rust version (MSRV) is 1.85.
 //!
 //! ## Getting started
 //!

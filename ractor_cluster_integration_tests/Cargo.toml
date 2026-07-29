@@ -9,6 +9,7 @@ keywords = ["actor", "ractor"]
 repository = "https://github.com/slawlor/ractor"
 readme = "../README.md"
 publish = false
+rust-version.workspace = true
 
 [features]
 blanket_serde = ["ractor/blanket_serde"]

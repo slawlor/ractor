@@ -236,8 +236,7 @@ Default features: `tokio_runtime`, `message_span_propogation`
 
 ### Runtime Requirements
 
-- MSRV: Rust 1.64
-- Native async fn in traits requires Rust >= 1.75 (otherwise use `async-trait` feature)
+- MSRV: Rust 1.85
 - Thread-local actors REQUIRE tokio runtime with `rt` feature
 - WASM support available (target `wasm32-unknown-unknown`)
 
