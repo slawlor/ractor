@@ -18,7 +18,7 @@ use crate::config::ActorConfig;
 /// Generate a Ractor actor implementation from ordinary inherent methods.
 ///
 /// Use `message = MessageType` for an existing message type, or
-/// `messages = [visibility] MessageType` to generate a local message enum from
+/// `message = [visibility] enum MessageType` to generate a local message enum from
 /// the handler patterns and parameter types. `state` and `arguments` default
 /// to `()`. Add the `thread_local` flag to implement `ThreadLocalActor` instead
 /// of `Actor`.

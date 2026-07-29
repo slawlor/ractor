@@ -62,13 +62,13 @@ flat so that the method signature remains an immediate description of the messag
 
 ## Generating local message enums
 
-For local actors, `messages = [visibility] EnumName` generates the message enum from the handler
-patterns and parameter types:
+For local actors, `message = [visibility] enum EnumName` generates the message enum from the
+handler patterns and parameter types:
 
 ```rust
 struct Counter;
 
-#[ractor::actor(messages = pub CounterMessage, state = i64, arguments = i64)]
+#[ractor::actor(message = pub enum CounterMessage, state = i64, arguments = i64)]
 impl Counter {
     async fn pre_start(
         &self,

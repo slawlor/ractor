@@ -1,6 +1,6 @@
 struct GeneratedActor;
 
-#[ractor::actor(messages = GeneratedMessage)]
+#[ractor::actor(message = enum GeneratedMessage)]
 impl GeneratedActor {
     #[ractor::message(Discard(_))]
     fn discard(&self) {}

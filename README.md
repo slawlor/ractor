@@ -125,7 +125,7 @@ impl Counter {
 ```
 
 The generated dispatch remains an exhaustive match, so adding an unhandled enum variant is a
-compile error. For local actors, `messages = CounterMessage` can also generate the enum from
+compile error. For local actors, `message = enum CounterMessage` can also generate the enum from
 handler patterns and parameter types. Focused `#[ractor::supervision(...)]` methods provide the
 same dispatch style for supervision events. The explicit trait-based API remains available when
 its flexibility is preferable. See the [guide](docs/actor-macros.md) and the

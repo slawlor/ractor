@@ -7,35 +7,16 @@ use std::cell::Cell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+use ractor::actor::messages::BoxedState;
 use ractor::{
-    Actor, ActorCell, ActorProcessingErr, ActorRef, ActorStatus, RpcReplyPort, SupervisionEvent,
+    Actor, ActorCell, ActorId, ActorProcessingErr, ActorRef, ActorStatus, RpcReplyPort,
+    SupervisionEvent,
 };
 
 struct Counter;
 
-enum CounterMessage {
-    Add(i64),
-    #[cfg(any())]
-    Disabled,
-    #[cfg_attr(all(), cfg(any()))]
-    DisabledByCfgAttr,
-    Replace {
-        value: i64,
-    },
-    InternalNames {
-        __ractor_myself: i64,
-        __ractor_message: i64,
-        __ractor_state: i64,
-    },
-    Read(RpcReplyPort<i64>),
-    Stop,
-}
-
-#[cfg(feature = "cluster")]
-impl ractor::Message for CounterMessage {}
-
 #[ractor::actor(
-    message = CounterMessage,
+    message = enum CounterMessage,
     state = std::primitive::i64,
     arguments = i64,
     crate_path = ::ractor,
@@ -49,27 +30,27 @@ impl Counter {
         Ok(initial)
     }
 
-    #[ractor::message(CounterMessage::Add(amount))]
+    #[ractor::message(Add(amount))]
     #[cfg_attr(all(), tracing::instrument(skip(self, state)))]
     fn add(&self, amount: i64, state: &mut i64) {
         *state += amount;
     }
 
     #[cfg(any())]
-    #[ractor::message(CounterMessage::Disabled)]
+    #[ractor::message(Disabled)]
     fn disabled(&self) {}
 
     #[cfg_attr(all(), cfg(any()))]
-    #[ractor::message(CounterMessage::DisabledByCfgAttr)]
+    #[ractor::message(DisabledByCfgAttr)]
     fn disabled_by_cfg_attr(&self) {}
 
-    #[ractor::message(CounterMessage::Replace { value })]
+    #[ractor::message(Replace { value })]
     async fn replace(&self, value: i64, state: &mut i64) -> Result<(), ActorProcessingErr> {
         *state = value;
         Ok(())
     }
 
-    #[ractor::message(CounterMessage::InternalNames {
+    #[ractor::message(InternalNames {
         __ractor_myself,
         __ractor_message,
         __ractor_state,
@@ -86,16 +67,19 @@ impl Counter {
         *state = __ractor_myself + __ractor_message + __ractor_state;
     }
 
-    #[ractor::message(CounterMessage::Read(reply))]
+    #[ractor::message(Read(reply))]
     fn read(&self, reply: RpcReplyPort<i64>, state: &i64) {
         let _ = reply.send(*state);
     }
 
-    #[ractor::message(CounterMessage::Stop)]
+    #[ractor::message(Stop)]
     fn stop(&self, myself: ActorRef<CounterMessage>) {
         myself.stop(None);
     }
 }
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for CounterMessage {}
 
 struct RawActor;
 
@@ -120,17 +104,48 @@ impl RawActor {
     }
 }
 
+struct FailingChild;
+
+enum FailingChildMessage {
+    Fail,
+}
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for FailingChildMessage {}
+
+#[ractor::actor(message = FailingChildMessage, crate_path = ::ractor)]
+impl FailingChild {
+    #[ractor::message(FailingChildMessage::Fail)]
+    fn fail(&self) {
+        panic!("intentional child failure");
+    }
+}
+
 struct GeneratedSupervisor;
 
-#[derive(Default)]
-struct SupervisorState {
-    started: usize,
-    terminated: usize,
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TerminationRecord {
+    actor_id: ActorId,
+    state_was_unit: bool,
+    reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FailureRecord {
+    actor_id: ActorId,
+    error: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SupervisorState {
+    started: Vec<ActorId>,
+    terminated: Option<TerminationRecord>,
+    failed: Option<FailureRecord>,
     value: i64,
 }
 
 #[ractor::actor(
-    messages = pub MacroSupervisorMessage,
+    message = pub enum MacroSupervisorMessage,
     state = SupervisorState,
     crate_path = ::ractor,
 )]
@@ -144,8 +159,8 @@ impl GeneratedSupervisor {
     }
 
     #[ractor::message(Counts(reply))]
-    fn counts(&self, reply: RpcReplyPort<(usize, usize, i64)>, state: &SupervisorState) {
-        let _ = reply.send((state.started, state.terminated, state.value));
+    fn counts(&self, reply: RpcReplyPort<SupervisorState>, state: &SupervisorState) {
+        let _ = reply.send(state.clone());
     }
 
     #[ractor::message(Record { value })]
@@ -158,14 +173,38 @@ impl GeneratedSupervisor {
         myself.stop(None);
     }
 
-    #[ractor::supervision(SupervisionEvent::ActorStarted(_child))]
-    fn child_started(&self, _child: ActorCell, state: &mut SupervisorState) {
-        state.started += 1;
+    #[ractor::supervision(SupervisionEvent::ActorStarted(child))]
+    fn child_started(&self, child: ActorCell, state: &mut SupervisorState) {
+        state.started.push(child.get_id());
     }
 
-    #[ractor::supervision(SupervisionEvent::ActorTerminated(_child, _, _))]
-    fn child_terminated(&self, _child: ActorCell, state: &mut SupervisorState) {
-        state.terminated += 1;
+    #[ractor::supervision(SupervisionEvent::ActorTerminated(child, final_state, reason,))]
+    fn child_terminated(
+        &self,
+        child: ActorCell,
+        final_state: Option<BoxedState>,
+        reason: Option<String>,
+        state: &mut SupervisorState,
+    ) {
+        let state_was_unit = final_state.is_some_and(|mut value| value.take::<()>().is_ok());
+        state.terminated = Some(TerminationRecord {
+            actor_id: child.get_id(),
+            state_was_unit,
+            reason,
+        });
+    }
+
+    #[ractor::supervision(SupervisionEvent::ActorFailed(child, error))]
+    fn child_failed(
+        &self,
+        child: ActorCell,
+        error: ActorProcessingErr,
+        state: &mut SupervisorState,
+    ) {
+        state.failed = Some(FailureRecord {
+            actor_id: child.get_id(),
+            error: error.to_string(),
+        });
     }
 }
 
@@ -208,19 +247,9 @@ impl DefaultingSupervisor {
 #[derive(Default)]
 struct LocalCounter;
 
-#[cfg_attr(feature = "async-std", allow(dead_code))]
-enum LocalMessage {
-    Add(i64),
-    Read(RpcReplyPort<i64>),
-    Stop,
-}
-
-#[cfg(feature = "cluster")]
-impl ractor::Message for LocalMessage {}
-
 #[ractor::actor(
     thread_local,
-    message = LocalMessage,
+    message = enum LocalMessage,
     state = Rc<Cell<i64>>,
     arguments = i64,
     crate_path = ::ractor,
@@ -235,17 +264,17 @@ impl LocalCounter {
         Ok(Rc::new(Cell::new(initial)))
     }
 
-    #[ractor::message(LocalMessage::Add(amount))]
+    #[ractor::message(Add(amount))]
     fn add(&self, amount: i64, state: &Rc<Cell<i64>>) {
         state.set(state.get() + amount);
     }
 
-    #[ractor::message(LocalMessage::Read(reply))]
+    #[ractor::message(Read(reply))]
     fn read(&self, reply: RpcReplyPort<i64>, state: &Rc<Cell<i64>>) {
         let _ = reply.send(state.get());
     }
 
-    #[ractor::message(LocalMessage::Stop)]
+    #[ractor::message(Stop)]
     fn stop(&self, myself: ActorRef<LocalMessage>) {
         myself.stop(None);
     }
@@ -253,6 +282,9 @@ impl LocalCounter {
     #[ractor::supervision(SupervisionEvent::ActorStarted(_child))]
     fn child_started(&self, _child: ActorCell, _state: &Rc<Cell<i64>>) {}
 }
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for LocalMessage {}
 
 struct GenericActor<T>(PhantomData<T>);
 
@@ -365,13 +397,44 @@ async fn generated_messages_and_supervision_handlers_dispatch() {
     child.stop(None);
     child_handle.await.expect("linked child failed to stop");
 
+    let (failing_child, failing_child_handle) =
+        Actor::spawn_linked(None, FailingChild, (), supervisor.get_cell())
+            .await
+            .expect("failing child failed to start");
+    failing_child
+        .send_message(FailingChildMessage::Fail)
+        .expect("failed to send failure message");
+    failing_child_handle
+        .await
+        .expect("failing child runtime failed to stop");
+
     supervisor
         .send_message(MacroSupervisorMessage::Record { value: 42 })
         .expect("generated struct message failed");
 
-    let counts = ractor::call_t!(supervisor, MacroSupervisorMessage::Counts, 100)
-        .expect("generated supervisor failed to report counts");
-    assert_eq!(counts, (1, 1, 42));
+    let snapshot = ractor::call_t!(supervisor, MacroSupervisorMessage::Counts, 100)
+        .expect("generated supervisor failed to report its state");
+    assert_eq!(
+        snapshot.started,
+        vec![child.get_id(), failing_child.get_id()]
+    );
+    assert_eq!(
+        snapshot.terminated,
+        Some(TerminationRecord {
+            actor_id: child.get_id(),
+            state_was_unit: true,
+            reason: None,
+        })
+    );
+    assert_eq!(
+        snapshot.failed.as_ref().map(|failure| failure.actor_id),
+        Some(failing_child.get_id())
+    );
+    assert!(snapshot
+        .failed
+        .as_ref()
+        .is_some_and(|failure| failure.error.contains("intentional child failure")));
+    assert_eq!(snapshot.value, 42);
     assert_eq!(supervisor.get_status(), ActorStatus::Running);
 
     supervisor
