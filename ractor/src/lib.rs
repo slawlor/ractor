@@ -162,6 +162,12 @@
     unsafe_code
 )]
 
+// Macro expansions use this stable absolute path both inside this crate and from
+// package-local examples and integration tests.
+#[cfg(feature = "actor-macros")]
+#[allow(unused_extern_crates)]
+extern crate self as ractor;
+
 // ======================== Modules ======================== //
 
 pub mod actor;
@@ -216,6 +222,28 @@ use paste as _;
 pub use port::OutputMessage;
 pub use port::OutputPort;
 pub use port::RpcReplyPort;
+#[cfg(feature = "actor-macros")]
+/// Generate an [`Actor`] or [`thread_local::ThreadLocalActor`] implementation
+/// from an inherent implementation block and explicit message handlers.
+///
+/// Dispatch is exhaustive: adding a message variant without a corresponding
+/// handler does not compile.
+///
+/// ```compile_fail
+/// struct IncompleteActor;
+///
+/// enum Message {
+///     Handled,
+///     Forgotten,
+/// }
+///
+/// #[ractor::actor(message = Message)]
+/// impl IncompleteActor {
+///     #[ractor::message(Message::Handled)]
+///     fn handled(&self) {}
+/// }
+/// ```
+pub use ractor_macros::actor;
 #[cfg(test)]
 use rand as _;
 #[cfg(feature = "cluster")]
@@ -224,6 +252,8 @@ pub use serialization::BytesConvertable;
 use tracing_glog as _;
 #[cfg(test)]
 use tracing_subscriber as _;
+#[cfg(test)]
+use trybuild as _;
 
 // ======================== Type aliases and Trait definitions ======================== //
 

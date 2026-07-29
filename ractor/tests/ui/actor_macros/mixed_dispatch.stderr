@@ -1,0 +1,5 @@
+error: define either a raw `handle` method or `#[ractor::message(...)]` handlers, not both
+  --> tests/ui/actor_macros/mixed_dispatch.rs:13:14
+   |
+13 |     async fn handle(
+   |              ^^^^^^

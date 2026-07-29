@@ -1,0 +1,24 @@
+[package]
+name = "ractor_macros"
+version.workspace = true
+authors = ["Sean Lawlor <slawlor>"]
+description = "Ergonomic actor definition macros for ractor"
+license = "MIT"
+edition = "2021"
+keywords = ["actor", "ractor", "macros"]
+categories = ["asynchronous"]
+repository = "https://github.com/slawlor/ractor"
+readme = "../README.md"
+rust-version.workspace = true
+
+[lib]
+proc-macro = true
+
+[features]
+async-trait = []
+
+[dependencies]
+proc-macro-crate = "3"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }

@@ -23,7 +23,17 @@ jobs:
       run: cargo login $CRATES_IO_TOKEN
       env:
         CRATES_IO_TOKEN: ${{ secrets.crates_io_token }}
-    
+
+    - name: Dry run publish ractor_macros
+      run: cargo publish --dry-run --manifest-path Cargo.toml -p ractor_macros
+    - name: Publish ractor_macros
+      run: cargo publish --manifest-path Cargo.toml -p ractor_macros
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.crates_io_token }}
+
+    - name: Wait for necessary ractor_macros version to be available
+      run: bash ./.github/workflows/wait_for_crate_dependency.sh ractor ractor_macros
+
     - name: Dry run publish ractor
       run: cargo publish --dry-run --manifest-path Cargo.toml -p ractor
     - name: Publish crate ractor
@@ -49,4 +59,3 @@ jobs:
       run: cargo publish --manifest-path Cargo.toml -p ractor_cluster
       env:
         CARGO_REGISTRY_TOKEN: ${{ secrets.crates_io_token }}
-        

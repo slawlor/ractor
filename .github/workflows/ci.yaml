@@ -21,14 +21,17 @@ jobs:
       - name: Check workspace defaults and all targets
         run: cargo check --workspace --all-targets
 
+      - name: Check actor macros with native async traits
+        run: cargo check --package ractor --features actor-macros --all-targets
+
       - name: Check async traits with Tokio
-        run: cargo check --package ractor --features async-trait
+        run: cargo check --package ractor --features async-trait,actor-macros --all-targets
 
       - name: Check async traits with async-std
-        run: cargo check --package ractor --no-default-features --features async-std,async-trait
+        run: cargo check --package ractor --no-default-features --features async-std,async-trait,actor-macros --all-targets
 
       - name: Check optional ractor APIs
-        run: cargo check --package ractor --features cluster,monitors,blanket_serde,output-port-v2
+        run: cargo check --package ractor --features cluster,monitors,blanket_serde,output-port-v2,actor-macros --all-targets
 
       - name: Check ractor_cluster with async traits
         run: cargo check --package ractor_cluster --features async-trait
@@ -49,6 +52,15 @@ jobs:
           - name: Test ractor with async-trait
             package: ractor
             flags: -F async-trait
+          - name: Test actor macros with native async traits
+            package: ractor
+            flags: -F actor-macros
+          - name: Test actor macros with async-trait
+            package: ractor
+            flags: --no-default-features -F tokio_runtime,async-trait,actor-macros
+          - name: Test actor macros with async-std and async-trait
+            package: ractor
+            flags: --no-default-features -F async-std,async-trait,actor-macros
           - name: Test ractor without span propogation
             package: ractor
             flags: --no-default-features -F tokio_runtime

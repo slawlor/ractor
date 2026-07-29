@@ -42,17 +42,13 @@ struct HelloActorState {
     done: bool,
 }
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
-impl Actor for HelloActor {
-    type Msg = HelloActorMessage;
-    type State = HelloActorState;
-    type Arguments = ();
-
+#[ractor::actor(message = HelloActorMessage, state = HelloActorState)]
+impl HelloActor {
     async fn pre_start(
         &self,
-        myself: ActorRef<Self::Msg>,
+        myself: ActorRef<HelloActorMessage>,
         _: (),
-    ) -> Result<Self::State, ActorProcessingErr> {
+    ) -> Result<HelloActorState, ActorProcessingErr> {
         ractor::pg::join("test".to_string(), vec![myself.get_cell()]);
         Ok(HelloActorState {
             count: 0,
@@ -60,44 +56,38 @@ impl Actor for HelloActor {
         })
     }
 
-    async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Self::Msg,
-        state: &mut Self::State,
-    ) -> Result<(), ActorProcessingErr> {
+    #[ractor::message(HelloActorMessage::Hey(message))]
+    fn hey(&self, message: String, state: &mut HelloActorState) -> Result<(), ActorProcessingErr> {
         let group = "test".to_string();
         let remote_actors = ractor::pg::get_members(&group)
             .into_iter()
             .filter(|actor| !actor.get_id().is_local())
-            .map(ActorRef::<Self::Msg>::from)
+            .map(ActorRef::<HelloActorMessage>::from)
             .collect::<Vec<_>>();
-        match message {
-            Self::Msg::Hey(message) => {
-                assert!(
-                    message.starts_with("Hey there"),
-                    "Invalid hey message received"
-                );
-                tracing::info!(
-                    "Received a hey {}, replying in kind to {} remote actors",
-                    message,
-                    remote_actors.len()
-                );
-                for act in remote_actors {
-                    act.cast(HelloActorMessage::Hey(message.clone()))?;
-                }
-                state.count += 1;
+        assert!(
+            message.starts_with("Hey there"),
+            "Invalid hey message received"
+        );
+        tracing::info!(
+            "Received a hey {}, replying in kind to {} remote actors",
+            message,
+            remote_actors.len()
+        );
+        for actor in remote_actors {
+            actor.cast(HelloActorMessage::Hey(message.clone()))?;
+        }
+        state.count += 1;
 
-                if state.count > NUM_HELLOS {
-                    state.done = true;
-                }
-            }
-            Self::Msg::IsDone(reply) => {
-                let _ = reply.send(state.done);
-            }
+        if state.count > NUM_HELLOS {
+            state.done = true;
         }
 
         Ok(())
+    }
+
+    #[ractor::message(HelloActorMessage::IsDone(reply))]
+    fn is_done(&self, reply: RpcReplyPort<bool>, state: &HelloActorState) {
+        let _ = reply.send(state.done);
     }
 }
 

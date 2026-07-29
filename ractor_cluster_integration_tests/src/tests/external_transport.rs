@@ -66,17 +66,17 @@ struct ExternalProbeArgs {
     label: String,
 }
 
-#[cfg_attr(feature = "async-trait", ractor::async_trait)]
-impl Actor for ExternalProbeActor {
-    type Msg = ExternalProbeMessage;
-    type State = ExternalProbeState;
-    type Arguments = ExternalProbeArgs;
-
+#[ractor::actor(
+    message = ExternalProbeMessage,
+    state = ExternalProbeState,
+    arguments = ExternalProbeArgs,
+)]
+impl ExternalProbeActor {
     async fn pre_start(
         &self,
-        myself: ActorRef<Self::Msg>,
+        myself: ActorRef<ExternalProbeMessage>,
         args: ExternalProbeArgs,
-    ) -> Result<Self::State, ActorProcessingErr> {
+    ) -> Result<ExternalProbeState, ActorProcessingErr> {
         ractor::pg::join(EXTERNAL_GROUP.to_string(), vec![myself.get_cell()]);
         Ok(ExternalProbeState {
             label: args.label,
@@ -84,82 +84,82 @@ impl Actor for ExternalProbeActor {
         })
     }
 
-    async fn handle(
+    #[ractor::message(ExternalProbeMessage::Kickoff)]
+    async fn kickoff(
         &self,
-        myself: ActorRef<Self::Msg>,
-        message: Self::Msg,
-        state: &mut Self::State,
+        myself: ActorRef<ExternalProbeMessage>,
+        state: &mut ExternalProbeState,
     ) -> Result<(), ActorProcessingErr> {
-        match message {
-            ExternalProbeMessage::Kickoff => {
-                if state.complete {
-                    return Ok(());
-                }
+        if state.complete {
+            return Ok(());
+        }
 
-                let remote_members = ractor::pg::get_members(&EXTERNAL_GROUP.to_string())
-                    .into_iter()
-                    .filter(|actor| !actor.get_id().is_local())
-                    .map(ActorRef::<Self::Msg>::from)
-                    .collect::<Vec<_>>();
+        let remote_members = ractor::pg::get_members(&EXTERNAL_GROUP.to_string())
+            .into_iter()
+            .filter(|actor| !actor.get_id().is_local())
+            .map(ActorRef::<ExternalProbeMessage>::from)
+            .collect::<Vec<_>>();
 
-                if remote_members.is_empty() {
-                    let handle = myself.clone();
-                    ractor::concurrency::spawn(async move {
-                        sleep(Duration::from_millis(PROBE_RETRY_DELAY_MS)).await;
-                        let _ = handle.cast(ExternalProbeMessage::Kickoff);
-                    });
-                    return Ok(());
-                }
+        if remote_members.is_empty() {
+            let handle = myself.clone();
+            ractor::concurrency::spawn(async move {
+                sleep(Duration::from_millis(PROBE_RETRY_DELAY_MS)).await;
+                let _ = handle.cast(ExternalProbeMessage::Kickoff);
+            });
+            return Ok(());
+        }
 
-                for remote in remote_members {
-                    match ractor::call_t!(
-                        remote,
-                        ExternalProbeMessage::Ping,
-                        PROBE_RPC_TIMEOUT_MS,
-                        state.label.clone()
-                    ) {
-                        Ok(reply) => {
-                            tracing::info!(
-                                "{} received external transport reply '{reply}'",
-                                state.label
-                            );
-                            if reply.contains(&state.label) {
-                                state.complete = true;
-                                break;
-                            }
-                        }
-                        Err(err) => {
-                            tracing::warn!(
-                                "{} failed to ping remote external probe: {err}",
-                                state.label
-                            );
-                        }
+        for remote in remote_members {
+            match ractor::call_t!(
+                remote,
+                ExternalProbeMessage::Ping,
+                PROBE_RPC_TIMEOUT_MS,
+                state.label.clone()
+            ) {
+                Ok(reply) => {
+                    tracing::info!(
+                        "{} received external transport reply '{reply}'",
+                        state.label
+                    );
+                    if reply.contains(&state.label) {
+                        state.complete = true;
+                        break;
                     }
                 }
-
-                if !state.complete {
-                    let handle = myself.clone();
-                    ractor::concurrency::spawn(async move {
-                        sleep(Duration::from_millis(PROBE_RETRY_DELAY_MS)).await;
-                        let _ = handle.cast(ExternalProbeMessage::Kickoff);
-                    });
+                Err(err) => {
+                    tracing::warn!(
+                        "{} failed to ping remote external probe: {err}",
+                        state.label
+                    );
                 }
-            }
-            ExternalProbeMessage::Ping(requestor, reply) => {
-                let response = format!("Hello {requestor} from {}", state.label);
-                let _ = reply.send(response.clone());
-                state.complete = true;
-                tracing::info!(
-                    "{} responded to external transport probe with '{response}'",
-                    state.label
-                );
-            }
-            ExternalProbeMessage::IsComplete(reply) => {
-                let _ = reply.send(state.complete);
             }
         }
 
+        if !state.complete {
+            let handle = myself.clone();
+            ractor::concurrency::spawn(async move {
+                sleep(Duration::from_millis(PROBE_RETRY_DELAY_MS)).await;
+                let _ = handle.cast(ExternalProbeMessage::Kickoff);
+            });
+        }
+
         Ok(())
+    }
+
+    #[ractor::message(ExternalProbeMessage::Ping(requestor, reply))]
+    fn ping(&self, requestor: String, reply: RpcReplyPort<String>, state: &mut ExternalProbeState) {
+        let response = format!("Hello {requestor} from {}", state.label);
+        let _ = reply.send(response.clone());
+        state.complete = true;
+        tracing::info!(
+            "{} responded to external transport probe with '{response}'",
+            state.label
+        );
+    }
+
+    #[ractor::message(ExternalProbeMessage::IsComplete(reply))]
+    fn is_complete(&self, reply: RpcReplyPort<bool>, state: &ExternalProbeState) {
+        let _ = reply.send(state.complete);
     }
 }
 

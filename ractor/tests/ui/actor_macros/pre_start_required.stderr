@@ -1,0 +1,5 @@
+error: `pre_start` is required unless both `state` and `arguments` are `()`
+ --> tests/ui/actor_macros/pre_start_required.rs:8:6
+  |
+8 | impl StatefulActor {
+  |      ^^^^^^^^^^^^^
