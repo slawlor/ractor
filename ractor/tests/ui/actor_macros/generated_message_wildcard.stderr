@@ -1,0 +1,5 @@
+error: generated message patterns cannot discard fields with `_` because every field needs a type
+ --> tests/ui/actor_macros/generated_message_wildcard.rs:3:28
+  |
+3 | #[ractor::actor(messages = GeneratedMessage)]
+  |                            ^^^^^^^^^^^^^^^^

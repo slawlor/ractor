@@ -125,8 +125,10 @@ impl Counter {
 ```
 
 The generated dispatch remains an exhaustive match, so adding an unhandled enum variant is a
-compile error. The explicit trait-based API remains available when its flexibility is preferable.
-See the [guide](docs/actor-macros.md) and the
+compile error. For local actors, `messages = CounterMessage` can also generate the enum from
+handler patterns and parameter types. Focused `#[ractor::supervision(...)]` methods provide the
+same dispatch style for supervision events. The explicit trait-based API remains available when
+its flexibility is preferable. See the [guide](docs/actor-macros.md) and the
 [`actor_macro` example](ractor/examples/actor_macro.rs) for the supported method shapes.
 
 An example `ping-pong` actor might be the following

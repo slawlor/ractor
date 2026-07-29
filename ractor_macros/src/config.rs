@@ -4,12 +4,36 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 use syn::parse::{Parse, ParseStream};
-use syn::{Ident, Path, Result, Token, Type};
+use syn::{Ident, Path, Result, Token, Type, Visibility};
+
+/// An enum generated from the actor's message handlers.
+pub(crate) struct GeneratedMessageConfig {
+    pub(crate) visibility: Visibility,
+    pub(crate) ident: Ident,
+}
+
+/// The message type supplied to `#[ractor::actor(...)]`.
+pub(crate) enum MessageConfig {
+    Existing(Type),
+    Generated(GeneratedMessageConfig),
+}
+
+impl MessageConfig {
+    pub(crate) fn ty(&self) -> Type {
+        match self {
+            Self::Existing(ty) => ty.clone(),
+            Self::Generated(config) => {
+                let ident = &config.ident;
+                syn::parse_quote!(#ident)
+            }
+        }
+    }
+}
 
 /// Configuration supplied to `#[ractor::actor(...)]`.
 pub(crate) struct ActorConfig {
     pub(crate) thread_local: bool,
-    pub(crate) message: Type,
+    pub(crate) message: MessageConfig,
     pub(crate) state: Type,
     pub(crate) arguments: Type,
     pub(crate) crate_path: Option<Path>,
@@ -19,6 +43,7 @@ impl Parse for ActorConfig {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut thread_local = false;
         let mut message = None;
+        let mut generated_message = None;
         let mut state = None;
         let mut arguments = None;
         let mut crate_path = None;
@@ -38,6 +63,16 @@ impl Parse for ActorConfig {
                     "message" => {
                         set_once(&mut message, input.parse()?, &key, "message")?;
                     }
+                    "messages" => {
+                        let visibility = input.parse()?;
+                        let ident = input.parse()?;
+                        set_once(
+                            &mut generated_message,
+                            GeneratedMessageConfig { visibility, ident },
+                            &key,
+                            "messages",
+                        )?;
+                    }
                     "state" => {
                         set_once(&mut state, input.parse()?, &key, "state")?;
                     }
@@ -50,7 +85,7 @@ impl Parse for ActorConfig {
                     _ => {
                         return Err(syn::Error::new(
                             key.span(),
-                            "unknown actor option; expected `thread_local`, `message`, `state`, `arguments`, or `crate_path`",
+                            "unknown actor option; expected `thread_local`, `message`, `messages`, `state`, `arguments`, or `crate_path`",
                         ));
                     }
                 }
@@ -62,12 +97,22 @@ impl Parse for ActorConfig {
             input.parse::<Token![,]>()?;
         }
 
-        let message = message.ok_or_else(|| {
-            syn::Error::new(
-                input.span(),
-                "missing required actor option `message = ...`",
-            )
-        })?;
+        let message = match (message, generated_message) {
+            (Some(message), None) => MessageConfig::Existing(message),
+            (None, Some(message)) => MessageConfig::Generated(message),
+            (Some(_), Some(message)) => {
+                return Err(syn::Error::new(
+                    message.ident.span(),
+                    "`message` and `messages` are mutually exclusive",
+                ));
+            }
+            (None, None) => {
+                return Err(syn::Error::new(
+                    input.span(),
+                    "missing required actor option `message = ...` or `messages = ...`",
+                ));
+            }
+        };
 
         Ok(Self {
             thread_local,

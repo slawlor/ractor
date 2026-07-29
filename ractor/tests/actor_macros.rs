@@ -7,7 +7,9 @@ use std::cell::Cell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use ractor::{
+    Actor, ActorCell, ActorProcessingErr, ActorRef, ActorStatus, RpcReplyPort, SupervisionEvent,
+};
 
 struct Counter;
 
@@ -118,6 +120,90 @@ impl RawActor {
     }
 }
 
+struct GeneratedSupervisor;
+
+#[derive(Default)]
+struct SupervisorState {
+    started: usize,
+    terminated: usize,
+    value: i64,
+}
+
+#[ractor::actor(
+    messages = pub MacroSupervisorMessage,
+    state = SupervisorState,
+    crate_path = ::ractor,
+)]
+impl GeneratedSupervisor {
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<MacroSupervisorMessage>,
+        _arguments: (),
+    ) -> Result<SupervisorState, ActorProcessingErr> {
+        Ok(SupervisorState::default())
+    }
+
+    #[ractor::message(Counts(reply))]
+    fn counts(&self, reply: RpcReplyPort<(usize, usize, i64)>, state: &SupervisorState) {
+        let _ = reply.send((state.started, state.terminated, state.value));
+    }
+
+    #[ractor::message(Record { value })]
+    fn record(&self, value: i64, state: &mut SupervisorState) {
+        state.value = value;
+    }
+
+    #[ractor::message(Stop)]
+    fn stop_generated_supervisor(&self, myself: ActorRef<MacroSupervisorMessage>) {
+        myself.stop(None);
+    }
+
+    #[ractor::supervision(SupervisionEvent::ActorStarted(_child))]
+    fn child_started(&self, _child: ActorCell, state: &mut SupervisorState) {
+        state.started += 1;
+    }
+
+    #[ractor::supervision(SupervisionEvent::ActorTerminated(_child, _, _))]
+    fn child_terminated(&self, _child: ActorCell, state: &mut SupervisorState) {
+        state.terminated += 1;
+    }
+}
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for MacroSupervisorMessage {}
+
+struct DefaultingSupervisor;
+
+enum DefaultingSupervisorMessage {
+    Ping,
+}
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for DefaultingSupervisorMessage {}
+
+#[ractor::actor(
+    message = DefaultingSupervisorMessage,
+    state = usize,
+    crate_path = ::ractor,
+)]
+impl DefaultingSupervisor {
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<DefaultingSupervisorMessage>,
+        _arguments: (),
+    ) -> Result<usize, ActorProcessingErr> {
+        Ok(0)
+    }
+
+    #[ractor::message(DefaultingSupervisorMessage::Ping)]
+    fn ping(&self) {}
+
+    #[ractor::supervision(SupervisionEvent::ActorStarted(_child))]
+    fn child_started(&self, _child: ActorCell, state: &mut usize) {
+        *state += 1;
+    }
+}
+
 #[cfg_attr(feature = "async-std", allow(dead_code))]
 #[derive(Default)]
 struct LocalCounter;
@@ -163,6 +249,9 @@ impl LocalCounter {
     fn stop(&self, myself: ActorRef<LocalMessage>) {
         myself.stop(None);
     }
+
+    #[ractor::supervision(SupervisionEvent::ActorStarted(_child))]
+    fn child_started(&self, _child: ActorCell, _state: &Rc<Cell<i64>>) {}
 }
 
 struct GenericActor<T>(PhantomData<T>);
@@ -262,6 +351,55 @@ async fn raw_handle_mode_remains_available() {
 
     actor.stop(None);
     handle.await.expect("raw actor failed to stop cleanly");
+}
+
+#[ractor::concurrency::test]
+async fn generated_messages_and_supervision_handlers_dispatch() {
+    let (supervisor, supervisor_handle) = Actor::spawn(None, GeneratedSupervisor, ())
+        .await
+        .expect("generated supervisor failed to start");
+    let (child, child_handle) = Actor::spawn_linked(None, RawActor, (), supervisor.get_cell())
+        .await
+        .expect("linked child failed to start");
+
+    child.stop(None);
+    child_handle.await.expect("linked child failed to stop");
+
+    supervisor
+        .send_message(MacroSupervisorMessage::Record { value: 42 })
+        .expect("generated struct message failed");
+
+    let counts = ractor::call_t!(supervisor, MacroSupervisorMessage::Counts, 100)
+        .expect("generated supervisor failed to report counts");
+    assert_eq!(counts, (1, 1, 42));
+    assert_eq!(supervisor.get_status(), ActorStatus::Running);
+
+    supervisor
+        .send_message(MacroSupervisorMessage::Stop)
+        .expect("generated supervisor stop message failed");
+    supervisor_handle
+        .await
+        .expect("generated supervisor failed to stop");
+}
+
+#[ractor::concurrency::test]
+async fn unhandled_supervision_events_keep_the_default_shutdown_behavior() {
+    let (supervisor, supervisor_handle) = Actor::spawn(None, DefaultingSupervisor, ())
+        .await
+        .expect("defaulting supervisor failed to start");
+    let (child, child_handle) = Actor::spawn_linked(None, RawActor, (), supervisor.get_cell())
+        .await
+        .expect("linked child failed to start");
+
+    supervisor
+        .send_message(DefaultingSupervisorMessage::Ping)
+        .expect("defaulting supervisor ping failed");
+    child.stop(None);
+    child_handle.await.expect("linked child failed to stop");
+    supervisor_handle
+        .await
+        .expect("defaulting supervisor failed to stop");
+    assert_eq!(supervisor.get_status(), ActorStatus::Stopped);
 }
 
 #[cfg(not(feature = "async-std"))]

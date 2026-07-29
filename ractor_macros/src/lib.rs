@@ -17,8 +17,10 @@ use crate::config::ActorConfig;
 
 /// Generate a Ractor actor implementation from ordinary inherent methods.
 ///
-/// `message = MessageType` is required. `state` and `arguments` default to
-/// `()`. Add the `thread_local` flag to implement `ThreadLocalActor` instead
+/// Use `message = MessageType` for an existing message type, or
+/// `messages = [visibility] MessageType` to generate a local message enum from
+/// the handler patterns and parameter types. `state` and `arguments` default
+/// to `()`. Add the `thread_local` flag to implement `ThreadLocalActor` instead
 /// of `Actor`.
 ///
 /// Mark handlers with `#[ractor::message(Message::Variant(...))]`. Flat unit,
@@ -32,6 +34,11 @@ use crate::config::ActorConfig;
 /// a handler is a compile error. A canonical raw `handle` method remains
 /// supported, but cannot be mixed with generated message handlers. Other
 /// lifecycle methods keep their normal async trait signatures.
+///
+/// Mark focused supervision handlers with
+/// `#[ractor::supervision(SupervisionEvent::Variant(...))]`. Their parameters
+/// follow the same actor-reference, pattern-binding, and state rules as message
+/// handlers. Unmatched events retain Ractor's default supervision behavior.
 ///
 /// ```ignore
 /// #[ractor::actor(message = CounterMessage, state = u64)]
