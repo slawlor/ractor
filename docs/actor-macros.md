@@ -51,8 +51,9 @@ impl Counter {
 
 `message` is required. `state` and `arguments` default to `()`. The macro generates the
 `Actor` implementation and an exhaustive `match` over the message enum. Rust therefore reports a
-new or forgotten message variant at compile time. Renamed `ractor` dependencies are detected
-automatically; `crate_path = some::path` is available when a re-export requires an explicit path.
+new or forgotten message variant at compile time. Cargo dependency renames are detected
+automatically, and non-Cargo builds default to `::ractor`. The `crate_path = some::path` option is
+only necessary when a non-Cargo build renames the dependency.
 
 Tuple, struct, and unit variants are supported. Bindings in the attribute pattern become handler
 parameters with matching names in the same order; `_` can discard an unused field. Keep patterns

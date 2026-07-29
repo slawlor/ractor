@@ -32,7 +32,7 @@ pub(crate) fn expand_actor(
 ) -> syn::Result<TokenStream> {
     validate_impl(&actor_impl)?;
 
-    let ractor = resolve_ractor_path(config.crate_path.as_ref())?;
+    let ractor = resolve_ractor_path(config.crate_path.as_ref());
     let mut inherent_items = Vec::new();
     let mut trait_methods = Vec::new();
     let mut handlers = Vec::new();
@@ -201,23 +201,67 @@ fn path_ends_with_async_trait(path: &Path) -> bool {
         .is_some_and(|segment| segment.ident == "async_trait")
 }
 
-fn resolve_ractor_path(explicit_path: Option<&Path>) -> syn::Result<Path> {
+fn resolve_ractor_path(explicit_path: Option<&Path>) -> Path {
+    resolve_ractor_path_with(explicit_path, || crate_name("ractor"))
+}
+
+fn resolve_ractor_path_with<E>(
+    explicit_path: Option<&Path>,
+    find_crate: impl FnOnce() -> Result<FoundCrate, E>,
+) -> Path {
     if let Some(path) = explicit_path {
-        return Ok(path.clone());
+        return path.clone();
     }
 
-    match crate_name("ractor") {
-        Ok(FoundCrate::Itself) => Ok(syn::parse_quote!(::ractor)),
+    match find_crate() {
+        Ok(FoundCrate::Itself) => syn::parse_quote!(crate),
         Ok(FoundCrate::Name(name)) => {
             let crate_ident = syn::Ident::new(&name.replace('-', "_"), Span::call_site());
-            Ok(syn::parse_quote!(::#crate_ident))
+            syn::parse_quote!(::#crate_ident)
         }
-        Err(error) => Err(syn::Error::new(
-            Span::call_site(),
-            format!(
-                "could not find the `ractor` dependency ({error}); use `crate_path = ...` to specify its path"
-            ),
-        )),
+        Err(_) => syn::parse_quote!(::ractor),
+    }
+}
+
+#[cfg(test)]
+mod resolve_ractor_path_tests {
+    use super::*;
+
+    fn path_string(path: &Path) -> String {
+        path.to_token_stream().to_string()
+    }
+
+    #[test]
+    fn lookup_failure_falls_back_to_ractor() {
+        let path = resolve_ractor_path_with(None, || Err::<FoundCrate, _>("lookup failed"));
+
+        assert_eq!(path_string(&path), ":: ractor");
+    }
+
+    #[test]
+    fn explicit_path_takes_priority() {
+        let explicit: Path = syn::parse_quote!(reexport::ractor);
+        let path = resolve_ractor_path_with(Some(&explicit), || -> Result<FoundCrate, ()> {
+            panic!("crate lookup should not run when crate_path is explicit")
+        });
+
+        assert_eq!(path_string(&path), path_string(&explicit));
+    }
+
+    #[test]
+    fn renamed_dependency_uses_discovered_name() {
+        let path = resolve_ractor_path_with(None, || {
+            Ok::<_, ()>(FoundCrate::Name("renamed-ractor".to_owned()))
+        });
+
+        assert_eq!(path_string(&path), ":: renamed_ractor");
+    }
+
+    #[test]
+    fn self_crate_uses_crate_path() {
+        let path = resolve_ractor_path_with(None, || Ok::<_, ()>(FoundCrate::Itself));
+
+        assert_eq!(path_string(&path), "crate");
     }
 }
 
