@@ -36,6 +36,7 @@ impl ractor::Message for CounterMessage {}
     message = CounterMessage,
     state = std::primitive::i64,
     arguments = i64,
+    crate_path = ::ractor,
 )]
 impl Counter {
     async fn pre_start(
@@ -103,7 +104,7 @@ enum RawMessage {
 #[cfg(feature = "cluster")]
 impl ractor::Message for RawMessage {}
 
-#[ractor::actor(message = RawMessage)]
+#[ractor::actor(message = RawMessage, crate_path = ::ractor)]
 impl RawActor {
     async fn handle(
         &self,
@@ -136,6 +137,7 @@ impl ractor::Message for LocalMessage {}
     message = LocalMessage,
     state = Rc<Cell<i64>>,
     arguments = i64,
+    crate_path = ::ractor,
 )]
 #[cfg_attr(feature = "async-std", allow(dead_code))]
 impl LocalCounter {
@@ -172,7 +174,7 @@ enum GenericMessage<T> {
 #[cfg(feature = "cluster")]
 impl<T: Send + 'static> ractor::Message for GenericMessage<T> {}
 
-#[ractor::actor(message = GenericMessage<T>)]
+#[ractor::actor(message = GenericMessage<T>, crate_path = ::ractor)]
 impl<T> GenericActor<T>
 where
     T: Send + Sync + 'static,
@@ -203,7 +205,7 @@ mod shadowed_prelude_names {
     #[cfg(feature = "cluster")]
     impl ractor::Message for Message {}
 
-    #[ractor::actor(message = Message)]
+    #[ractor::actor(message = Message, crate_path = ::ractor)]
     impl ShadowedActor {
         #[ractor::message(Message::Run)]
         fn run(&self) {

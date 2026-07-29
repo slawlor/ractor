@@ -36,6 +36,7 @@ impl ractor::Message for CounterMessage {}
     message = CounterMessage,
     state = i64,
     arguments = i64,
+    crate_path = ::ractor,
 )]
 impl Counter {
     async fn pre_start(
