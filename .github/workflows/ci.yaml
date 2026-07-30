@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@main
 
       - name: Install Rust 1.85
-        uses: dtolnay/rust-toolchain@1.85.0
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: wasm32-unknown-unknown
 
