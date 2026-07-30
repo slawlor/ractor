@@ -415,6 +415,78 @@ where
     fn build(&mut self, wid: WorkerId) -> (TWorker, TWorkerStart);
 }
 
+/// A [`WorkerBuilder`] backed by a closure.
+///
+/// Construct this type with [`worker_builder`]. The closure is [`FnMut`] so it
+/// can maintain state across worker construction, including replacement
+/// workers created after a failure.
+pub struct FnWorkerBuilder<TBuilder> {
+    builder: TBuilder,
+}
+
+impl<TBuilder> Debug for FnWorkerBuilder<TBuilder> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FnWorkerBuilder").finish_non_exhaustive()
+    }
+}
+
+/// Construct a [`WorkerBuilder`] from a closure.
+///
+/// This removes the need to define a one-off type solely to implement
+/// [`WorkerBuilder`]. The closure receives the worker ID and returns the worker
+/// together with its custom startup arguments.
+///
+/// # Examples
+///
+/// ```
+/// use ractor::factory::{worker_builder, FactoryMessage, Worker, WorkerBuilder, WorkerId};
+/// use ractor::{ActorProcessingErr, ActorRef};
+///
+/// struct ExampleWorker;
+///
+/// #[cfg_attr(feature = "async-trait", ractor::async_trait)]
+/// impl Worker for ExampleWorker {
+///     type Key = ();
+///     type Message = ();
+///     type State = ();
+///     type Arguments = ();
+///
+///     async fn pre_start(
+///         &self,
+///         _wid: WorkerId,
+///         _factory: &ActorRef<FactoryMessage<(), ()>>,
+///         arguments: (),
+///     ) -> Result<(), ActorProcessingErr> {
+///         Ok(arguments)
+///     }
+/// }
+///
+/// let builder: Box<dyn WorkerBuilder<ExampleWorker, ()>> =
+///     Box::new(worker_builder(|_wid| (ExampleWorker, ())));
+/// ```
+pub fn worker_builder<TWorker, TWorkerStart, TBuilder>(
+    builder: TBuilder,
+) -> FnWorkerBuilder<TBuilder>
+where
+    TWorker: Actor,
+    TWorkerStart: Message,
+    TBuilder: FnMut(WorkerId) -> (TWorker, TWorkerStart) + Send + Sync,
+{
+    FnWorkerBuilder { builder }
+}
+
+impl<TWorker, TWorkerStart, TBuilder> WorkerBuilder<TWorker, TWorkerStart>
+    for FnWorkerBuilder<TBuilder>
+where
+    TWorker: Actor,
+    TWorkerStart: Message,
+    TBuilder: FnMut(WorkerId) -> (TWorker, TWorkerStart) + Send + Sync,
+{
+    fn build(&mut self, wid: WorkerId) -> (TWorker, TWorkerStart) {
+        (self.builder)(wid)
+    }
+}
+
 /// Controls the size of the worker pool by dynamically growing/shrinking the pool
 /// to requested size
 #[cfg_attr(feature = "async-trait", crate::async_trait)]

@@ -11,6 +11,19 @@
 //! which denotes a key and message payload for each action. Workers are effectively mindless
 //! agents of the factory's will.
 //!
+//! ## Local and remote factory operations
+//!
+//! In a cluster, only [`FactoryMessage::Dispatch`] is serialized for a remote
+//! factory. Job dispatch and [`FactoryRef::call_job`] can therefore target a
+//! remote factory when the job's message supports it. Factory observation and
+//! management operations, such as queue-depth queries, pool resizing, settings
+//! updates, and request draining, are local-factory-only.
+//!
+//! The one-way [`FactoryRef`] helpers return [`FactorySendResult`], which boxes
+//! the large but recoverable [`FactoryMessage`] on failure. Call and query
+//! helpers follow [`crate::ActorRef::call`] and return an unboxed
+//! [`FactoryMessagingErr`].
+//!
 //! ## Worker message routing mode
 //!  
 //! The factory has a series of dispatch modes which are defined in the [routing] module and
@@ -53,7 +66,6 @@
 //! use ractor::factory::*;
 //! use ractor::Actor;
 //! use ractor::ActorProcessingErr;
-//! use ractor::ActorRef;
 //! use ractor::RpcReplyPort;
 //!
 //! #[derive(Debug)]
@@ -77,7 +89,7 @@
 //!     async fn pre_start(
 //!         &self,
 //!         wid: WorkerId,
-//!         factory: &ActorRef<FactoryMessage<(), ExampleMessage>>,
+//!         factory: &FactoryRef<(), ExampleMessage>,
 //!         startup_context: Self::Arguments,
 //!     ) -> Result<Self::State, ActorProcessingErr> {
 //!         Ok(startup_context)
@@ -85,7 +97,7 @@
 //!     async fn handle(
 //!         &self,
 //!         wid: WorkerId,
-//!         factory: &ActorRef<FactoryMessage<(), ExampleMessage>>,
+//!         factory: &FactoryRef<(), ExampleMessage>,
 //!         Job { msg, key, .. }: Job<(), ExampleMessage>,
 //!         _state: &mut Self::State,
 //!     ) -> Result<(), ActorProcessingErr> {
@@ -103,13 +115,6 @@
 //!         Ok(key)
 //!     }
 //! }
-//! /// Used by the factory to build new [ExampleWorker]s.
-//! struct ExampleWorkerBuilder;
-//! impl WorkerBuilder<ExampleWorker, ()> for ExampleWorkerBuilder {
-//!     fn build(&mut self, _wid: usize) -> (ExampleWorker, ()) {
-//!         (ExampleWorker, ())
-//!     }
-//! }
 //! #[tokio::main]
 //! async fn main() {
 //!     let factory_def = Factory::<
@@ -121,7 +126,7 @@
 //!         queues::DefaultQueue<(), ExampleMessage>,
 //!     >::default();
 //!     let factory_args = FactoryArguments::builder()
-//!         .worker_builder(Box::new(ExampleWorkerBuilder))
+//!         .worker_builder(Box::new(worker_builder(|_wid| (ExampleWorker, ()))))
 //!         .queue(Default::default())
 //!         .router(Default::default())
 //!         .num_initial_workers(5)
@@ -132,24 +137,13 @@
 //!         .expect("Failed to startup factory");
 //!     for i in 0..99 {
 //!         factory
-//!             .cast(FactoryMessage::Dispatch(Job {
-//!                 key: (),
-//!                 msg: ExampleMessage::PrintValue(i),
-//!                 options: JobOptions::default(),
-//!                 accepted: None,
-//!             }))
+//!             .dispatch((), ExampleMessage::PrintValue(i))
 //!             .expect("Failed to send to factory");
 //!     }
 //!     let reply = factory
-//!         .call(
-//!             |prt| {
-//!                 FactoryMessage::Dispatch(Job {
-//!                     key: (),
-//!                     msg: ExampleMessage::EchoValue(123, prt),
-//!                     options: JobOptions::default(),
-//!                     accepted: None,
-//!                 })
-//!             },
+//!         .call_job(
+//!             (),
+//!             |reply| ExampleMessage::EchoValue(123, reply),
 //!             None,
 //!         )
 //!         .await
@@ -171,6 +165,7 @@ use crate::Message;
 use crate::RpcReplyPort;
 
 pub mod discard;
+mod factory_ref;
 pub mod factoryimpl;
 pub mod hash;
 pub mod job;
@@ -189,6 +184,9 @@ pub use discard::DiscardMode;
 pub use discard::DiscardReason;
 pub use discard::DiscardSettings;
 pub use discard::DynamicDiscardController;
+pub use factory_ref::FactoryMessagingErr;
+pub use factory_ref::FactoryRef;
+pub use factory_ref::FactorySendResult;
 pub use factoryimpl::Factory;
 pub use factoryimpl::FactoryArguments;
 pub use factoryimpl::FactoryArgumentsBuilder;
@@ -201,8 +199,10 @@ pub use lifecycle::FactoryLifecycleHooks;
 pub use ratelim::LeakyBucketRateLimiter;
 pub use ratelim::RateLimitedRouter;
 pub use ratelim::RateLimiter;
-use stats::FactoryStatsLayer;
+pub use stats::FactoryStatsLayer;
+pub use worker::worker_builder;
 pub use worker::DeadMansSwitchConfiguration;
+pub use worker::FnWorkerBuilder;
 pub use worker::Worker;
 pub use worker::WorkerBuilder;
 pub use worker::WorkerCapacityController;

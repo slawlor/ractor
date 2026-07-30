@@ -349,6 +349,21 @@ where
     TKey: JobKey,
     TMsg: Message,
 {
+    /// Construct a job with default [`JobOptions`].
+    pub fn new(key: TKey, message: TMsg) -> Self {
+        Self::with_options(key, message, JobOptions::default())
+    }
+
+    /// Construct a job with explicit [`JobOptions`].
+    pub fn with_options(key: TKey, message: TMsg, options: JobOptions) -> Self {
+        Self {
+            key,
+            msg: message,
+            options,
+            accepted: None,
+        }
+    }
+
     /// Determine if this job's TTL is expired
     ///
     /// Expiration only takes effect prior to the job being
