@@ -226,10 +226,13 @@ pub use port::RpcReplyPort;
 /// Generate an [`Actor`] or [`thread_local::ThreadLocalActor`] implementation
 /// from an inherent implementation block and focused message or supervision
 /// handlers. Local message enums can optionally be generated from handler
-/// patterns and parameter types.
+/// patterns and parameter types. Focused RPC handlers return their reply
+/// directly and send it through the pattern's omitted reply-port binding.
 ///
-/// Dispatch is exhaustive: adding a message variant without a corresponding
-/// handler does not compile.
+/// When focused message or RPC handlers are present, dispatch is exhaustive:
+/// adding a message variant without a corresponding handler does not compile.
+/// Actors with no raw or focused message handler inherit the trait's no-op
+/// default, which is useful for lifecycle- and supervision-only actors.
 ///
 /// ```compile_fail
 /// struct IncompleteActor;

@@ -1,0 +1,5 @@
+error: RPC handler parameters must match every RPC pattern binding except exactly one reply-port binding, with an optional leading `ActorRef` and optional trailing state reference
+  --> tests/ui/actor_macros/rpc_missing_reply.rs:12:8
+   |
+12 |     fn read(&self, value: u64, reply: RpcReplyPort<u64>) -> u64 {
+   |        ^^^^

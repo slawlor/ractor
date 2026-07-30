@@ -1,0 +1,5 @@
+error: RPC reply types must be concrete; `impl Trait` is not supported anywhere in a reply type
+ --> tests/ui/actor_macros/rpc_explicit_nested_impl_trait_reply.rs:5:47
+  |
+5 |     #[ractor::rpc(Read(reply), reply = Option<impl std::fmt::Display>)]
+  |                                               ^^^^

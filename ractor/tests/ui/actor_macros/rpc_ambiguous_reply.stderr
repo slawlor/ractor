@@ -1,0 +1,5 @@
+error: RPC reply port is ambiguous; exactly one RPC pattern binding must be absent from the method parameters
+  --> tests/ui/actor_macros/rpc_ambiguous_reply.rs:10:8
+   |
+10 |     fn read(&self, reply: u64) -> u64 {
+   |        ^^^^

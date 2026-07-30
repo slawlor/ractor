@@ -1,0 +1,5 @@
+error: RPC reply types must be concrete; `impl Trait` is not supported anywhere in a reply type
+ --> tests/ui/actor_macros/rpc_nested_impl_trait_reply.rs:6:30
+  |
+6 |     fn read(&self) -> Option<impl std::fmt::Display> {
+  |                              ^^^^
