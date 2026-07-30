@@ -5,10 +5,12 @@
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
+use std::time::SystemTime;
 
 use ractor::concurrency::sleep;
 
@@ -82,6 +84,165 @@ impl Actor for DummyNodeSession {
     }
 }
 
+struct PingCounter {
+    pings: Arc<AtomicU8>,
+}
+
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+impl Actor for PingCounter {
+    type Msg = SessionMessage;
+    type State = ();
+    type Arguments = ();
+
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
+
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        message: Self::Msg,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        if matches!(
+            message,
+            SessionMessage::Send(crate::protocol::NetworkMessage {
+                message: Some(crate::protocol::meta::network_message::Message::Control(
+                    control_protocol::ControlMessage {
+                        msg: Some(control_protocol::control_message::Msg::Ping(_)),
+                    },
+                )),
+            })
+        ) {
+            self.pings.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+}
+
+fn authenticated_state(tcp: Option<ActorRef<SessionMessage>>) -> NodeSessionState {
+    NodeSessionState {
+        auth: AuthenticationState::AsClient(auth::ClientAuthenticationProcess::Ok),
+        ready: ReadyState::Open,
+        local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        name: None,
+        remote_actors: HashMap::new(),
+        tcp,
+        ping_task: None,
+        epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
+    }
+}
+
+#[test]
+fn node_session_rejects_malformed_pongs_without_scheduling_work() {
+    let mut state = authenticated_state(None);
+    let future_timestamp = prost_types::Timestamp::from(
+        SystemTime::UNIX_EPOCH + state.epoch.elapsed() + Duration::from_secs(60),
+    );
+    let malformed_timestamps = [
+        None,
+        Some(prost_types::Timestamp {
+            seconds: 0,
+            nanos: 1_000_000_000,
+        }),
+        Some(prost_types::Timestamp {
+            seconds: -1,
+            nanos: 0,
+        }),
+        Some(future_timestamp),
+    ];
+
+    for timestamp in malformed_timestamps {
+        assert!(state.pong_latency(timestamp.clone()).is_err());
+        state.handle_pong(control_protocol::Pong { timestamp });
+    }
+
+    assert!(state.pong_warnings.invalid);
+    assert!(state.ping_task.is_none());
+    assert!(state
+        .pong_latency(Some(prost_types::Timestamp::from(SystemTime::UNIX_EPOCH)))
+        .is_ok());
+
+    state.epoch = Instant::now()
+        .checked_sub(Duration::from_secs(1))
+        .expect("Failed to create an earlier monotonic epoch");
+    for _ in 0..2 {
+        state.handle_pong(control_protocol::Pong {
+            timestamp: Some(prost_types::Timestamp::from(SystemTime::UNIX_EPOCH)),
+        });
+    }
+    assert!(state.pong_warnings.slow);
+}
+
+#[ractor::concurrency::test]
+async fn node_session_ping_loop_is_single_and_state_owned() {
+    let pings = Arc::new(AtomicU8::new(0));
+    let (tcp, tcp_handle) = Actor::spawn(
+        None,
+        PingCounter {
+            pings: pings.clone(),
+        },
+        (),
+    )
+    .await
+    .expect("Failed to start ping counter");
+    let mut state = authenticated_state(Some(tcp.clone()));
+    let task_capture = Arc::new(AtomicBool::new(false));
+    let weak_task_capture = Arc::downgrade(&task_capture);
+
+    assert!(state.start_ping_loop_with_delay(move || {
+        task_capture.store(true, Ordering::Relaxed);
+        Duration::from_millis(5)
+    }));
+    assert!(!state.start_ping_loop_with_delay(|| Duration::from_millis(1)));
+
+    let two_pings_without_a_pong =
+        ractor::concurrency::timeout(Duration::from_millis(250), async {
+            while pings.load(Ordering::Relaxed) < 2 {
+                sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await;
+    assert!(two_pings_without_a_pong.is_ok());
+
+    for _ in 0..10 {
+        state.handle_pong(control_protocol::Pong {
+            timestamp: Some(prost_types::Timestamp::from(SystemTime::UNIX_EPOCH)),
+        });
+    }
+    let prior_pings = pings.load(Ordering::Relaxed);
+    let ping_after_unsolicited_pongs =
+        ractor::concurrency::timeout(Duration::from_millis(250), async {
+            while pings.load(Ordering::Relaxed) == prior_pings {
+                sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await;
+    assert!(ping_after_unsolicited_pongs.is_ok());
+
+    drop(state);
+    let task_released = ractor::concurrency::timeout(Duration::from_millis(250), async {
+        while weak_task_capture.upgrade().is_some() {
+            sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await;
+    assert!(task_released.is_ok());
+
+    let pings_after_state_drop = pings.load(Ordering::Relaxed);
+    sleep(Duration::from_millis(25)).await;
+    assert_eq!(pings_after_state_drop, pings.load(Ordering::Relaxed));
+
+    tcp.stop(None);
+    tcp_handle.await.unwrap();
+}
+
 #[ractor::concurrency::test]
 async fn node_sesison_client_auth_success() {
     let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
@@ -121,7 +282,9 @@ async fn node_sesison_client_auth_success() {
         connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // Client sends their name, Server responds with Ok
@@ -271,7 +434,9 @@ async fn node_session_client_auth_session_state_failures() {
         connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // Client sends their name, Server responds with Ok
@@ -406,7 +571,9 @@ async fn node_session_server_auth_success() {
         connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // Client sends their name
@@ -506,7 +673,9 @@ async fn node_session_server_auth_session_state_failures() {
         connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // Other session continues, this one dies
@@ -662,7 +831,9 @@ async fn node_session_handle_node_msg() {
         connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
     // add the "remote" actor
     state
@@ -764,7 +935,9 @@ async fn node_session_handle_control() {
         connection_id: 0,
         remote_actors: HashMap::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // check spawn creates a remote actor
