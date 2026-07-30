@@ -7,7 +7,8 @@
 //! running on a remote `node()` server. See [crate::node::NodeServer] for more on inter-node
 //! protocols
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
+use std::ops::Bound::{Excluded, Unbounded};
 
 use ractor::cast;
 use ractor::concurrency::JoinHandle;
@@ -27,6 +28,13 @@ use crate::NodeId;
 
 #[cfg(test)]
 mod tests;
+
+/// Maximum number of pending requests inspected when handling a message.
+///
+/// A fixed budget keeps cleanup work bounded while sustained traffic advances a
+/// round-robin cursor through all pending requests. This avoids a task or timer
+/// per RPC while still reclaiming reply ports whose receivers have gone away.
+const PENDING_REQUEST_CLEANUP_BUDGET: usize = 16;
 
 /// A [RemoteActor] is an actor which represents an actor on another node
 ///
@@ -66,17 +74,88 @@ pub(crate) struct RemoteActorState {
     message_tag: u64,
     /// The map of <message_tag, serialized_rpc_reply> port for network
     /// handling of [SerializedMessage::CallReply]s
-    pending_requests: HashMap<u64, RpcReplyPort<Vec<u8>>>,
+    pending_requests: BTreeMap<u64, RpcReplyPort<Vec<u8>>>,
+    /// Last request inspected for cancellation. The ordered map lets cleanup
+    /// resume without scanning every live request for every message.
+    pending_request_cleanup_cursor: Option<u64>,
 
     /// Owning session
     session: ActorRef<crate::node::NodeSessionMessage>,
 }
 
 impl RemoteActorState {
+    fn new(session: ActorRef<crate::node::NodeSessionMessage>) -> Self {
+        Self {
+            session,
+            message_tag: 0,
+            pending_requests: BTreeMap::new(),
+            pending_request_cleanup_cursor: None,
+        }
+    }
+
     /// Increment the message tag and return the "next" value
     fn get_and_increment_mtag(&mut self) -> u64 {
         self.message_tag += 1;
         self.message_tag
+    }
+
+    /// Remove reply ports whose receivers were cancelled or timed out.
+    ///
+    /// Each invocation inspects at most [`PENDING_REQUEST_CLEANUP_BUDGET`]
+    /// entries and resumes from the previous cursor, wrapping at the end. The
+    /// fixed-size tag buffer avoids allocating as part of message processing.
+    fn cleanup_closed_pending_requests(&mut self) {
+        let cleanup_count = self
+            .pending_requests
+            .len()
+            .min(PENDING_REQUEST_CLEANUP_BUDGET);
+        if cleanup_count == 0 {
+            self.pending_request_cleanup_cursor = None;
+            return;
+        }
+
+        let mut tags = [0; PENDING_REQUEST_CLEANUP_BUDGET];
+        let mut tag_count = 0;
+
+        if let Some(cursor) = self.pending_request_cleanup_cursor {
+            for (&tag, _) in self
+                .pending_requests
+                .range((Excluded(cursor), Unbounded))
+                .take(cleanup_count)
+            {
+                tags[tag_count] = tag;
+                tag_count += 1;
+            }
+        }
+
+        for (&tag, _) in self.pending_requests.iter().take(cleanup_count - tag_count) {
+            tags[tag_count] = tag;
+            tag_count += 1;
+        }
+
+        for tag in &tags[..tag_count] {
+            if self
+                .pending_requests
+                .get(tag)
+                .map_or(false, RpcReplyPort::is_closed)
+            {
+                self.pending_requests.remove(tag);
+            }
+        }
+
+        self.pending_request_cleanup_cursor = if self.pending_requests.is_empty() {
+            None
+        } else {
+            tags[..tag_count].last().copied()
+        };
+    }
+
+    fn remove_pending_request(&mut self, message_tag: u64) -> Option<RpcReplyPort<Vec<u8>>> {
+        let port = self.pending_requests.remove(&message_tag);
+        if self.pending_requests.is_empty() {
+            self.pending_request_cleanup_cursor = None;
+        }
+        port
     }
 }
 
@@ -95,11 +174,7 @@ impl Actor for RemoteActor {
         _myself: ActorRef<Self::Msg>,
         session: ActorRef<crate::node::NodeSessionMessage>,
     ) -> Result<Self::State, ActorProcessingErr> {
-        Ok(Self::State {
-            session,
-            message_tag: 0,
-            pending_requests: HashMap::new(),
-        })
+        Ok(Self::State::new(session))
     }
 
     async fn handle(
@@ -117,6 +192,8 @@ impl Actor for RemoteActor {
         message: SerializedMessage,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        state.cleanup_closed_pending_requests();
+
         // get the local pid on the remote system
         let to = myself.get_id().pid();
         // messages should be forwarded over the network link (i.e. sent through the node session) to the intended
@@ -144,7 +221,12 @@ impl Actor for RemoteActor {
                     )),
                 };
                 state.pending_requests.insert(tag, reply);
-                let _ = cast!(state.session, NodeSessionMessage::SendMessage(node_msg));
+                if cast!(state.session, NodeSessionMessage::SendMessage(node_msg)).is_err() {
+                    // Dropping the reply port immediately notifies the local
+                    // caller that forwarding failed instead of retaining it
+                    // until the remote actor itself exits.
+                    state.remove_pending_request(tag);
+                }
             }
             SerializedMessage::Cast {
                 args,
@@ -166,7 +248,7 @@ impl Actor for RemoteActor {
             }
             SerializedMessage::CallReply(message_tag, reply_data) => {
                 // Handle the reply to a "Call" message
-                if let Some(port) = state.pending_requests.remove(&message_tag) {
+                if let Some(port) = state.remove_pending_request(message_tag) {
                     let _ = port.send(reply_data);
                 }
             }
