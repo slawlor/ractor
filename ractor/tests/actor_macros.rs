@@ -67,9 +67,46 @@ impl Counter {
         *state = __ractor_myself + __ractor_message + __ractor_state;
     }
 
-    #[ractor::message(Read(reply))]
-    fn read(&self, reply: RpcReplyPort<i64>, state: &i64) {
-        let _ = reply.send(*state);
+    #[ractor::rpc(Read)]
+    fn read(&self, state: &i64) -> i64 {
+        *state
+    }
+
+    #[ractor::rpc(Sum {
+        left,
+        reply,
+        right,
+    })]
+    async fn sum(
+        &self,
+        myself: ActorRef<CounterMessage>,
+        left: i64,
+        right: i64,
+        state: &i64,
+    ) -> i64 {
+        assert_eq!(myself.get_status(), ActorStatus::Running);
+        left + right + *state
+    }
+
+    #[ractor::rpc(ResultPayload(reply))]
+    fn result_payload(&self, state: &i64) -> Result<i64, &'static str> {
+        Ok(*state)
+    }
+
+    #[ractor::rpc(Fallible(reply), reply = i64)]
+    fn fallible(&self, state: &i64) -> Result<i64, ActorProcessingErr> {
+        Ok(*state)
+    }
+
+    #[ractor::rpc(DroppedReply(reply))]
+    fn dropped_reply(&self, state: &i64) -> i64 {
+        *state
+    }
+
+    #[cfg(any())]
+    #[ractor::rpc(DisabledRpc(reply))]
+    fn disabled_rpc(&self) -> i64 {
+        0
     }
 
     #[ractor::message(Stop)]
@@ -103,6 +140,90 @@ impl RawActor {
         Ok(())
     }
 }
+
+struct ExistingRpcActor;
+
+enum ExistingRpcMessage {
+    NoPayload(RpcReplyPort<&'static str>),
+    Tuple(i64, RpcReplyPort<i64>, i64),
+    Struct {
+        reply: RpcReplyPort<String>,
+        prefix: String,
+    },
+    Fail(RpcReplyPort<u64>),
+    Stop,
+    #[cfg(any())]
+    Disabled(RpcReplyPort<()>),
+}
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for ExistingRpcMessage {}
+
+#[ractor::actor(message = ExistingRpcMessage, crate_path = ::ractor)]
+impl ExistingRpcActor {
+    #[ractor::rpc(ExistingRpcMessage::NoPayload)]
+    fn no_payload(&self) -> &'static str {
+        "pong"
+    }
+
+    #[ractor::rpc(ExistingRpcMessage::Tuple(left, reply, right))]
+    async fn tuple(&self, left: i64, right: i64) -> i64 {
+        left + right
+    }
+
+    #[ractor::rpc(ExistingRpcMessage::Struct { reply, prefix })]
+    fn structure(&self, prefix: String) -> String {
+        format!("{prefix}-reply")
+    }
+
+    #[ractor::rpc(ExistingRpcMessage::Fail(reply), reply = u64)]
+    fn fail(&self) -> Result<u64, ActorProcessingErr> {
+        Err("intentional RPC processing failure".into())
+    }
+
+    #[ractor::message(ExistingRpcMessage::Stop)]
+    fn stop(&self, myself: ActorRef<ExistingRpcMessage>) {
+        myself.stop(None);
+    }
+
+    #[cfg(any())]
+    #[ractor::rpc(ExistingRpcMessage::Disabled(reply))]
+    fn disabled(&self) {}
+}
+
+struct SupervisionOnlyActor {
+    events: ractor::concurrency::MpscUnboundedSender<&'static str>,
+}
+
+#[ractor::actor(message = (), crate_path = ::ractor)]
+impl SupervisionOnlyActor {
+    #[ractor::supervision(SupervisionEvent::ActorStarted(_child))]
+    fn child_started(&self, _child: ActorCell) {
+        let _ = self.events.send("started");
+    }
+
+    #[ractor::supervision(SupervisionEvent::ActorTerminated(_child, _, _))]
+    fn child_terminated(&self, _child: ActorCell) {
+        let _ = self.events.send("terminated");
+    }
+}
+
+struct GeneratedEmptyActor;
+
+#[ractor::actor(
+    message = enum GeneratedEmptyMessage,
+    crate_path = ::ractor,
+)]
+impl GeneratedEmptyActor {}
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for GeneratedEmptyMessage {}
+
+#[derive(Default)]
+struct LocalDefaultHandleActor;
+
+#[ractor::actor(thread_local, message = (), crate_path = ::ractor)]
+impl LocalDefaultHandleActor {}
 
 struct FailingChild;
 
@@ -269,9 +390,9 @@ impl LocalCounter {
         state.set(state.get() + amount);
     }
 
-    #[ractor::message(Read(reply))]
-    fn read(&self, reply: RpcReplyPort<i64>, state: &Rc<Cell<i64>>) {
-        let _ = reply.send(state.get());
+    #[ractor::rpc(Read(reply))]
+    fn read(&self, state: &Rc<Cell<i64>>) -> i64 {
+        state.get()
     }
 
     #[ractor::message(Stop)]
@@ -366,10 +487,97 @@ async fn generated_handlers_dispatch_messages_and_state() {
         ractor::call_t!(actor, CounterMessage::Read, 100).expect("counter failed to answer");
     assert_eq!(value, 12);
 
+    let sum = actor
+        .call(
+            |reply| CounterMessage::Sum {
+                left: 8,
+                reply,
+                right: 9,
+            },
+            Some(ractor::concurrency::Duration::from_millis(100)),
+        )
+        .await
+        .expect("sum RPC message failed")
+        .expect("sum RPC failed to answer");
+    assert_eq!(sum, 29);
+
+    let result_payload = ractor::call_t!(actor, CounterMessage::ResultPayload, 100)
+        .expect("result-payload RPC failed to answer");
+    assert_eq!(result_payload, Ok(12));
+    let fallible = ractor::call_t!(actor, CounterMessage::Fallible, 100)
+        .expect("fallible RPC failed to answer");
+    assert_eq!(fallible, 12);
+
+    let (reply, receiver) = ractor::concurrency::oneshot();
+    drop(receiver);
+    actor
+        .send_message(CounterMessage::DroppedReply(reply.into()))
+        .expect("dropped-receiver RPC message failed");
+    let value_after_dropped_receiver = ractor::call_t!(actor, CounterMessage::Read, 100)
+        .expect("counter stopped after an RPC receiver was dropped");
+    assert_eq!(value_after_dropped_receiver, 12);
+
     actor
         .send_message(CounterMessage::Stop)
         .expect("stop message failed");
     handle.await.expect("counter failed to stop cleanly");
+}
+
+#[ractor::concurrency::test]
+async fn existing_message_enums_support_focused_rpc_handlers() {
+    let (actor, handle) = Actor::spawn(None, ExistingRpcActor, ())
+        .await
+        .expect("existing-message RPC actor failed to start");
+
+    let no_payload =
+        ractor::call_t!(actor, ExistingRpcMessage::NoPayload, 100).expect("unit-form RPC failed");
+    assert_eq!(no_payload, "pong");
+
+    let tuple = actor
+        .call(
+            |reply| ExistingRpcMessage::Tuple(20, reply, 22),
+            Some(ractor::concurrency::Duration::from_millis(100)),
+        )
+        .await
+        .expect("tuple RPC message failed")
+        .expect("tuple RPC failed to answer");
+    assert_eq!(tuple, 42);
+
+    let structure = actor
+        .call(
+            |reply| ExistingRpcMessage::Struct {
+                reply,
+                prefix: "focused".to_owned(),
+            },
+            Some(ractor::concurrency::Duration::from_millis(100)),
+        )
+        .await
+        .expect("struct RPC message failed")
+        .expect("struct RPC failed to answer");
+    assert_eq!(structure, "focused-reply");
+
+    actor
+        .send_message(ExistingRpcMessage::Stop)
+        .expect("existing-message RPC actor stop failed");
+    handle
+        .await
+        .expect("existing-message RPC actor failed to stop cleanly");
+
+    let (failing_actor, failing_handle) = Actor::spawn(None, ExistingRpcActor, ())
+        .await
+        .expect("failing RPC actor failed to start");
+    let failure = failing_actor
+        .call(
+            ExistingRpcMessage::Fail,
+            Some(ractor::concurrency::Duration::from_millis(100)),
+        )
+        .await
+        .expect("failing RPC message could not be sent");
+    assert!(failure.is_send_error());
+    failing_handle
+        .await
+        .expect("failing RPC actor runtime failed to stop");
+    assert_eq!(failing_actor.get_status(), ActorStatus::Stopped);
 }
 
 #[ractor::concurrency::test]
@@ -465,6 +673,52 @@ async fn unhandled_supervision_events_keep_the_default_shutdown_behavior() {
     assert_eq!(supervisor.get_status(), ActorStatus::Stopped);
 }
 
+#[ractor::concurrency::test]
+async fn supervision_only_actor_inherits_the_default_message_handler() {
+    let (events, mut received_events) = ractor::concurrency::mpsc_unbounded();
+    let (supervisor, supervisor_handle) = Actor::spawn(None, SupervisionOnlyActor { events }, ())
+        .await
+        .expect("supervision-only actor failed to start");
+
+    supervisor
+        .send_message(())
+        .expect("unit message failed to send to supervision-only actor");
+
+    let (child, child_handle) = Actor::spawn_linked(None, RawActor, (), supervisor.get_cell())
+        .await
+        .expect("linked child failed to start");
+    let started = ractor::concurrency::timeout(
+        ractor::concurrency::Duration::from_secs(1),
+        received_events.recv(),
+    )
+    .await
+    .expect("timed out waiting for child-started event")
+    .expect("supervision event channel closed");
+    assert_eq!(started, "started");
+
+    child.stop(None);
+    child_handle.await.expect("linked child failed to stop");
+    let terminated = ractor::concurrency::timeout(
+        ractor::concurrency::Duration::from_secs(1),
+        received_events.recv(),
+    )
+    .await
+    .expect("timed out waiting for child-terminated event")
+    .expect("supervision event channel closed");
+    assert_eq!(terminated, "terminated");
+
+    supervisor
+        .send_message(())
+        .expect("second unit message failed to send");
+    ractor::concurrency::sleep(ractor::concurrency::Duration::from_millis(10)).await;
+    assert_eq!(supervisor.get_status(), ActorStatus::Running);
+
+    supervisor.stop(None);
+    supervisor_handle
+        .await
+        .expect("supervision-only actor failed to stop cleanly");
+}
+
 #[cfg(not(feature = "async-std"))]
 #[ractor::concurrency::test]
 async fn thread_local_actor_supports_non_send_state() {
@@ -505,6 +759,17 @@ fn generic_actor_impls_preserve_bounds() {
 #[test]
 fn generated_code_ignores_shadowed_prelude_names() {
     shadowed_prelude_names::assert_compiles();
+}
+
+#[test]
+fn actors_without_dispatch_methods_inherit_trait_defaults() {
+    fn assert_actor<T: Actor>() {}
+    fn assert_generated_actor<T: Actor<Msg = GeneratedEmptyMessage>>() {}
+    fn assert_thread_local<T: ractor::thread_local::ThreadLocalActor<Msg = ()>>() {}
+
+    assert_actor::<SupervisionOnlyActor>();
+    assert_generated_actor::<GeneratedEmptyActor>();
+    assert_thread_local::<LocalDefaultHandleActor>();
 }
 
 #[cfg(all(not(feature = "async-trait"), not(feature = "cluster")))]

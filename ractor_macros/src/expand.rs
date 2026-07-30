@@ -8,8 +8,9 @@ use std::collections::HashSet;
 use proc_macro2::{Span, TokenStream};
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{quote, ToTokens};
-use syn::parse::Parser;
+use syn::parse::{Parse, ParseStream, Parser};
 use syn::spanned::Spanned;
+use syn::visit::Visit;
 use syn::{
     punctuated::Punctuated, Attribute, FieldPat, FnArg, ImplItem, ImplItemFn, ItemImpl, Member,
     Meta, Pat, PatIdent, Path, ReturnType, Signature, Token, Type, TypeReference, Visibility,
@@ -45,7 +46,7 @@ pub(crate) fn expand_actor(
     let message_type = config.message.ty();
     let mut inherent_items = Vec::new();
     let mut trait_methods = Vec::new();
-    let mut message_handlers = Vec::new();
+    let mut dispatch_handlers = Vec::new();
     let mut supervision_handlers = Vec::new();
     let mut raw_handle_span = None;
     let mut raw_supervision_span = None;
@@ -56,9 +57,11 @@ pub(crate) fn expand_actor(
             continue;
         };
 
-        let message_attributes = take_handler_attributes(&mut method.attrs, &ractor, "message");
+        let message_attributes =
+            take_handler_attributes(&mut method.attrs, &ractor, "message", true);
+        let rpc_attributes = take_handler_attributes(&mut method.attrs, &ractor, "rpc", false);
         let supervision_attributes =
-            take_handler_attributes(&mut method.attrs, &ractor, "supervision");
+            take_handler_attributes(&mut method.attrs, &ractor, "supervision", true);
         if message_attributes.len() > 1 {
             return Err(syn::Error::new(
                 message_attributes[1].span(),
@@ -71,10 +74,19 @@ pub(crate) fn expand_actor(
                 "supervision handler methods may only have one `#[ractor::supervision(...)]` attribute",
             ));
         }
-        if !message_attributes.is_empty() && !supervision_attributes.is_empty() {
+        if rpc_attributes.len() > 1 {
             return Err(syn::Error::new(
-                supervision_attributes[0].span(),
-                "a method cannot be both a message and supervision handler",
+                rpc_attributes[1].span(),
+                "RPC handler methods may only have one `#[ractor::rpc(...)]` attribute",
+            ));
+        }
+        let handler_attribute_count = usize::from(!message_attributes.is_empty())
+            + usize::from(!rpc_attributes.is_empty())
+            + usize::from(!supervision_attributes.is_empty());
+        if handler_attribute_count > 1 {
+            return Err(syn::Error::new(
+                method.sig.ident.span(),
+                "a method can only be one of a message, RPC, or supervision handler",
             ));
         }
 
@@ -83,7 +95,21 @@ pub(crate) fn expand_actor(
             if let MessageConfig::Generated(config) = &config.message {
                 qualify_generated_message_pattern(&mut pattern, &config.ident)?;
             }
-            message_handlers.push(parse_handler(&method, pattern, HandlerKind::Message)?);
+            dispatch_handlers.push(parse_handler(&method, pattern, HandlerKind::Message)?);
+            inherent_items.push(ImplItem::Fn(method));
+            continue;
+        }
+
+        if let Some(attribute) = rpc_attributes.first() {
+            let RpcHandlerAttribute {
+                mut pattern,
+                reply_type,
+            } = attribute.parse_args()?;
+            if let MessageConfig::Generated(config) = &config.message {
+                qualify_generated_message_pattern(&mut pattern, &config.ident)?;
+            }
+            inject_unit_rpc_reply(&mut pattern)?;
+            dispatch_handlers.push(parse_rpc_handler(&method, pattern, reply_type, &ractor)?);
             inherent_items.push(ImplItem::Fn(method));
             continue;
         }
@@ -109,18 +135,12 @@ pub(crate) fn expand_actor(
     }
 
     if let Some(span) = raw_handle_span {
-        if !message_handlers.is_empty() {
+        if !dispatch_handlers.is_empty() {
             return Err(syn::Error::new(
                 span,
-                "define either a raw `handle` method or `#[ractor::message(...)]` handlers, not both",
+                "define either a raw `handle` method or focused `#[ractor::message(...)]`/`#[ractor::rpc(...)]` handlers, not both",
             ));
         }
-    }
-    if raw_handle_span.is_none() && message_handlers.is_empty() {
-        return Err(syn::Error::new(
-            actor_impl.self_ty.span(),
-            "actor implementation requires a raw `handle` method or at least one `#[ractor::message(...)]` handler",
-        ));
     }
     if let Some(span) = raw_supervision_span {
         if !supervision_handlers.is_empty() {
@@ -131,7 +151,7 @@ pub(crate) fn expand_actor(
         }
     }
 
-    validate_unique_patterns(&message_handlers, HandlerKind::Message)?;
+    validate_unique_patterns(&dispatch_handlers, HandlerKind::Message)?;
     validate_unique_patterns(&supervision_handlers, HandlerKind::Supervision)?;
 
     let has_pre_start = trait_methods
@@ -147,8 +167,8 @@ pub(crate) fn expand_actor(
         trait_methods.push(default_pre_start(&ractor));
     }
 
-    if raw_handle_span.is_none() {
-        trait_methods.push(generated_handle(&ractor, &message_handlers)?);
+    if raw_handle_span.is_none() && !dispatch_handlers.is_empty() {
+        trait_methods.push(generated_handle(&ractor, &dispatch_handlers)?);
     }
     if raw_supervision_span.is_none() && !supervision_handlers.is_empty() {
         trait_methods.push(generated_supervision_handler(
@@ -167,7 +187,7 @@ pub(crate) fn expand_actor(
     let generated_message = match &message {
         MessageConfig::Existing(_) => TokenStream::new(),
         MessageConfig::Generated(config) => {
-            generate_message_enum(config, &message_handlers, &generated_enum_cfg_attributes)?
+            generate_message_enum(config, &dispatch_handlers, &generated_enum_cfg_attributes)?
         }
     };
     let trait_path = if thread_local {
@@ -329,10 +349,11 @@ fn take_handler_attributes(
     attributes: &mut Vec<Attribute>,
     ractor: &Path,
     handler_attribute: &str,
+    allow_bare: bool,
 ) -> Vec<Attribute> {
     let mut handler_attributes = Vec::new();
     attributes.retain(|attribute| {
-        let is_handler = is_handler_attribute(attribute, ractor, handler_attribute);
+        let is_handler = is_handler_attribute(attribute, ractor, handler_attribute, allow_bare);
         if is_handler {
             handler_attributes.push(attribute.clone());
         }
@@ -341,9 +362,14 @@ fn take_handler_attributes(
     handler_attributes
 }
 
-fn is_handler_attribute(attribute: &Attribute, ractor: &Path, handler_attribute: &str) -> bool {
+fn is_handler_attribute(
+    attribute: &Attribute,
+    ractor: &Path,
+    handler_attribute: &str,
+    allow_bare: bool,
+) -> bool {
     let path = attribute.path();
-    if path.is_ident(handler_attribute) {
+    if allow_bare && path.is_ident(handler_attribute) {
         return true;
     }
     if path.segments.len() != ractor.segments.len() + 1 {
@@ -358,6 +384,47 @@ fn is_handler_attribute(attribute: &Attribute, ractor: &Path, handler_attribute:
             .segments
             .last()
             .is_some_and(|segment| segment.ident == handler_attribute)
+}
+
+#[cfg(test)]
+mod handler_attribute_tests {
+    use super::*;
+
+    #[test]
+    fn bare_rpc_is_not_consumed() {
+        let ractor: Path = syn::parse_quote!(::renamed_ractor);
+        let bare_rpc: Attribute = syn::parse_quote!(#[rpc(Message::Read(reply))]);
+        let qualified_rpc: Attribute =
+            syn::parse_quote!(#[renamed_ractor::rpc(Message::Read(reply))]);
+        let mut attributes = vec![bare_rpc, qualified_rpc];
+        let rpc_attributes = take_handler_attributes(&mut attributes, &ractor, "rpc", false);
+
+        assert_eq!(rpc_attributes.len(), 1);
+        assert_eq!(attributes.len(), 1);
+        assert_eq!(rpc_attributes[0].path().segments[0].ident, "renamed_ractor");
+        assert!(attributes[0].path().is_ident("rpc"));
+    }
+
+    #[test]
+    fn existing_handler_attributes_keep_bare_compatibility() {
+        let ractor: Path = syn::parse_quote!(::renamed_ractor);
+        let bare_message: Attribute = syn::parse_quote!(#[message(Message::Go)]);
+        let bare_supervision: Attribute =
+            syn::parse_quote!(#[supervision(SupervisionEvent::ActorStarted(child))]);
+
+        assert!(is_handler_attribute(
+            &bare_message,
+            &ractor,
+            "message",
+            true
+        ));
+        assert!(is_handler_attribute(
+            &bare_supervision,
+            &ractor,
+            "supervision",
+            true
+        ));
+    }
 }
 
 fn is_lifecycle_method(ident: &syn::Ident) -> bool {
@@ -392,6 +459,7 @@ enum StateAccess {
 #[derive(Clone, Copy)]
 enum HandlerKind {
     Message,
+    Rpc,
     Supervision,
 }
 
@@ -399,6 +467,7 @@ impl HandlerKind {
     fn method_description(self) -> &'static str {
         match self {
             Self::Message => "message handler methods",
+            Self::Rpc => "RPC handler methods",
             Self::Supervision => "supervision handler methods",
         }
     }
@@ -406,6 +475,7 @@ impl HandlerKind {
     fn parameter_label(self) -> &'static str {
         match self {
             Self::Message => "handler",
+            Self::Rpc => "RPC handler",
             Self::Supervision => "supervision handler",
         }
     }
@@ -413,16 +483,57 @@ impl HandlerKind {
     fn pattern_label(self) -> &'static str {
         match self {
             Self::Message => "message pattern",
+            Self::Rpc => "RPC pattern",
             Self::Supervision => "supervision pattern",
         }
     }
 
     fn event_label(self) -> &'static str {
         match self {
-            Self::Message => "message",
+            Self::Message | Self::Rpc => "message",
             Self::Supervision => "supervision event",
         }
     }
+}
+
+struct RpcHandlerAttribute {
+    pattern: Pat,
+    reply_type: Option<Type>,
+}
+
+impl Parse for RpcHandlerAttribute {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let pattern = Pat::parse_single(input)?;
+        let mut reply_type = None;
+
+        if input.parse::<Option<Token![,]>>()?.is_some() && !input.is_empty() {
+            let option: syn::Ident = input.parse()?;
+            if option != "reply" {
+                return Err(syn::Error::new(
+                    option.span(),
+                    "unknown RPC option; expected `reply = Type`",
+                ));
+            }
+            input.parse::<Token![=]>()?;
+            reply_type = Some(input.parse()?);
+            input.parse::<Option<Token![,]>>()?;
+        }
+
+        if !input.is_empty() {
+            return Err(input.error("unexpected tokens after RPC handler options"));
+        }
+
+        Ok(Self {
+            pattern,
+            reply_type,
+        })
+    }
+}
+
+struct RpcHandler {
+    reply_binding: syn::Ident,
+    reply_type: Type,
+    propagates_processing_error: bool,
 }
 
 struct Handler {
@@ -435,6 +546,7 @@ struct Handler {
     state_access: Option<StateAccess>,
     is_async: bool,
     is_fallible: bool,
+    rpc: Option<RpcHandler>,
     cfg_attributes: Vec<Attribute>,
 }
 
@@ -473,6 +585,112 @@ fn parse_handler(
         state_access,
         is_async: method.sig.asyncness.is_some(),
         is_fallible: !returns_unit(&method.sig.output),
+        rpc: None,
+        cfg_attributes,
+    })
+}
+
+fn parse_rpc_handler(
+    method: &ImplItemFn,
+    pattern: Pat,
+    explicit_reply_type: Option<Type>,
+    ractor: &Path,
+) -> syn::Result<Handler> {
+    validate_method_shape(&method.sig, HandlerKind::Rpc.method_description())?;
+    let (pattern_key, pattern_bindings) = parse_handler_pattern(&pattern, HandlerKind::Rpc)?;
+    let parameters = typed_parameters(&method.sig, HandlerKind::Rpc.parameter_label())?;
+
+    let propagates_processing_error = explicit_reply_type.is_some();
+    let reply_type = match explicit_reply_type {
+        Some(reply_type) => {
+            if returns_unit(&method.sig.output) {
+                return Err(syn::Error::new(
+                    method.sig.output.span(),
+                    "an RPC handler using `reply = Type` must return a fallible value; `Result<Type, ActorProcessingErr>` is the usual form",
+                ));
+            }
+            reply_type
+        }
+        None => return_type(&method.sig.output),
+    };
+    if let Some(span) = impl_trait_span(&reply_type) {
+        return Err(syn::Error::new(
+            span,
+            "RPC reply types must be concrete; `impl Trait` is not supported anywhere in a reply type",
+        ));
+    }
+
+    let mut candidates = Vec::new();
+    for reply_index in 0..pattern_bindings.len() {
+        let payload_bindings = pattern_bindings
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != reply_index)
+            .map(|(_, binding)| binding.clone())
+            .collect::<Vec<_>>();
+        if let Ok((wants_actor_ref, state_access)) = classify_handler_parameters(
+            &parameters,
+            &payload_bindings,
+            method.sig.ident.span(),
+            HandlerKind::Rpc.parameter_label(),
+            HandlerKind::Rpc.pattern_label(),
+        ) {
+            candidates.push((reply_index, payload_bindings, wants_actor_ref, state_access));
+        }
+    }
+
+    let (reply_index, binding_names, wants_actor_ref, state_access) = match candidates.len() {
+        1 => candidates.pop().expect("one RPC reply candidate was found"),
+        0 => {
+            return Err(syn::Error::new(
+                method.sig.ident.span(),
+                "RPC handler parameters must match every RPC pattern binding except exactly one reply-port binding, with an optional leading `ActorRef` and optional trailing state reference",
+            ));
+        }
+        _ => {
+            return Err(syn::Error::new(
+                method.sig.ident.span(),
+                "RPC reply port is ambiguous; exactly one RPC pattern binding must be absent from the method parameters",
+            ));
+        }
+    };
+
+    let payload_start = usize::from(wants_actor_ref);
+    let payload_end = parameters.len() - usize::from(state_access.is_some());
+    let mut payload_types = parameters[payload_start..payload_end]
+        .iter()
+        .map(|parameter| (*parameter.ty).clone());
+    let binding_types = pattern_bindings
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            if index == reply_index {
+                syn::parse_quote!(#ractor::RpcReplyPort<#reply_type>)
+            } else {
+                payload_types
+                    .next()
+                    .expect("validated RPC payload binding is missing its parameter type")
+            }
+        })
+        .collect();
+    debug_assert!(payload_types.next().is_none());
+
+    let cfg_attributes = match_arm_cfg_attributes(&method.attrs)?;
+    Ok(Handler {
+        method_name: method.sig.ident.clone(),
+        pattern,
+        pattern_key,
+        binding_names,
+        binding_types,
+        wants_actor_ref,
+        state_access,
+        is_async: method.sig.asyncness.is_some(),
+        is_fallible: false,
+        rpc: Some(RpcHandler {
+            reply_binding: pattern_bindings[reply_index].clone(),
+            reply_type,
+            propagates_processing_error,
+        }),
         cfg_attributes,
     })
 }
@@ -736,12 +954,27 @@ fn qualify_generated_message_pattern(
     Ok(())
 }
 
+fn inject_unit_rpc_reply(pattern: &mut Pat) -> syn::Result<()> {
+    let Pat::Path(unit_variant) = pattern else {
+        return Ok(());
+    };
+    if unit_variant.qself.is_some() || !unit_variant.attrs.is_empty() {
+        return Ok(());
+    }
+
+    let path = &unit_variant.path;
+    let reply_binding = syn::Ident::new("__ractor_reply_port", Span::mixed_site());
+    *pattern = Pat::parse_single.parse2(quote!(#path(#reply_binding)))?;
+    Ok(())
+}
+
 fn parse_handler_pattern(
     pattern: &Pat,
     handler_kind: HandlerKind,
 ) -> syn::Result<(String, Vec<syn::Ident>)> {
     let pattern_description = match handler_kind {
         HandlerKind::Message => "message patterns",
+        HandlerKind::Rpc => "RPC patterns",
         HandlerKind::Supervision => "supervision patterns",
     };
     let (path, fields): (&Path, Vec<&Pat>) = match pattern {
@@ -927,6 +1160,32 @@ fn returns_unit(output: &ReturnType) -> bool {
     }
 }
 
+fn return_type(output: &ReturnType) -> Type {
+    match output {
+        ReturnType::Default => syn::parse_quote!(()),
+        ReturnType::Type(_, ty) => (**ty).clone(),
+    }
+}
+
+fn impl_trait_span(ty: &Type) -> Option<Span> {
+    #[derive(Default)]
+    struct Finder {
+        span: Option<Span>,
+    }
+
+    impl<'ast> Visit<'ast> for Finder {
+        fn visit_type_impl_trait(&mut self, node: &'ast syn::TypeImplTrait) {
+            if self.span.is_none() {
+                self.span = Some(node.span());
+            }
+        }
+    }
+
+    let mut finder = Finder::default();
+    finder.visit_type(ty);
+    finder.span
+}
+
 fn is_unit_type(ty: &Type) -> bool {
     matches!(unparenthesized_type(ty), Type::Tuple(tuple) if tuple.elems.is_empty())
 }
@@ -1019,6 +1278,21 @@ fn generated_handler_arms(
             }
 
             let await_suffix = handler.is_async.then(|| quote!(.await));
+            if let Some(rpc) = &handler.rpc {
+                let reply_binding = &rpc.reply_binding;
+                let reply_type = &rpc.reply_type;
+                let try_suffix = rpc.propagates_processing_error.then(|| quote!(?));
+                let reply_value = syn::Ident::new("__ractor_reply_value", Span::mixed_site());
+                return quote! {
+                    #(#cfg_attributes)*
+                    #pattern => {
+                        let #reply_value: #reply_type =
+                            self.#method_name(#(#arguments),*) #await_suffix #try_suffix;
+                        let _ = #reply_binding.send(#reply_value);
+                        ::core::result::Result::Ok(())
+                    }
+                };
+            }
             let try_suffix = handler.is_fallible.then(|| quote!(?));
             quote! {
                 #(#cfg_attributes)*

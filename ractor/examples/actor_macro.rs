@@ -52,9 +52,9 @@ impl Counter {
         *state += amount;
     }
 
-    #[ractor::message(CounterMessage::Read(reply))]
-    fn read(&self, reply: RpcReplyPort<i64>, state: &i64) {
-        let _ = reply.send(*state);
+    #[ractor::rpc(CounterMessage::Read(reply))]
+    fn read(&self, state: &i64) -> i64 {
+        *state
     }
 
     #[ractor::message(CounterMessage::Stop)]

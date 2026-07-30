@@ -23,17 +23,26 @@ use crate::config::ActorConfig;
 /// to `()`. Add the `thread_local` flag to implement `ThreadLocalActor` instead
 /// of `Actor`.
 ///
-/// Mark handlers with `#[ractor::message(Message::Variant(...))]`. Flat unit,
-/// tuple, and struct variant patterns are supported, and their named bindings
-/// must appear as method parameters in the same order. A handler may also take
-/// an `ActorRef` first and `&State` or `&mut State` last. Handlers can be sync
-/// or async; any explicit non-unit return must support `?` and is propagated
-/// into the generated `handle` method.
+/// Mark one-way handlers with `#[ractor::message(Message::Variant(...))]` and
+/// request/reply handlers with `#[ractor::rpc(Message::Variant(...))]`. Flat
+/// unit, tuple, and struct variant patterns are supported. Message bindings
+/// must appear as method parameters in the same order. For an RPC, exactly one
+/// binding is omitted from the method parameters and used as its reply port;
+/// the method's return value is sent automatically. A handler may also take an
+/// `ActorRef` first and `&State` or `&mut State` last.
 ///
-/// The generated dispatch is exhaustive, so adding a message variant without
-/// a handler is a compile error. A canonical raw `handle` method remains
-/// supported, but cannot be mixed with generated message handlers. Other
-/// lifecycle methods keep their normal async trait signatures.
+/// Handlers can be sync or async. An explicit non-unit message-handler return
+/// is propagated into the generated `handle` method with `?`. By default, an
+/// RPC handler's full return type is its reply type, including `Result`.
+/// `#[ractor::rpc(Pattern, reply = Type)]` instead treats the method return as
+/// fallible actor processing, applies `?`, and sends the resulting `Type`.
+///
+/// When focused message or RPC handlers are present, the generated dispatch is
+/// exhaustive, so adding a message variant without a handler is a compile
+/// error. A canonical raw `handle` method remains supported, but cannot be
+/// mixed with focused handlers. If neither form is present, the macro emits no
+/// `handle` method and inherits the trait's no-op default. Other lifecycle
+/// methods keep their normal async trait signatures.
 ///
 /// Mark focused supervision handlers with
 /// `#[ractor::supervision(SupervisionEvent::Variant(...))]`. Their parameters
