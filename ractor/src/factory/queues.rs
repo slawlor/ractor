@@ -133,7 +133,7 @@ where
 
     /// Retrieve the job's priority.
     ///
-    /// Returns [None] if the job does not have a priority, [Some(`TPriority`)] otherwise.
+    /// Returns [`None`] if the job does not have a priority, `Some(TPriority)` otherwise.
     fn get_priority(&self, job: &TKey) -> Option<TPriority>;
 }
 

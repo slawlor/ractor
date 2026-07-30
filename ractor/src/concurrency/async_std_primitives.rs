@@ -6,7 +6,7 @@
 //! Concurrency primitives based on the `async-std` crate
 //!
 //! We still rely on tokio for some core executor-independent parts
-//! such as channels (see: https://github.com/tokio-rs/tokio/issues/4232#issuecomment-968329443).
+//! such as channels (see: <https://github.com/tokio-rs/tokio/issues/4232#issuecomment-968329443>).
 
 use std::fmt::Debug;
 use std::future::Future;

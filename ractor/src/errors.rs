@@ -211,7 +211,7 @@ impl<T> RactorErr<T> {
     /// [RactorErr] instance in order to not have require cloning the message payload.
     /// Should be used in conjunction with `has_message` to not consume the error if not wanted
     ///
-    /// Returns [Some(`T`)] if there is a message payload, [None] otherwise.
+    /// Returns `Some(T)` if there is a message payload, [`None`] otherwise.
     pub fn try_get_message(self) -> Option<T> {
         if let Self::Messaging(MessagingErr::SendErr(msg)) = self {
             Some(msg)

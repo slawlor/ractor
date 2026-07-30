@@ -182,9 +182,11 @@ jobs:
 
       - name: Run cargo doc on release profile
         uses: actions-rs/cargo@v1
+        env:
+          RUSTDOCFLAGS: -D warnings
         with:
           command: doc
-          args: --lib -r
+          args: --workspace --no-deps -r
 
   benches:
     name: benches

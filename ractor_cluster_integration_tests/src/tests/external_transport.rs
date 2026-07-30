@@ -10,7 +10,7 @@
 //! containers. Instead of relying on the built-in TCP listener, the nodes bind
 //! their own TCP socket and inject the accepted stream through
 //! [`NodeServerMessage::ConnectionOpenedExternal`]. The peer dials that socket
-//! and registers the client half via [`client_connect_external`]. Once the
+//! and registers the client half via [`ractor_cluster::client_connect_external`]. Once the
 //! cluster session reports `Ready`, the actors exchange RPCs to prove remote
 //! messaging works over the custom transport wiring.
 
