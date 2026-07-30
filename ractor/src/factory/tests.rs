@@ -10,6 +10,7 @@ mod draining_requests;
 mod dynamic_discarding;
 mod dynamic_pool;
 mod dynamic_settings;
+mod ergonomics;
 mod lifecycle;
 mod priority_queueing;
 mod processing_messages_accounting;
