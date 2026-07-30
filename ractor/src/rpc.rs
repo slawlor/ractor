@@ -197,7 +197,7 @@ where
 /// * `timeout_option` - An optional [Duration] which represents the amount of
 ///   time until the operation times out
 ///
-/// Returns [Ok(`Vec<CallResult<TReply>>>`)] upon successful initial sending with the reply from
+/// Returns `Ok(Vec<CallResult<TReply>>)` upon successful initial sending with the reply from
 /// the [crate::Actor]s, [Err(MessagingErr)] if the initial send operation failed
 pub async fn multi_call<TMessage, TReply, TMsgBuilder>(
     actors: &[ActorRef<TMessage>],

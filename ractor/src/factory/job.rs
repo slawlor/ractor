@@ -205,8 +205,8 @@ where
     /// external threadpools to the Tokio processing pool and prevent
     /// overloading the unbounded channel which fronts all actors.
     ///
-    /// The reply channel return [None] if the job was accepted, or
-    /// [Some(`Job`)] if it was rejected & loadshed, and then the
+    /// The reply channel returns [`None`] if the job was accepted, or
+    /// `Some(Job)` if it was rejected and load-shed, and then the
     /// job may be retried by the caller at a later time (if desired).
     ///
     /// Default = [None]
