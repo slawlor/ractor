@@ -15,6 +15,7 @@ use tracing::Span;
 
 use super::FactoryMessage;
 use crate::concurrency::Duration;
+use crate::concurrency::Instant;
 use crate::concurrency::SystemTime;
 #[cfg(feature = "cluster")]
 use crate::message::BoxedDowncastErr;
@@ -23,6 +24,41 @@ use crate::ActorRef;
 use crate::BytesConvertable;
 use crate::Message;
 use crate::RpcReplyPort;
+
+#[derive(Debug, Clone)]
+struct TtlTimer {
+    started_at: Instant,
+    remaining: Duration,
+    already_expired: bool,
+}
+
+impl TtlTimer {
+    fn new(remaining: Duration) -> Self {
+        Self {
+            started_at: Instant::now(),
+            remaining,
+            already_expired: false,
+        }
+    }
+
+    fn from_submit_time(submit_time: SystemTime, ttl: Duration) -> Self {
+        // A submit timestamp from another host may be ahead of our wall clock. In that
+        // case, start with the full TTL rather than panicking or extending it by the skew.
+        let elapsed = SystemTime::now()
+            .duration_since(submit_time)
+            .unwrap_or_default();
+        Self {
+            started_at: Instant::now(),
+            remaining: ttl.saturating_sub(elapsed),
+            already_expired: elapsed > ttl,
+        }
+    }
+
+    fn is_expired(&self) -> bool {
+        self.already_expired
+            || Instant::now().saturating_duration_since(self.started_at) > self.remaining
+    }
+}
 
 /// Represents a key to a job. Needs to be hashable for routing properties. Additionally needs
 /// to be serializable for remote factories
@@ -44,7 +80,7 @@ pub trait JobKey: Debug + Hash + Send + Sync + Clone + Eq + PartialEq + 'static 
 impl<T: Debug + Hash + Send + Sync + Clone + Eq + PartialEq + 'static> JobKey for T {}
 
 /// Represents options for the specified job
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
 pub struct JobOptions {
     /// Time job was submitted from the client
     submit_time: SystemTime,
@@ -54,6 +90,8 @@ pub struct JobOptions {
     worker_time: SystemTime,
     /// Time-to-live for the job
     ttl: Option<Duration>,
+    /// Monotonic timer used for TTL checks after the job enters this process.
+    ttl_timer: Option<TtlTimer>,
     /// The parent span we want to propagate to the worker.
     /// Spans don't propagate over the wire in networks
     span: Option<Span>,
@@ -78,11 +116,13 @@ impl JobOptions {
                 None
             }
         };
+        let submit_time = SystemTime::now();
         Self {
-            submit_time: SystemTime::now(),
+            submit_time,
             factory_time: SystemTime::now(),
             worker_time: SystemTime::now(),
             ttl,
+            ttl_timer: ttl.map(TtlTimer::new),
             span,
         }
     }
@@ -95,6 +135,7 @@ impl JobOptions {
     /// Set the TTL for this job
     pub fn set_ttl(&mut self, ttl: Option<Duration>) {
         self.ttl = ttl;
+        self.reset_ttl_timer();
     }
 
     /// Time the job was submitted to the factory
@@ -122,6 +163,34 @@ impl JobOptions {
 
     pub(crate) fn take_span(&mut self) -> Option<Span> {
         self.span.take()
+    }
+
+    fn reset_ttl_timer(&mut self) {
+        self.ttl_timer = self
+            .ttl
+            .map(|ttl| TtlTimer::from_submit_time(self.submit_time, ttl));
+    }
+}
+
+impl Debug for JobOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JobOptions")
+            .field("submit_time", &self.submit_time)
+            .field("factory_time", &self.factory_time)
+            .field("worker_time", &self.worker_time)
+            .field("ttl", &self.ttl)
+            .field("span", &self.span)
+            .finish()
+    }
+}
+
+impl PartialEq for JobOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.submit_time == other.submit_time
+            && self.factory_time == other.factory_time
+            && self.worker_time == other.worker_time
+            && self.ttl == other.ttl
+            && self.span == other.span
     }
 }
 
@@ -161,19 +230,23 @@ impl BytesConvertable for JobOptions {
         } else {
             let ttl_bytes = data.split_off(8);
 
-            let submit_time = u64::from_be_bytes(data.try_into().unwrap()); //Unwrap should be safe since we checked length earlier
+            let submit_time = u64::from_be_bytes(data.try_into().unwrap());
             let ttl = u64::from_be_bytes(ttl_bytes.try_into().unwrap());
 
-            Self {
+            let ttl = if ttl > 0 {
+                Some(Duration::from_nanos(ttl))
+            } else {
+                None
+            };
+            let mut options = Self {
                 submit_time: std::time::UNIX_EPOCH + Duration::from_nanos(submit_time),
-                ttl: if ttl > 0 {
-                    Some(Duration::from_nanos(ttl))
-                } else {
-                    None
-                },
+                ttl,
+                ttl_timer: None,
                 span: None,
                 ..Default::default()
-            }
+            };
+            options.reset_ttl_timer();
+            options
         }
     }
 }
@@ -369,11 +442,10 @@ where
     /// Expiration only takes effect prior to the job being
     /// started execution on a worker.
     pub fn is_expired(&self) -> bool {
-        if let Some(ttl) = self.options.ttl {
-            self.options.submit_time.elapsed().unwrap() > ttl
-        } else {
-            false
-        }
+        self.options
+            .ttl_timer
+            .as_ref()
+            .is_some_and(TtlTimer::is_expired)
     }
 
     /// Set the time the factory received the job
@@ -633,8 +705,42 @@ impl<TKey: JobKey, TMessage: Message> RetriableMessage<TKey, TMessage> {
     }
 }
 
-#[cfg(feature = "cluster")]
 #[cfg(test)]
+mod ttl_tests {
+    use super::*;
+
+    #[test]
+    fn future_submit_time_does_not_panic_or_extend_ttl_by_clock_skew() {
+        let mut options = JobOptions::new(Some(Duration::from_secs(1)));
+        options.submit_time = SystemTime::now()
+            .checked_add(Duration::from_secs(60))
+            .expect("test timestamp should be representable");
+        options.reset_ttl_timer();
+
+        let job = Job::with_options((), (), options);
+        assert!(!job.is_expired());
+
+        let timer = job
+            .options
+            .ttl_timer
+            .as_ref()
+            .expect("a configured TTL should have a monotonic timer");
+        assert_eq!(Duration::from_secs(1), timer.remaining);
+    }
+
+    #[test]
+    fn already_expired_wall_clock_ttl_stays_expired() {
+        let mut options = JobOptions::new(Some(Duration::from_secs(1)));
+        options.submit_time = SystemTime::now()
+            .checked_sub(Duration::from_secs(2))
+            .expect("test timestamp should be representable");
+        options.reset_ttl_timer();
+
+        assert!(Job::with_options((), (), options).is_expired());
+    }
+}
+
+#[cfg(all(feature = "cluster", test))]
 mod tests {
     use super::super::FactoryMessage;
     use super::Job;

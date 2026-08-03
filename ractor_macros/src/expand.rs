@@ -11,6 +11,7 @@ use quote::{quote, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::spanned::Spanned;
 use syn::visit::Visit;
+use syn::visit_mut::VisitMut;
 use syn::{
     punctuated::Punctuated, Attribute, FieldPat, FnArg, ImplItem, ImplItemFn, ItemImpl, Member,
     Meta, Pat, PatIdent, Path, ReturnType, Signature, Token, Type, TypeReference, Visibility,
@@ -153,6 +154,9 @@ pub(crate) fn expand_actor(
 
     validate_unique_patterns(&dispatch_handlers, HandlerKind::Message)?;
     validate_unique_patterns(&supervision_handlers, HandlerKind::Supervision)?;
+    if matches!(&config.message, MessageConfig::Generated(_)) {
+        rewrite_impl_self_types(&mut dispatch_handlers, &actor_impl.self_ty)?;
+    }
 
     let has_pre_start = trait_methods
         .iter()
@@ -548,6 +552,182 @@ struct Handler {
     is_fallible: bool,
     rpc: Option<RpcHandler>,
     cfg_attributes: Vec<Attribute>,
+}
+
+fn rewrite_impl_self_types(handlers: &mut [Handler], self_ty: &Type) -> syn::Result<()> {
+    for handler in handlers {
+        for field_type in &mut handler.binding_types {
+            rewrite_impl_self_type(field_type, self_ty)?;
+        }
+        if let Some(rpc) = &mut handler.rpc {
+            rewrite_impl_self_type(&mut rpc.reply_type, self_ty)?;
+        }
+    }
+    Ok(())
+}
+
+fn rewrite_impl_self_type(ty: &mut Type, self_ty: &Type) -> syn::Result<()> {
+    fn self_token_span(tokens: TokenStream) -> Option<Span> {
+        tokens.into_iter().find_map(|token| match token {
+            proc_macro2::TokenTree::Ident(ident) if ident == "Self" => Some(ident.span()),
+            proc_macro2::TokenTree::Group(group) => self_token_span(group.stream()),
+            _ => None,
+        })
+    }
+
+    struct Rewriter<'a> {
+        self_ty: &'a Type,
+        error: Option<syn::Error>,
+    }
+
+    impl VisitMut for Rewriter<'_> {
+        fn visit_type_mut(&mut self, ty: &mut Type) {
+            if let Type::Verbatim(tokens) = ty {
+                if let Some(span) = self_token_span(tokens.clone()) {
+                    self.error = Some(syn::Error::new(
+                        span,
+                        "cannot rewrite `Self` inside opaque type syntax for a generated message; use the concrete actor type explicitly",
+                    ));
+                }
+                return;
+            }
+            let Type::Path(path) = ty else {
+                syn::visit_mut::visit_type_mut(self, ty);
+                return;
+            };
+            if path.qself.is_none()
+                && path.path.leading_colon.is_none()
+                && path.path.segments.len() == 1
+                && path.path.segments[0].ident == "Self"
+            {
+                *ty = self.self_ty.clone();
+                return;
+            }
+            syn::visit_mut::visit_type_mut(self, ty);
+        }
+
+        fn visit_path_mut(&mut self, path: &mut Path) {
+            if path.leading_colon.is_none()
+                && !path.segments.is_empty()
+                && path.segments[0].ident == "Self"
+            {
+                let Type::Path(concrete) = unparenthesized_type(self.self_ty) else {
+                    self.error = Some(syn::Error::new(
+                        path.segments[0].ident.span(),
+                        "cannot rewrite `Self::...` in a generated message type because the actor self type is not a path; use the concrete actor type explicitly",
+                    ));
+                    return;
+                };
+                if concrete.qself.is_some() {
+                    self.error = Some(syn::Error::new(
+                        path.segments[0].ident.span(),
+                        "cannot rewrite `Self::...` in a generated message type because the actor self type is qualified; use the concrete actor type explicitly",
+                    ));
+                    return;
+                }
+
+                let suffix = path.segments.iter().skip(1).cloned().collect::<Vec<_>>();
+                *path = concrete.path.clone();
+                for segment in &mut path.segments {
+                    if let syn::PathArguments::AngleBracketed(arguments) = &mut segment.arguments {
+                        arguments.colon2_token.get_or_insert_default();
+                    }
+                }
+                path.segments.extend(suffix);
+            }
+            syn::visit_mut::visit_path_mut(self, path);
+        }
+
+        fn visit_macro_mut(&mut self, node: &mut syn::Macro) {
+            syn::visit_mut::visit_macro_mut(self, node);
+            if let Some(span) = self_token_span(node.tokens.clone()) {
+                self.error = Some(syn::Error::new(
+                    span,
+                    "cannot rewrite `Self` inside a type macro for a generated message; use the concrete actor type explicitly",
+                ));
+            }
+        }
+    }
+
+    let mut rewriter = Rewriter {
+        self_ty,
+        error: None,
+    };
+    rewriter.visit_type_mut(ty);
+    rewriter.error.map_or(Ok(()), Err)
+}
+
+#[cfg(test)]
+mod impl_self_rewrite_tests {
+    use super::*;
+
+    fn assert_rewrite(input: Type, expected: Type) {
+        let mut actual = input;
+        let self_ty: Type = syn::parse_quote!(crate::ConcreteActor);
+        rewrite_impl_self_type(&mut actual, &self_ty).expect("Self type should be rewritable");
+        assert_eq!(
+            actual.to_token_stream().to_string(),
+            expected.to_token_stream().to_string()
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_bare_and_qualified_self_types() {
+        assert_rewrite(
+            syn::parse_quote!(Option<(Self, <Self as Associated>::Value)>),
+            syn::parse_quote!(
+                Option<(
+                    crate::ConcreteActor,
+                    <crate::ConcreteActor as Associated>::Value
+                )>
+            ),
+        );
+    }
+
+    #[test]
+    fn rewrites_self_associated_paths() {
+        assert_rewrite(
+            syn::parse_quote!(Self::Associated),
+            syn::parse_quote!(crate::ConcreteActor::Associated),
+        );
+        assert_rewrite(
+            syn::parse_quote!([Self; Self::CAPACITY]),
+            syn::parse_quote!([crate::ConcreteActor; crate::ConcreteActor::CAPACITY]),
+        );
+    }
+
+    #[test]
+    fn uses_turbofish_for_generic_self_paths_in_const_expressions() {
+        let mut actual: Type = syn::parse_quote!([u8; Self::CAPACITY]);
+        let self_ty: Type = syn::parse_quote!(crate::GenericActor<T>);
+        rewrite_impl_self_type(&mut actual, &self_ty).expect("Self path should be rewritable");
+
+        let expected: Type = syn::parse_quote!([u8; crate::GenericActor::<T>::CAPACITY]);
+        assert_eq!(
+            actual.to_token_stream().to_string(),
+            expected.to_token_stream().to_string()
+        );
+    }
+
+    #[test]
+    fn rejects_self_associated_paths_for_non_path_actor_types() {
+        let mut ty: Type = syn::parse_quote!(Self::Associated);
+        let self_ty: Type = syn::parse_quote!((Actor,));
+        let error = rewrite_impl_self_type(&mut ty, &self_ty)
+            .expect_err("a non-path actor type cannot qualify an associated type");
+
+        assert!(error.to_string().contains("actor self type is not a path"));
+    }
+
+    #[test]
+    fn rejects_self_inside_type_macros() {
+        let mut ty: Type = syn::parse_quote!(wrapped!(Self));
+        let self_ty: Type = syn::parse_quote!(Actor);
+        let error = rewrite_impl_self_type(&mut ty, &self_ty)
+            .expect_err("Self tokens inside type macros cannot be rewritten safely");
+
+        assert!(error.to_string().contains("inside a type macro"));
+    }
 }
 
 fn parse_handler(

@@ -476,6 +476,71 @@ impl ActorLoopResult {
     }
 }
 
+/// Owns synchronous actor cleanup so executor cancellation cannot strand
+/// lifecycle state, registry entries, spawn-time supervision links, children, or waiters.
+pub(crate) struct ActorLifecycleGuard {
+    actor: ActorCell,
+    supervisor: Option<ActorCell>,
+    notify_on_cancel: bool,
+    armed: bool,
+}
+
+impl ActorLifecycleGuard {
+    pub(crate) fn new(actor: ActorCell) -> Self {
+        Self {
+            actor,
+            supervisor: None,
+            notify_on_cancel: false,
+            armed: true,
+        }
+    }
+
+    pub(crate) fn set_supervisor(&mut self, supervisor: Option<ActorCell>) {
+        self.supervisor = supervisor;
+    }
+
+    pub(crate) fn mark_running(&mut self) {
+        self.notify_on_cancel = true;
+    }
+
+    pub(crate) fn finish(mut self, event: SupervisionEvent) {
+        self.cleanup(Some(event));
+    }
+
+    fn cleanup(&mut self, event: Option<SupervisionEvent>) {
+        if !self.armed {
+            return;
+        }
+
+        self.actor.set_status(ActorStatus::Stopping);
+        self.actor.terminate();
+
+        if let Some(event) = event {
+            self.actor.notify_supervisor(event);
+        }
+
+        if let Some(supervisor) = self.supervisor.take() {
+            self.actor.unlink(supervisor);
+        }
+
+        self.actor.set_status(ActorStatus::Stopped);
+        self.armed = false;
+    }
+}
+
+impl Drop for ActorLifecycleGuard {
+    fn drop(&mut self) {
+        let event = self.notify_on_cancel.then(|| {
+            SupervisionEvent::ActorTerminated(
+                self.actor.clone(),
+                None,
+                Some("actor_task_cancelled".to_string()),
+            )
+        });
+        self.cleanup(event);
+    }
+}
+
 /// [ActorRuntime] is a struct which represents the processing actor.
 ///
 ///  This struct is consumed by the `start` operation, but results in an
@@ -486,6 +551,7 @@ where
     TActor: Actor,
 {
     actor_ref: ActorRef<TActor::Msg>,
+    lifecycle: ActorLifecycleGuard,
     handler: TActor,
     id: ActorId,
     name: Option<String>,
@@ -656,9 +722,11 @@ where
             let id = actor_cell.get_id();
             let name = actor_cell.get_name();
             let actor_cell2 = actor_cell.clone();
+            let lifecycle = ActorLifecycleGuard::new(actor_cell.clone());
             let (actor, ports) = (
                 Self {
                     actor_ref: actor_cell.into(),
+                    lifecycle,
                     handler,
                     id,
                     name,
@@ -683,9 +751,11 @@ where
         let (actor_cell, ports) = actor_cell::ActorCell::new::<TActor>(name)?;
         let id = actor_cell.get_id();
         let name = actor_cell.get_name();
+        let lifecycle = ActorLifecycleGuard::new(actor_cell.clone());
         Ok((
             Self {
                 actor_ref: actor_cell.into(),
+                lifecycle,
                 handler,
                 id,
                 name,
@@ -721,6 +791,7 @@ where
         let Self {
             handler,
             actor_ref,
+            mut lifecycle,
             id,
             name,
         } = self;
@@ -730,22 +801,16 @@ where
         // Perform the pre-start routine, crashing immediately if we fail to start
         let mut state = match Self::do_pre_start(actor_ref.clone(), &handler, startup_args).await {
             Ok(Ok(state)) => state,
-            Ok(Err(e)) => {
-                // Set status to stopped on error before returning
-                actor_ref.set_status(ActorStatus::Stopped);
-                return Err(SpawnErr::StartupFailed(e));
-            }
-            Err(e) => {
-                // Set status to stopped on error before returning
-                actor_ref.set_status(ActorStatus::Stopped);
-                return Err(e);
-            }
+            Ok(Err(e)) => return Err(SpawnErr::StartupFailed(e)),
+            Err(e) => return Err(e),
         };
 
         // setup supervision
         if let Some(sup) = &supervisor {
             actor_ref.link(sup.clone());
         }
+        lifecycle.set_supervisor(supervisor);
+        lifecycle.mark_running();
 
         // Generate the ActorRef which will be returned
         let myself_ret = actor_ref.clone();
@@ -771,19 +836,7 @@ where
                 },
             };
 
-            // terminate children
-            myself.terminate();
-
-            // notify supervisors of the actor's death
-            myself.notify_supervisor_and_monitors(evt);
-
-            // unlink superisors
-            if let Some(sup) = supervisor {
-                myself.unlink(sup);
-            }
-
-            // set status to stopped
-            myself.set_status(ActorStatus::Stopped);
+            lifecycle.finish(evt);
         });
 
         Ok((myself_ret, handle))

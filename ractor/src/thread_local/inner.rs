@@ -24,6 +24,7 @@ use crate::actor::actor_properties::ActorProperties;
 use crate::actor::actor_properties::MuxedMessage;
 use crate::actor::get_panic_string;
 use crate::actor::messages::StopMessage;
+use crate::actor::ActorLifecycleGuard;
 use crate::actor::ActorLoopResult;
 use crate::concurrency as mpsc;
 use crate::concurrency::JoinHandle;
@@ -126,6 +127,7 @@ where
     TActor: ThreadLocalActor,
 {
     actor_ref: ActorRef<TActor::Msg>,
+    lifecycle: ActorLifecycleGuard,
     id: ActorId,
     name: Option<String>,
 }
@@ -153,9 +155,11 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
             crate::actor::actor_cell::ActorCell::new_thread_local::<TActor>(name)?;
         let id = actor_cell.get_id();
         let name = actor_cell.get_name();
+        let lifecycle = ActorLifecycleGuard::new(actor_cell.clone());
         Ok((
             Self {
                 actor_ref: actor_cell.into(),
+                lifecycle,
                 id,
                 name,
             },
@@ -285,6 +289,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
 
         let Self {
             actor_ref,
+            mut lifecycle,
             id,
             name,
         } = self;
@@ -295,6 +300,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         if let Some(sup) = &supervisor {
             actor_ref.link(sup.clone());
         }
+        lifecycle.set_supervisor(supervisor);
 
         // Generate the ActorRef which will be returned
         let spawn_name = name.clone();
@@ -308,21 +314,10 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                 let result = Self::do_pre_start(actor_ref.clone(), &handler, startup_args).await;
                 let mut state = match result {
                     Ok(Ok(state)) => state,
-                    Ok(Err(e)) => {
-                        // cleanup supervision on pre_start failure
-                        if let Some(sup) = &supervisor {
-                            actor_ref.unlink(sup.clone());
-                        }
-                        return Err(SpawnErr::StartupFailed(e));
-                    }
-                    Err(e) => {
-                        // cleanup supervision on panic
-                        if let Some(sup) = &supervisor {
-                            actor_ref.unlink(sup.clone());
-                        }
-                        return Err(e);
-                    }
+                    Ok(Err(e)) => return Err(SpawnErr::StartupFailed(e)),
+                    Err(e) => return Err(e),
                 };
+                lifecycle.mark_running();
 
                 // run the processing loop, backgrounding the work
                 let handle = crate::concurrency::spawn_local(async move {
@@ -349,19 +344,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                         },
                     };
 
-                    // terminate children
-                    myself.terminate();
-
-                    // notify supervisors of the actor's death
-                    myself.notify_supervisor_and_monitors(evt);
-
-                    // unlink superisors
-                    if let Some(sup) = supervisor {
-                        myself.unlink(sup);
-                    }
-
-                    // set status to stopped
-                    myself.set_status(ActorStatus::Stopped);
+                    lifecycle.finish(evt);
                 });
                 Ok(handle)
             }

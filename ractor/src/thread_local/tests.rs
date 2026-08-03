@@ -94,6 +94,40 @@ async fn test_error_on_start_captured() {
 }
 
 #[crate::concurrency::test]
+async fn cancelling_spawn_cleans_up_queued_thread_local_start() {
+    #[derive(Default)]
+    struct PendingActor;
+
+    impl Actor for PendingActor {
+        type Msg = EmptyMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            std::future::pending().await
+        }
+    }
+
+    let actor_name = "cancelling_spawn_cleans_up_queued_thread_local_start".to_string();
+    let result = crate::concurrency::timeout(
+        Duration::from_millis(10),
+        PendingActor::spawn(Some(actor_name.clone()), (), get_spawner()),
+    )
+    .await;
+
+    assert!(result.is_err());
+    periodic_check(
+        || crate::registry::where_is(actor_name.clone()).is_none(),
+        Duration::from_secs(1),
+    )
+    .await;
+}
+
+#[crate::concurrency::test]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     tracing_test::traced_test
@@ -538,6 +572,53 @@ async fn actor_post_stop_executed_before_stop_and_wait_returns() {
 
     assert_eq!(1, signal.load(Ordering::SeqCst));
 
+    handle.await.unwrap();
+}
+
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
+async fn send_actor_adapter_delegates_post_stop() {
+    #[derive(Default)]
+    struct TestActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl crate::Actor for TestActor {
+        type Msg = EmptyMessage;
+        type Arguments = Arc<AtomicU8>;
+        type State = Arc<AtomicU8>;
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            args: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(args)
+        }
+
+        async fn post_stop(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            state.store(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    let signal = Arc::new(AtomicU8::new(0));
+    let (actor, handle) = crate::spawn_local::<TestActor>(signal.clone(), get_spawner())
+        .await
+        .expect("Failed to spawn adapted send actor");
+
+    actor
+        .stop_and_wait(None, None)
+        .await
+        .expect("Failed to stop adapted send actor");
+
+    assert_eq!(1, signal.load(Ordering::SeqCst));
     handle.await.unwrap();
 }
 

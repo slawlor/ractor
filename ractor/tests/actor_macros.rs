@@ -427,6 +427,57 @@ where
     }
 }
 
+trait SelfQualifiedTypes {
+    type Payload;
+    type Reply;
+}
+
+#[derive(Clone, Copy)]
+struct SelfQualifiedActor;
+
+impl SelfQualifiedTypes for SelfQualifiedActor {
+    type Payload = u64;
+    type Reply = usize;
+}
+
+#[ractor::actor(
+    message = enum SelfQualifiedMessage,
+    state = u64,
+    crate_path = ::ractor,
+)]
+impl SelfQualifiedActor {
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<SelfQualifiedMessage>,
+        _arguments: (),
+    ) -> Result<u64, ActorProcessingErr> {
+        Ok(0)
+    }
+
+    #[ractor::message(Set(value))]
+    fn set(&self, value: Option<<Self as SelfQualifiedTypes>::Payload>, state: &mut u64) {
+        *state = value.unwrap_or_default();
+    }
+
+    #[ractor::message(ReplaceActor(replacement))]
+    fn replace_actor(&self, replacement: Self) {
+        let _ = replacement;
+    }
+
+    #[ractor::rpc(Read(reply))]
+    fn read(&self, state: &u64) -> Vec<<Self as SelfQualifiedTypes>::Reply> {
+        vec![*state as usize]
+    }
+
+    #[ractor::message(Stop)]
+    fn stop(&self, myself: ActorRef<SelfQualifiedMessage>) {
+        myself.stop(None);
+    }
+}
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for SelfQualifiedMessage {}
+
 mod shadowed_prelude_names {
     use super::Actor;
 
@@ -754,6 +805,30 @@ fn generic_actor_impls_preserve_bounds() {
         value: String::new(),
         reply: reply.into(),
     };
+}
+
+#[ractor::concurrency::test]
+async fn generated_messages_rewrite_impl_self_types() {
+    let (actor, handle) = Actor::spawn(None, SelfQualifiedActor, ())
+        .await
+        .expect("self-qualified actor failed to start");
+
+    actor
+        .send_message(SelfQualifiedMessage::ReplaceActor(SelfQualifiedActor))
+        .expect("plain Self message failed");
+    actor
+        .send_message(SelfQualifiedMessage::Set(Some(42)))
+        .expect("qualified Self message failed");
+    let value =
+        ractor::call_t!(actor, SelfQualifiedMessage::Read, 100).expect("self-qualified RPC failed");
+    assert_eq!(value, vec![42]);
+
+    actor
+        .send_message(SelfQualifiedMessage::Stop)
+        .expect("self-qualified actor stop failed");
+    handle
+        .await
+        .expect("self-qualified actor failed to stop cleanly");
 }
 
 #[test]
