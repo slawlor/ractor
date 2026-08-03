@@ -1045,6 +1045,82 @@ async fn kill_and_wait() {
     periodic_check(|| handle.is_finished(), Duration::from_millis(500)).await;
 }
 
+#[crate::concurrency::test]
+async fn aborting_actor_task_runs_lifecycle_cleanup() {
+    struct WaitingActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for WaitingActor {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let actor_name = "aborting_actor_task_runs_lifecycle_cleanup".to_string();
+    let (actor, handle) = Actor::spawn(Some(actor_name.clone()), WaitingActor, ())
+        .await
+        .expect("actor should start");
+
+    #[cfg(feature = "async-std")]
+    let mut handle = handle;
+    handle.abort();
+    assert!(handle.await.is_err());
+    assert_eq!(ActorStatus::Stopped, actor.get_status());
+    assert!(crate::registry::where_is(actor_name).is_none());
+}
+
+#[crate::concurrency::test]
+async fn cancelling_spawn_future_runs_lifecycle_cleanup() {
+    struct NeverStarts;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for NeverStarts {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            std::future::pending().await
+        }
+    }
+
+    let actor_name = "cancelling_spawn_future_runs_lifecycle_cleanup".to_string();
+    let result = crate::concurrency::timeout(
+        Duration::from_millis(10),
+        Actor::spawn(Some(actor_name.clone()), NeverStarts, ()),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert!(crate::registry::where_is(actor_name).is_none());
+}
+
+#[test]
+fn dropping_unpolled_start_future_runs_lifecycle_cleanup() {
+    let actor_name = "dropping_unpolled_start_future_runs_lifecycle_cleanup".to_string();
+    let (runtime, ports) = super::ActorRuntime::new(Some(actor_name.clone()), StatusTestActor)
+        .expect("actor runtime should be created");
+    let actor = runtime.actor_ref.clone();
+
+    let start = runtime.start(ports, (), None);
+    drop(start);
+
+    assert_eq!(ActorStatus::Stopped, actor.get_status());
+    assert!(crate::registry::where_is(actor_name).is_none());
+}
+
 #[test]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_os = "unknown")),

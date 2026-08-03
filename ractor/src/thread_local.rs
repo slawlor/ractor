@@ -343,6 +343,14 @@ where
         <Self as SendActor>::post_start(self, myself, state).await
     }
 
+    async fn post_stop(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        <Self as SendActor>::post_stop(self, myself, state).await
+    }
+
     async fn handle(
         &self,
         myself: ActorRef<Self::Msg>,
@@ -378,8 +386,36 @@ struct SpawnArgs {
         dyn FnOnce() -> std::pin::Pin<Box<dyn Future<Output = Result<JoinHandle<()>, SpawnErr>>>>
             + Send,
     >,
-    reply: RpcReplyPort<JoinHandle<Result<JoinHandle<()>, SpawnErr>>>,
+    reply: RpcReplyPort<AbortOnDropHandle<Result<JoinHandle<()>, SpawnErr>>>,
     name: Option<String>,
+}
+
+struct AbortOnDropHandle<T> {
+    handle: Option<JoinHandle<T>>,
+}
+
+impl<T> AbortOnDropHandle<T> {
+    fn new(handle: JoinHandle<T>) -> Self {
+        Self {
+            handle: Some(handle),
+        }
+    }
+
+    fn handle_mut(&mut self) -> &mut JoinHandle<T> {
+        self.handle.as_mut().expect("task handle should be present")
+    }
+
+    fn disarm(&mut self) {
+        self.handle.take();
+    }
+}
+
+impl<T> Drop for AbortOnDropHandle<T> {
+    fn drop(&mut self) {
+        if let Some(handle) = &mut self.handle {
+            handle.abort();
+        }
+    }
 }
 
 /// The [ThreadLocalActorSpawner] is responsible for spawning [ThreadLocalActor] instances
@@ -434,13 +470,13 @@ impl ThreadLocalActorSpawner {
                             .name(name.unwrap_or_default().as_str())
                             .spawn_local(fut)
                             .expect("Tokio task spawn failed");
-                        _ = reply.send(handle);
+                        _ = reply.send(AbortOnDropHandle::new(handle));
                     }
                     #[cfg(not(tokio_unstable))]
                     {
                         _ = name;
                         let handle = crate::concurrency::spawn_local(fut);
-                        _ = reply.send(handle);
+                        _ = reply.send(AbortOnDropHandle::new(handle));
                     }
                 }
                 // If the while loop returns, then all the LocalSpawner
@@ -472,7 +508,7 @@ impl ThreadLocalActorSpawner {
                     let fut = builder();
                     _ = name;
                     let handle = crate::concurrency::spawn_local(fut);
-                    _ = reply.send(handle);
+                    _ = reply.send(AbortOnDropHandle::new(handle));
                 }
             }));
         });
@@ -494,7 +530,7 @@ impl ThreadLocalActorSpawner {
             {
                 let fut = builder();
                 let handle = crate::concurrency::spawn_local(fut);
-                _ = reply.send(handle);
+                _ = reply.send(AbortOnDropHandle::new(handle));
             }
         });
 
@@ -521,10 +557,11 @@ impl ThreadLocalActorSpawner {
         if self.send.send(args).is_err() {
             return Err(SpawnErr::StartupFailed("Spawner dead".into()));
         }
-        let rx_result = rx
+        let mut task = rx
             .await
-            .map_err(|inner| SpawnErr::StartupFailed(inner.into()))?
-            .await;
+            .map_err(|inner| SpawnErr::StartupFailed(inner.into()))?;
+        let rx_result = task.handle_mut().await;
+        task.disarm();
 
         #[cfg(not(feature = "async-std"))]
         {

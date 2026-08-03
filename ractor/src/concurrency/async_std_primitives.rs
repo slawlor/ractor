@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-use futures::future::BoxFuture;
+use futures::future::{AbortHandle, Abortable, Aborted, BoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
@@ -26,7 +26,8 @@ use futures::StreamExt;
 /// Adds some syntactic wrapping to support a JoinHandle
 /// similar to `tokio`'s.
 pub struct JoinHandle<T> {
-    handle: Option<async_std::task::JoinHandle<T>>,
+    handle: Option<async_std::task::JoinHandle<Result<T, Aborted>>>,
+    abort_handle: AbortHandle,
     is_done: Arc<AtomicBool>,
 }
 
@@ -35,6 +36,7 @@ impl<T> Debug for JoinHandle<T> {
         f.debug_struct("JoinHandle")
             .field("name", &self.is_done.load(Ordering::Relaxed))
             .field("handle", &self.handle.is_some())
+            .field("aborted", &self.abort_handle.is_aborted())
             .finish()
     }
 }
@@ -42,15 +44,14 @@ impl<T> Debug for JoinHandle<T> {
 impl<T> JoinHandle<T> {
     /// Determine if the handle is currently finished
     pub fn is_finished(&self) -> bool {
-        self.handle.is_none() || self.is_done.load(Ordering::Relaxed)
+        self.handle.is_none()
+            || self.abort_handle.is_aborted()
+            || self.is_done.load(Ordering::Relaxed)
     }
 
     /// Abort the handle
     pub fn abort(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            let f = handle.cancel();
-            drop(f);
-        }
+        self.abort_handle.abort();
     }
 }
 
@@ -68,9 +69,13 @@ impl<T> async_std::future::Future for JoinHandle<T> {
 
         match inner_polled_value {
             Poll::Pending => Poll::Pending,
-            Poll::Ready(v) => {
+            Poll::Ready(Ok(v)) => {
                 mutself.handle = None;
                 Poll::Ready(Ok(v))
+            }
+            Poll::Ready(Err(_)) => {
+                mutself.handle = None;
+                Poll::Ready(Err(()))
             }
         }
     }
@@ -180,15 +185,17 @@ where
 {
     let signal = Arc::new(AtomicBool::new(false));
     let inner_signal = signal.clone();
+    let (abort_handle, abort_registration) = AbortHandle::new_pair();
 
     let jh = async_std::task::spawn_local(async move {
-        let r = future.await;
+        let r = Abortable::new(future, abort_registration).await;
         inner_signal.fetch_or(true, Ordering::Relaxed);
         r
     });
 
     JoinHandle {
         handle: Some(jh),
+        abort_handle,
         is_done: signal,
     }
 }
@@ -199,6 +206,7 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
+    let (abort_handle, abort_registration) = AbortHandle::new_pair();
     if let Some(name) = name {
         let signal = Arc::new(AtomicBool::new(false));
         let inner_signal = signal.clone();
@@ -206,7 +214,7 @@ where
         let jh = async_std::task::Builder::new()
             .name(name.to_string())
             .spawn(async move {
-                let r = future.await;
+                let r = Abortable::new(future, abort_registration).await;
                 inner_signal.fetch_or(true, Ordering::Relaxed);
                 r
             })
@@ -214,6 +222,7 @@ where
 
         JoinHandle {
             handle: Some(jh),
+            abort_handle,
             is_done: signal,
         }
     } else {
@@ -221,13 +230,14 @@ where
         let inner_signal = signal.clone();
 
         let jh = async_std::task::spawn(async move {
-            let r = future.await;
+            let r = Abortable::new(future, abort_registration).await;
             inner_signal.fetch_or(true, Ordering::Relaxed);
             r
         });
 
         JoinHandle {
             handle: Some(jh),
+            abort_handle,
             is_done: signal,
         }
     }
@@ -260,11 +270,17 @@ mod async_std_primitive_tests {
 
     #[super::test]
     async fn join_handle_aborts() {
-        let mut jh = spawn(async {
+        let completed = Arc::new(AtomicBool::new(false));
+        let completed_task = completed.clone();
+        let mut jh = spawn(async move {
             sleep(Duration::from_millis(1000)).await;
+            completed_task.store(true, Ordering::Relaxed);
         });
         jh.abort();
         assert!(jh.is_finished());
+        assert!(jh.await.is_err());
+        sleep(Duration::from_millis(10)).await;
+        assert!(!completed.load(Ordering::Relaxed));
     }
 
     #[super::test]
