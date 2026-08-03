@@ -96,6 +96,16 @@ async fn test_duplicate_registration() {
     // make sure the first actor is still registered
     assert!(crate::registry::where_is("my_second_actor".to_string()).is_some());
 
+    #[cfg(feature = "cluster")]
+    assert_eq!(
+        1,
+        crate::registry::get_all_pids()
+            .into_iter()
+            .filter(|cell| cell.get_name().as_deref() == Some("my_second_actor"))
+            .count(),
+        "the rejected actor must not remain in the PID registry"
+    );
+
     actor.stop(None);
     handle.await.expect("Failed to clean stop the actor");
 }

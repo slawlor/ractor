@@ -606,12 +606,15 @@ pub fn which_scopes_and_groups() -> Vec<ScopeGroupKey> {
 /// Returns a [`Vec<ScopeName>`] representing all the registered scopes
 pub fn which_scopes() -> Vec<ScopeName> {
     let monitor = get_monitor();
-    monitor
+    let mut scopes = monitor
         .map
         .iter()
         .filter(|kvp| !kvp.value().members.is_empty())
         .map(|kvp| kvp.key().scope.to_owned())
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+    scopes.sort_unstable();
+    scopes.dedup();
+    scopes
 }
 
 /// Subscribes the provided [crate::Actor] to the group in the default scope
@@ -625,12 +628,19 @@ pub fn monitor(group: GroupName, actor: ActorCell) {
         group,
     };
     let monitor = get_monitor();
-    let relations = get_or_create_actor_relations(monitor, actor.get_id());
+    let actor_id = actor.get_id();
+    let relations = get_or_create_actor_relations(monitor, actor_id);
     let mut entry = monitor.map.entry(key.clone()).or_default();
     let mut relations_guard = lock_relations(&relations);
 
     if actor.get_status() <= ActorStatus::Draining {
-        entry.listeners.push(actor.clone());
+        if !entry
+            .listeners
+            .iter()
+            .any(|listener| listener.get_id() == actor_id)
+        {
+            entry.listeners.push(actor.clone());
+        }
         relations_guard.group_monitors.insert(key.clone());
     }
 
@@ -642,7 +652,7 @@ pub fn monitor(group: GroupName, actor: ActorCell) {
                 entry.remove();
             }
         }
-        remove_empty_actor_relations(monitor, actor.get_id(), &relations);
+        remove_empty_actor_relations(monitor, actor_id, &relations);
     }
 }
 
@@ -656,13 +666,16 @@ pub fn monitor_scope(scope: ScopeName, actor: ActorCell) {
         group: ALL_GROUPS_NOTIFICATION.to_owned(),
     };
     let monitor = get_monitor();
-    let relations = get_or_create_actor_relations(monitor, actor.get_id());
+    let actor_id = actor.get_id();
+    let relations = get_or_create_actor_relations(monitor, actor_id);
     let mut entry = monitor.world_listeners.entry(key.clone()).or_default();
     let mut relations_guard = lock_relations(&relations);
 
     if actor.get_status() <= ActorStatus::Draining {
         // Register ONLY in world_listeners (not per-group) to avoid duplicate notifications
-        entry.push(actor.clone());
+        if !entry.iter().any(|listener| listener.get_id() == actor_id) {
+            entry.push(actor.clone());
+        }
         relations_guard.world_monitors.insert(key.clone());
     }
 
@@ -674,7 +687,7 @@ pub fn monitor_scope(scope: ScopeName, actor: ActorCell) {
                 entry.remove();
             }
         }
-        remove_empty_actor_relations(monitor, actor.get_id(), &relations);
+        remove_empty_actor_relations(monitor, actor_id, &relations);
     }
 }
 

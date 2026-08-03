@@ -57,14 +57,16 @@ impl ActorCell {
             inner: Arc::new(props),
         };
 
-        #[cfg(feature = "cluster")]
-        {
-            // registry to the PID registry
-            crate::registry::pid_registry::register_pid(cell.get_id(), cell.clone())?;
+        if let Some(r_name) = &name {
+            crate::registry::register(r_name.clone(), cell.clone())?;
         }
 
-        if let Some(r_name) = name {
-            crate::registry::register(r_name, cell.clone())?;
+        #[cfg(feature = "cluster")]
+        if let Err(err) = crate::registry::pid_registry::register_pid(cell.get_id(), cell.clone()) {
+            if let Some(r_name) = &name {
+                crate::registry::unregister(r_name);
+            }
+            return Err(err.into());
         }
 
         Ok((

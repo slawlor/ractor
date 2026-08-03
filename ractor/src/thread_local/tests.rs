@@ -34,6 +34,46 @@ fn get_spawner() -> ThreadLocalActorSpawner {
         .clone()
 }
 
+#[test]
+#[cfg(feature = "cluster")]
+fn duplicate_thread_local_name_does_not_leak_pid() {
+    #[derive(Default)]
+    struct TestActor;
+
+    impl Actor for TestActor {
+        type Msg = ();
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let name = "duplicate_thread_local_name_does_not_leak_pid".to_string();
+    let (actor, ports) = ActorCell::new_thread_local::<TestActor>(Some(name.clone()))
+        .expect("first actor should be constructed");
+
+    assert!(matches!(
+        ActorCell::new_thread_local::<TestActor>(Some(name.clone())),
+        Err(SpawnErr::ActorAlreadyRegistered(_))
+    ));
+    assert_eq!(
+        1,
+        crate::registry::get_all_pids()
+            .into_iter()
+            .filter(|cell| cell.get_name().as_deref() == Some(name.as_str()))
+            .count()
+    );
+
+    actor.set_status(ActorStatus::Stopped);
+    drop(ports);
+}
+
 struct EmptyMessage;
 #[cfg(feature = "cluster")]
 impl crate::Message for EmptyMessage {}

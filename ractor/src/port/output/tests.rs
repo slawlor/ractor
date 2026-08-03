@@ -84,6 +84,80 @@ async fn test_single_forward() {
 }
 
 #[crate::concurrency::test]
+#[cfg(not(feature = "output-port-v2"))]
+async fn lagged_subscription_continues_forwarding() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier};
+
+    struct TestActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = ();
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("failed to start test actor");
+    let output = Arc::new(OutputPort::<u32>::default());
+    let entered_converter = Arc::new(Barrier::new(2));
+    let release_converter = Arc::new(Barrier::new(2));
+    let delivered_after_lag = Arc::new(AtomicBool::new(false));
+
+    let converter_entered = entered_converter.clone();
+    let converter_release = release_converter.clone();
+    let converter_delivered = delivered_after_lag.clone();
+    output.subscribe(actor.clone(), move |message| {
+        if message == 0 {
+            converter_entered.wait();
+            converter_release.wait();
+        }
+        if message == u32::MAX {
+            converter_delivered.store(true, Ordering::SeqCst);
+        }
+        None
+    });
+
+    let producer_output = output.clone();
+    let producer_entered = entered_converter.clone();
+    let producer_release = release_converter.clone();
+    let producer = std::thread::spawn(move || {
+        producer_output.send(0);
+        producer_entered.wait();
+        for message in 1..=100 {
+            producer_output.send(message);
+        }
+        producer_output.send(u32::MAX);
+        producer_release.wait();
+    });
+
+    while !producer.is_finished() {
+        crate::concurrency::sleep(Duration::from_millis(1)).await;
+    }
+    producer.join().expect("producer thread should not panic");
+    timeout(Duration::from_secs(1), async {
+        while !delivered_after_lag.load(Ordering::SeqCst) {
+            crate::concurrency::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("subscriber should continue after reporting lag");
+
+    actor.stop(None);
+    handle.await.expect("actor should stop cleanly");
+}
+
+#[crate::concurrency::test]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     tracing_test::traced_test
