@@ -390,6 +390,8 @@ where
             if let Some(existing_worker) = self.pool.get_mut(&wid) {
                 // mark the worker as healthy again
                 existing_worker.set_draining(false);
+                self.router
+                    .on_worker_key_change(wid, existing_worker.current_key());
                 if existing_worker.is_available() {
                     self.router.on_worker_availability_change(wid, true);
                 }
@@ -439,6 +441,7 @@ where
                         // drained, stop and drop
                         tracing::trace!("Stopping worker {wid}");
                         self.router.on_worker_availability_change(wid, false);
+                        self.router.on_worker_key_change(wid, None);
                         mut_worker.actor.stop(None);
                         existing_worker.remove();
                     }
@@ -558,28 +561,34 @@ where
             self.processing_messages -= 1;
         }
 
-        let (is_worker_draining, should_drop_worker) = if let Some(worker) = self.pool.get_mut(&who)
-        {
-            if let Some(job_options) = worker.worker_complete(key)? {
-                self.stats.job_completed(&self.factory_name, &job_options);
-            }
+        let (is_worker_draining, should_drop_worker, current_key) =
+            if let Some(worker) = self.pool.get_mut(&who) {
+                if let Some(job_options) = worker
+                    .worker_complete(key)
+                    .map_err(|err| (*err).discard_message())?
+                {
+                    self.stats.job_completed(&self.factory_name, &job_options);
+                }
 
-            if worker.is_draining {
-                // don't schedule more work
-                (true, !worker.is_working())
+                if worker.is_draining {
+                    // don't schedule more work
+                    (true, !worker.is_working(), worker.current_key().cloned())
+                } else {
+                    (false, false, worker.current_key().cloned())
+                }
             } else {
-                (false, false)
-            }
-        } else {
-            (false, false)
-        };
+                (false, false, None)
+            };
+        self.router.on_worker_key_change(who, current_key.as_ref());
 
         if should_drop_worker {
+            self.router.on_worker_availability_change(who, false);
             let worker = self.pool.remove(&who);
             if let Some(w) = worker {
                 tracing::trace!("Stopping worker {}", w.wid);
                 w.actor.stop(None);
             }
+            self.try_route_next_active_job(who)?;
         } else if !is_worker_draining {
             self.try_route_next_active_job(who)?;
             if matches!(self.pool.get(&who), Some(w) if w.is_available()) {
@@ -650,7 +659,9 @@ where
         }
 
         for worker in self.pool.values_mut() {
-            worker.send_factory_ping()?;
+            worker
+                .send_factory_ping()
+                .map_err(|err| (*err).discard_message())?;
         }
 
         // schedule next ping
@@ -952,7 +963,7 @@ where
     ) -> Result<(), ActorProcessingErr> {
         match message {
             SupervisionEvent::ActorTerminated(who, _, reason) => {
-                let wid = if let Some(worker) = state
+                let replacement = if let Some(worker) = state
                     .pool
                     .values_mut()
                     .find(|actor| actor.is_pid(who.get_id()))
@@ -972,11 +983,12 @@ where
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
                     worker.replace_worker(replacement, replacement_handle)?;
-                    Some(worker.wid)
+                    Some((worker.wid, worker.current_key().cloned()))
                 } else {
                     None
                 };
-                if let Some(wid) = wid {
+                if let Some((wid, key)) = replacement {
+                    state.router.on_worker_key_change(wid, key.as_ref());
                     state.try_route_next_active_job(wid)?;
                     if matches!(state.pool.get(&wid), Some(w) if w.is_available()) {
                         state.router.on_worker_availability_change(wid, true);
@@ -984,7 +996,7 @@ where
                 }
             }
             SupervisionEvent::ActorFailed(who, reason) => {
-                let wid = if let Some(worker) = state
+                let replacement = if let Some(worker) = state
                     .pool
                     .values_mut()
                     .find(|actor| actor.is_pid(who.get_id()))
@@ -1004,11 +1016,12 @@ where
                         Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
                     worker.replace_worker(replacement, replacement_handle)?;
-                    Some(worker.wid)
+                    Some((worker.wid, worker.current_key().cloned()))
                 } else {
                     None
                 };
-                if let Some(wid) = wid {
+                if let Some((wid, key)) = replacement {
+                    state.router.on_worker_key_change(wid, key.as_ref());
                     state.try_route_next_active_job(wid)?;
                     if matches!(state.pool.get(&wid), Some(w) if w.is_available()) {
                         state.router.on_worker_availability_change(wid, true);

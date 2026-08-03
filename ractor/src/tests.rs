@@ -51,6 +51,15 @@ fn test_error_conversions() {
     );
 }
 
+#[test]
+fn test_non_sync_messaging_error_can_be_erased_for_actor_processing() {
+    let err = crate::MessagingErr::SendErr(std::cell::Cell::new(42));
+    let _: ActorProcessingErr = err.discard_message().into();
+
+    let err = crate::RactorErr::Messaging(crate::MessagingErr::SendErr(std::cell::Cell::new(42)));
+    let _: ActorProcessingErr = err.discard_message().into();
+}
+
 #[crate::concurrency::test]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_os = "unknown")),

@@ -366,7 +366,8 @@ where
 
                 state
                     .factory
-                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))?;
+                    .cast(FactoryMessage::WorkerPong(state.wid, time.elapsed()))
+                    .map_err(MessagingErr::discard_message)?;
                 Ok(())
             }
             WorkerMessage::Dispatch(mut job) => {
@@ -380,7 +381,8 @@ where
                 }?;
                 state
                     .factory
-                    .cast(FactoryMessage::Finished(state.wid, key))?;
+                    .cast(FactoryMessage::Finished(state.wid, key))
+                    .map_err(MessagingErr::discard_message)?;
                 Ok(())
             }
         }
@@ -671,6 +673,10 @@ where
         self.curr_jobs.contains_key(key)
     }
 
+    pub(crate) fn current_key(&self) -> Option<&TKey> {
+        self.curr_jobs.keys().next()
+    }
+
     pub(crate) fn replace_worker(
         &mut self,
         nworker: ActorRef<WorkerMessage<TKey, TMsg>>,
@@ -685,7 +691,9 @@ where
         if let Some(mut job) = self.get_next_non_expired_job() {
             self.curr_jobs.insert(job.key.clone(), job.options.clone());
             job.set_worker_time();
-            self.actor.cast(WorkerMessage::Dispatch(job))?;
+            self.actor
+                .cast(WorkerMessage::Dispatch(job))
+                .map_err(MessagingErr::discard_message)?;
         }
         Ok(())
     }

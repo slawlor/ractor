@@ -91,6 +91,10 @@ where
     fn on_worker_availability_change(&mut self, wid: WorkerId, available: bool) {
         self.router.on_worker_availability_change(wid, available);
     }
+
+    fn on_worker_key_change(&mut self, wid: WorkerId, key: Option<&TKey>) {
+        self.router.on_worker_key_change(wid, key);
+    }
 }
 
 /// A basic leaky-bucket rate limiter. This is a synchronous implementation

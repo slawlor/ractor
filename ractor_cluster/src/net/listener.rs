@@ -88,9 +88,11 @@ impl Actor for Listener {
         // If the used port differs from the user-specified port, inform the node server.
         let local_addr = listener.local_addr()?;
         if local_addr.port() != self.port {
-            node_server.send_message(NodeServerMessage::PortChanged {
-                port: local_addr.port(),
-            })?;
+            node_server
+                .send_message(NodeServerMessage::PortChanged {
+                    port: local_addr.port(),
+                })
+                .map_err(ractor::MessagingErr::discard_message)?;
         }
 
         // startup the event processing loop by sending an initial msg

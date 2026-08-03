@@ -301,18 +301,22 @@ fn gen_call_deserialize_arm(variant: &ParsedVariant) -> impl ToTokens {
 fn pack_args(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
     quote! {
         {
-            let __arg_data = <#target_type as ractor::BytesConvertable>::into_bytes(#field);
-            let __arg_len = <u64 as ::core::convert::TryFrom<usize>>::try_from(__arg_data.len())
+            __data
+                .try_reserve(::core::mem::size_of::<u64>())
+                .map_err(|_| ractor::message::BoxedDowncastErr)?;
+            let __length_offset = __data.len();
+            __data.extend_from_slice(&[0u8; 8]);
+            let __data_offset = __data.len();
+            <#target_type as ractor::BytesConvertable>::extend_bytes(#field, &mut __data);
+            let __arg_len = <u64 as ::core::convert::TryFrom<usize>>::try_from(
+                __data
+                    .len()
+                    .checked_sub(__data_offset)
+                    .ok_or(ractor::message::BoxedDowncastErr)?
+            )
                 .map_err(|_| ractor::message::BoxedDowncastErr)?
                 .to_be_bytes();
-            let __additional = ::core::mem::size_of::<u64>()
-                .checked_add(__arg_data.len())
-                .ok_or(ractor::message::BoxedDowncastErr)?;
-            __data
-                .try_reserve(__additional)
-                .map_err(|_| ractor::message::BoxedDowncastErr)?;
-            __data.extend(__arg_len);
-            __data.extend(__arg_data);
+            __data[__length_offset..__data_offset].copy_from_slice(&__arg_len);
         }
     }
 }
@@ -339,10 +343,9 @@ fn unpack_arg(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
                 .ok_or(ractor::message::BoxedDowncastErr)?;
             let __data_bytes = __args
                 .get(__len_end..__data_end)
-                .ok_or(ractor::message::BoxedDowncastErr)?
-                .to_vec();
+                .ok_or(ractor::message::BoxedDowncastErr)?;
             let __t_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-                <#target_type as ractor::BytesConvertable>::from_bytes(__data_bytes)
+                <#target_type as ractor::BytesConvertable>::from_bytes_ref(__data_bytes)
             }))
                 .map_err(|_| ractor::message::BoxedDowncastErr)?;
             __ptr = __data_end;

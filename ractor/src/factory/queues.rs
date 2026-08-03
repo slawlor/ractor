@@ -91,10 +91,16 @@ pub enum StandardPriority {
 #[cfg(feature = "cluster")]
 impl crate::BytesConvertable for StandardPriority {
     fn from_bytes(bytes: Vec<u8>) -> Self {
-        (u64::from_bytes(bytes) as usize).into()
+        Self::from_bytes_ref(&bytes)
+    }
+    fn from_bytes_ref(bytes: &[u8]) -> Self {
+        (u64::from_bytes_ref(bytes) as usize).into()
     }
     fn into_bytes(self) -> Vec<u8> {
         (self as u64).into_bytes()
+    }
+    fn extend_bytes(self, buffer: &mut Vec<u8>) {
+        (self as u64).extend_bytes(buffer);
     }
 }
 

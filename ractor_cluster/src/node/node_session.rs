@@ -525,7 +525,8 @@ impl NodeSession {
                         ractor::cast!(
                             self.node_server,
                             NodeServerMessage::ConnectionReady(myself.get_id())
-                        )?;
+                        )
+                        .map_err(ractor::RactorErr::discard_message)?;
                     }
                     ReadyState::SyncReceived | ReadyState::Ready => {
                         tracing::warn!("Received duplicate Ready signal");
@@ -1128,9 +1129,11 @@ impl Actor for NodeSession {
                             self.handle_auth(state, auth_message, myself.clone()).await;
                             // If we were not originally authenticated, but now we are, startup the node sync'ing logic
                             if !p_state && state.auth.is_ok() {
-                                self.node_server.cast(
-                                    NodeServerMessage::ConnectionAuthenticated(myself.get_id()),
-                                )?;
+                                self.node_server
+                                    .cast(NodeServerMessage::ConnectionAuthenticated(
+                                        myself.get_id(),
+                                    ))
+                                    .map_err(ractor::MessagingErr::discard_message)?;
                                 let elected = if let Some(peer_name) = &state.name {
                                     let mut peer_name = peer_name.clone();
                                     peer_name.connection_id = state.connection_id;
@@ -1155,9 +1158,11 @@ impl Actor for NodeSession {
                                 if elected {
                                     self.after_authenticated(myself.clone(), state);
                                     if state.ready.is_ok() {
-                                        self.node_server.cast(
-                                            NodeServerMessage::ConnectionReady(myself.get_id()),
-                                        )?;
+                                        self.node_server
+                                            .cast(NodeServerMessage::ConnectionReady(
+                                                myself.get_id(),
+                                            ))
+                                            .map_err(ractor::MessagingErr::discard_message)?;
                                     }
                                 } else {
                                     myself.stop(Some("session_election_lost".to_string()));

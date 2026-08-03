@@ -70,7 +70,7 @@ Install `ractor` by adding the following to your Cargo.toml dependencies.
 
 ```toml
 [dependencies]
-ractor = "0.16"
+ractor = "0.17"
 ```
 
 The minimum supported Rust version (MSRV) of `ractor` is `1.85`.
@@ -97,7 +97,7 @@ implementation whose methods describe the messages they handle:
 
 ```toml
 [dependencies]
-ractor = { version = "0.16", features = ["actor-macros"] }
+ractor = { version = "0.17", features = ["actor-macros"] }
 ```
 
 ```rust

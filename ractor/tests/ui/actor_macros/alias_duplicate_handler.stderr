@@ -1,0 +1,15 @@
+error: unreachable pattern
+  --> tests/ui/actor_macros/alias_duplicate_handler.rs:14:23
+   |
+11 |     #[ractor::message(Message::Go)]
+   |                       ----------- matches all the relevant values
+...
+14 |     #[ractor::message(MessageAlias::Go)]
+   |                       ^^^^^^^^^^^^^^^^ no value can reach this
+   |
+note: the lint level is defined here
+  --> tests/ui/actor_macros/alias_duplicate_handler.rs:9:1
+   |
+ 9 | #[ractor::actor(message = Message)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `ractor::actor` (in Nightly builds, run with -Z macro-backtrace for more info)

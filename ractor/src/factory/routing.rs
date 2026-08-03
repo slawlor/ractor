@@ -111,6 +111,12 @@ where
     /// * `wid` - The worker id whose availability changed
     /// * `available` - `true` if the worker is now available, `false` if now busy
     fn on_worker_availability_change(&mut self, _wid: WorkerId, _available: bool) {}
+
+    /// Notification of the key a worker is currently processing.
+    ///
+    /// The factory calls this after completion, replacement, and removal so routers
+    /// that index active keys can keep that index synchronized with worker state.
+    fn on_worker_key_change(&mut self, _wid: WorkerId, _key: Option<&TKey>) {}
 }
 
 // ============================ Macros ======================= //
@@ -162,7 +168,9 @@ where
             .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
-            worker.enqueue_job(job)?;
+            worker
+                .enqueue_job(job)
+                .map_err(|err| (*err).discard_message())?;
         }
         Ok(RouteResult::Handled)
     }
@@ -232,7 +240,9 @@ where
             .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
-            worker.enqueue_job(job)?;
+            worker
+                .enqueue_job(job)
+                .map_err(|err| (*err).discard_message())?;
             Ok(RouteResult::Handled)
         } else {
             Ok(RouteResult::Backlog(job))
@@ -306,6 +316,10 @@ where
     available_workers: VecDeque<WorkerId>,
     /// Indexed by WorkerId — true if the worker is already in `available_workers`
     worker_in_queue: Vec<bool>,
+    /// Active worker for each in-flight job key.
+    active_workers: HashMap<TKey, WorkerId>,
+    /// Reverse index used to remove a worker's active key in constant time.
+    worker_keys: Vec<Option<TKey>>,
 }
 
 impl<TKey, TMsg> Default for StickyQueuerRouting<TKey, TMsg>
@@ -319,6 +333,48 @@ where
             _msg: PhantomData,
             available_workers: VecDeque::new(),
             worker_in_queue: Vec::new(),
+            active_workers: HashMap::new(),
+            worker_keys: Vec::new(),
+        }
+    }
+}
+
+impl<TKey, TMsg> StickyQueuerRouting<TKey, TMsg>
+where
+    TKey: JobKey,
+    TMsg: Message,
+{
+    fn update_worker_key(&mut self, wid: WorkerId, key: Option<&TKey>) {
+        match key {
+            Some(key)
+                if self.worker_keys.get(wid).and_then(Option::as_ref) == Some(key)
+                    && self.active_workers.get(key) == Some(&wid) =>
+            {
+                return;
+            }
+            None if self.worker_keys.get(wid).is_none_or(Option::is_none) => return,
+            _ => {}
+        }
+
+        if wid >= self.worker_keys.len() {
+            self.worker_keys.resize(wid + 1, None);
+        }
+
+        if let Some(previous_key) = self.worker_keys[wid].take() {
+            if self.active_workers.get(&previous_key) == Some(&wid) {
+                self.active_workers.remove(&previous_key);
+            }
+        }
+
+        if let Some(key) = key {
+            if let Some(previous_wid) = self.active_workers.insert(key.clone(), wid) {
+                if previous_wid != wid
+                    && self.worker_keys.get(previous_wid).and_then(Option::as_ref) == Some(key)
+                {
+                    self.worker_keys[previous_wid] = None;
+                }
+            }
+            self.worker_keys[wid] = Some(key.clone());
         }
     }
 }
@@ -335,15 +391,20 @@ where
         worker_hint: Option<WorkerId>,
         worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr> {
-        if let Some(worker) = self
-            .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
-            .and_then(|wid| worker_pool.get_mut(&wid))
-        {
-            worker.enqueue_job(job)?;
-            Ok(RouteResult::Handled)
-        } else {
-            Ok(RouteResult::Backlog(job))
-        }
+        let Some(wid) = self.choose_target_worker(&job, pool_size, worker_hint, worker_pool) else {
+            return Ok(RouteResult::Backlog(job));
+        };
+        let Some(worker) = worker_pool.get_mut(&wid) else {
+            self.update_worker_key(wid, None);
+            return Ok(RouteResult::Backlog(job));
+        };
+
+        let key = job.key.clone();
+        worker
+            .enqueue_job(job)
+            .map_err(|err| (*err).discard_message())?;
+        self.update_worker_key(wid, Some(&key));
+        Ok(RouteResult::Handled)
     }
 
     fn choose_target_worker(
@@ -353,19 +414,27 @@ where
         worker_hint: Option<WorkerId>,
         worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
-        // check sticky first
-        if let Some(worker) = worker_hint.and_then(|worker| worker_pool.get(&worker)) {
-            if worker.is_processing_key(&job.key) {
-                return worker_hint;
+        // Look up the active key directly. A draining worker retains the binding until
+        // it finishes so the same key cannot execute concurrently on another worker.
+        if let Some(wid) = self.active_workers.get(&job.key).copied() {
+            if let Some(worker) = worker_pool.get(&wid) {
+                if worker.is_processing_key(&job.key) {
+                    return (!worker.is_draining).then_some(wid);
+                }
             }
+            self.update_worker_key(wid, None);
         }
 
-        let maybe_worker = worker_pool
-            .iter()
-            .find(|(_, worker)| worker.is_processing_key(&job.key))
-            .map(|(a, _)| *a);
-        if maybe_worker.is_some() {
-            return maybe_worker;
+        // A hint provides an O(1) recovery path if a custom factory transition did not
+        // report its current key to the router.
+        if let Some(wid) = worker_hint {
+            if let Some(worker) = worker_pool.get(&wid) {
+                if worker.is_processing_key(&job.key) {
+                    let is_draining = worker.is_draining;
+                    self.update_worker_key(wid, Some(&job.key));
+                    return (!is_draining).then_some(wid);
+                }
+            }
         }
 
         // now take first available, based on hint then deque
@@ -408,6 +477,10 @@ where
             // Mark not-in-queue; lazy removal from deque
             self.worker_in_queue[wid] = false;
         }
+    }
+
+    fn on_worker_key_change(&mut self, wid: WorkerId, key: Option<&TKey>) {
+        self.update_worker_key(wid, key);
     }
 }
 
@@ -456,7 +529,9 @@ where
             .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
-            worker.enqueue_job(job)?;
+            worker
+                .enqueue_job(job)
+                .map_err(|err| (*err).discard_message())?;
         }
         Ok(RouteResult::Handled)
     }
@@ -537,7 +612,9 @@ where
             .choose_target_worker(&job, pool_size, worker_hint, worker_pool)
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
-            worker.enqueue_job(job)?;
+            worker
+                .enqueue_job(job)
+                .map_err(|err| (*err).discard_message())?;
         }
         Ok(RouteResult::Handled)
     }
@@ -555,5 +632,35 @@ where
 
     fn is_factory_queueing(&self) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sticky_key_indexes_follow_worker_lifecycle() {
+        let mut router = StickyQueuerRouting::<u64, ()>::default();
+
+        router.on_worker_key_change(2, Some(&10));
+        assert_eq!(Some(&2), router.active_workers.get(&10));
+        assert_eq!(Some(&10), router.worker_keys[2].as_ref());
+
+        // Completion followed by another assignment on the same worker replaces the key.
+        router.on_worker_key_change(2, Some(&11));
+        assert!(!router.active_workers.contains_key(&10));
+        assert_eq!(Some(&2), router.active_workers.get(&11));
+
+        // Replacement or retry on another worker repairs both sides of the index.
+        router.on_worker_key_change(3, Some(&11));
+        assert_eq!(None, router.worker_keys[2]);
+        assert_eq!(Some(&11), router.worker_keys[3].as_ref());
+        assert_eq!(Some(&3), router.active_workers.get(&11));
+
+        // Failure, removal, and pool shrink all publish an empty current key.
+        router.on_worker_key_change(3, None);
+        assert!(!router.active_workers.contains_key(&11));
+        assert_eq!(None, router.worker_keys[3]);
     }
 }

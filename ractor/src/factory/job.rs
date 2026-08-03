@@ -203,6 +203,12 @@ impl Default for JobOptions {
 #[cfg(feature = "cluster")]
 impl BytesConvertable for JobOptions {
     fn into_bytes(self) -> Vec<u8> {
+        let mut data = Vec::with_capacity(16);
+        self.extend_bytes(&mut data);
+        data
+    }
+
+    fn extend_bytes(self, data: &mut Vec<u8>) {
         let submit_time = (self
             .submit_time
             .duration_since(std::time::UNIX_EPOCH)
@@ -215,23 +221,24 @@ impl BytesConvertable for JobOptions {
             .unwrap_or(0)
             .to_be_bytes();
 
-        let mut data = vec![0u8; 16];
-        data[0..8].copy_from_slice(&submit_time);
-        data[8..16].copy_from_slice(&ttl);
-        data
+        data.reserve(16);
+        data.extend_from_slice(&submit_time);
+        data.extend_from_slice(&ttl);
     }
 
-    fn from_bytes(mut data: Vec<u8>) -> Self {
+    fn from_bytes(data: Vec<u8>) -> Self {
+        Self::from_bytes_ref(&data)
+    }
+
+    fn from_bytes_ref(data: &[u8]) -> Self {
         if data.len() != 16 {
             Self {
                 span: None,
                 ..Default::default()
             }
         } else {
-            let ttl_bytes = data.split_off(8);
-
-            let submit_time = u64::from_be_bytes(data.try_into().unwrap());
-            let ttl = u64::from_be_bytes(ttl_bytes.try_into().unwrap());
+            let submit_time = u64::from_be_bytes(data[..8].try_into().unwrap());
+            let ttl = u64::from_be_bytes(data[8..].try_into().unwrap());
 
             let ttl = if ttl > 0 {
                 Some(Duration::from_nanos(ttl))

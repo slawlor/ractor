@@ -5,7 +5,7 @@ from an actor definition while leaving its behavior visible as ordinary Rust met
 
 ```toml
 [dependencies]
-ractor = { version = "0.16", features = ["actor-macros"] }
+ractor = { version = "0.17", features = ["actor-macros"] }
 ```
 
 ## Defining an actor
