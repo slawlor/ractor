@@ -41,6 +41,9 @@ use crate::NodeServerMessage;
 
 const MIN_PING_LATENCY_MS: u64 = 1000;
 const MAX_PING_LATENCY_MS: u64 = 5000;
+const MIN_PROTOBUF_TIMESTAMP_SECONDS: i64 = -62_135_596_800;
+const MAX_PROTOBUF_TIMESTAMP_SECONDS: i64 = 253_402_300_799;
+const NANOSECONDS_PER_SECOND: i32 = 1_000_000_000;
 
 #[cfg(test)]
 mod tests;
@@ -416,9 +419,7 @@ impl NodeSession {
         if let Some(msg) = message.msg {
             match msg {
                 node_protocol::node_message::Msg::Cast(cast_args) => {
-                    if let Some(actor) =
-                        ractor::registry::where_is_pid(ActorId::Local(cast_args.to))
-                    {
+                    if let Some(actor) = state.authorized_local_actor(cast_args.to) {
                         let _ = actor.send_serialized(SerializedMessage::Cast {
                             variant: cast_args.variant,
                             args: cast_args.what,
@@ -429,9 +430,7 @@ impl NodeSession {
                 node_protocol::node_message::Msg::Call(call_args) => {
                     let to = call_args.to;
                     let tag = call_args.tag;
-                    if let Some(actor) =
-                        ractor::registry::where_is_pid(ActorId::Local(call_args.to))
-                    {
+                    if let Some(actor) = state.authorized_local_actor(call_args.to) {
                         let (tx, rx) = ractor::concurrency::oneshot();
 
                         // send off the transmission in the serialized format, letting the message's own deserialization handle
@@ -573,25 +572,7 @@ impl NodeSession {
                     });
                 }
                 control_protocol::control_message::Msg::Pong(pong) => {
-                    let ts: std::time::SystemTime = pong
-                        .timestamp
-                        .expect("Timestamp missing in Pong")
-                        .try_into()
-                        .expect("Failed to convert Pong(Timestamp) to SystemTime");
-                    let inst = ts
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .expect("Time went backwards");
-                    let delta_ms = (state.epoch.elapsed() - inst).as_millis();
-                    tracing::debug!("Ping -> Pong took {delta_ms}ms");
-                    if delta_ms > 50 {
-                        tracing::warn!(
-                            "Super long ping detected {} - {} ({delta_ms}ms)",
-                            state.local_addr,
-                            state.peer_addr,
-                        );
-                    }
-                    // schedule next ping
-                    state.schedule_tcp_ping();
+                    state.handle_pong(pong);
                 }
                 control_protocol::control_message::Msg::PgJoin(join) => {
                     let mut cells = vec![];
@@ -728,7 +709,7 @@ impl NodeSession {
         );
 
         // startup the ping healthcheck activity
-        state.schedule_tcp_ping();
+        state.start_ping_loop();
 
         // trigger enumeration of the remote peer's node sessions for transitive connections
         if let NodeConnectionMode::Transitive = self.connection_mode {
@@ -753,6 +734,9 @@ impl NodeSession {
                 pid: a.get_id().pid(),
             })
             .collect::<Vec<_>>();
+        state
+            .advertised_local_pids
+            .extend(pids.iter().map(|actor| actor.pid));
         if !pids.is_empty() {
             let msg = control_protocol::ControlMessage {
                 msg: Some(control_protocol::control_message::Msg::Spawn(
@@ -840,21 +824,74 @@ impl NodeSession {
     }
 }
 
+#[derive(Debug)]
+struct AbortOnDropTask {
+    handle: Option<ractor::concurrency::JoinHandle<()>>,
+}
+
+impl AbortOnDropTask {
+    fn new(handle: ractor::concurrency::JoinHandle<()>) -> Self {
+        Self {
+            handle: Some(handle),
+        }
+    }
+
+    fn abort(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
+    }
+}
+
+impl Drop for AbortOnDropTask {
+    fn drop(&mut self) {
+        self.abort();
+    }
+}
+
+#[derive(Debug, Default)]
+struct PongWarnings {
+    invalid: bool,
+    slow: bool,
+}
+
 /// The state of the node session
 #[derive(Debug)]
 pub struct NodeSessionState {
     tcp: Option<ActorRef<SessionMessage>>,
+    ping_task: Option<AbortOnDropTask>,
     peer_addr: SocketAddr,
     local_addr: SocketAddr,
     epoch: Instant,
+    pong_warnings: PongWarnings,
     name: Option<auth_protocol::NameMessage>,
     connection_id: u64,
     auth: AuthenticationState,
     ready: ReadyState,
     remote_actors: HashMap<u64, ActorRef<RemoteActorMessage>>,
+    advertised_local_pids: HashSet<u64>,
 }
 
 impl NodeSessionState {
+    fn authorized_local_actor(&mut self, pid: u64) -> Option<ractor::ActorCell> {
+        if !self.advertised_local_pids.contains(&pid) {
+            tracing::debug!("Rejected cluster message for unadvertised local PID {pid}");
+            return None;
+        }
+
+        let actor = ractor::registry::where_is_pid(ActorId::Local(pid));
+        if actor
+            .as_ref()
+            .is_some_and(ractor::ActorCell::supports_remoting)
+        {
+            actor
+        } else {
+            self.advertised_local_pids.remove(&pid);
+            tracing::debug!("Rejected cluster message for non-remotable local PID {pid}");
+            None
+        }
+    }
+
     fn is_tcp_actor(&self, actor: ActorId) -> bool {
         self.tcp
             .as_ref()
@@ -891,28 +928,96 @@ impl NodeSessionState {
         }
     }
 
-    fn schedule_tcp_ping(&self) {
-        let epoch = self.epoch;
-        if let Some(tcp) = &self.tcp {
-            #[allow(clippy::let_underscore_future)]
-            let _ = tcp.send_after(Self::get_send_delay(), move || {
-                let ping = control_protocol::ControlMessage {
-                    msg: Some(control_protocol::control_message::Msg::Ping(
-                        control_protocol::Ping {
-                            timestamp: Some(prost_types::Timestamp::from(
-                                SystemTime::UNIX_EPOCH + epoch.elapsed(),
-                            )),
-                        },
-                    )),
-                };
-                let net_msg = crate::protocol::NetworkMessage {
-                    message: Some(crate::protocol::meta::network_message::Message::Control(
-                        ping,
-                    )),
-                };
-                SessionMessage::Send(net_msg)
-            });
+    fn start_ping_loop(&mut self) {
+        self.start_ping_loop_with_delay(Self::get_send_delay);
+    }
+
+    fn start_ping_loop_with_delay<F>(&mut self, next_delay: F) -> bool
+    where
+        F: Fn() -> Duration + Send + 'static,
+    {
+        if self.ping_task.is_some() {
+            return false;
         }
+        let Some(tcp) = self.tcp.clone() else {
+            return false;
+        };
+
+        let epoch = self.epoch;
+        self.ping_task = Some(AbortOnDropTask::new(ractor::concurrency::spawn(
+            async move {
+                loop {
+                    ractor::concurrency::sleep(next_delay()).await;
+                    let ping = control_protocol::ControlMessage {
+                        msg: Some(control_protocol::control_message::Msg::Ping(
+                            control_protocol::Ping {
+                                timestamp: Some(prost_types::Timestamp::from(
+                                    SystemTime::UNIX_EPOCH + epoch.elapsed(),
+                                )),
+                            },
+                        )),
+                    };
+                    let net_msg = crate::protocol::NetworkMessage {
+                        message: Some(crate::protocol::meta::network_message::Message::Control(
+                            ping,
+                        )),
+                    };
+                    if tcp.cast(SessionMessage::Send(net_msg)).is_err() {
+                        break;
+                    }
+                }
+            },
+        )));
+        true
+    }
+
+    fn handle_pong(&mut self, pong: control_protocol::Pong) {
+        match self.pong_latency(pong.timestamp) {
+            Ok(delta) => {
+                let delta_ms = delta.as_millis();
+                tracing::debug!("Ping -> Pong took {delta_ms}ms");
+                if delta_ms > 50 && !self.pong_warnings.slow {
+                    tracing::warn!(
+                        "Slow ping detected {} - {} ({delta_ms}ms); further slow Pongs will only be logged at debug level",
+                        self.local_addr,
+                        self.peer_addr,
+                    );
+                    self.pong_warnings.slow = true;
+                }
+            }
+            Err(reason) if !self.pong_warnings.invalid => {
+                tracing::warn!(
+                    "Ignoring invalid Pong from {} to {}: {reason}; further invalid Pongs will be ignored",
+                    self.peer_addr,
+                    self.local_addr,
+                );
+                self.pong_warnings.invalid = true;
+            }
+            Err(_) => {}
+        }
+    }
+
+    fn pong_latency(
+        &self,
+        timestamp: Option<prost_types::Timestamp>,
+    ) -> Result<Duration, &'static str> {
+        let timestamp = timestamp.ok_or("timestamp is missing")?;
+        if !(MIN_PROTOBUF_TIMESTAMP_SECONDS..=MAX_PROTOBUF_TIMESTAMP_SECONDS)
+            .contains(&timestamp.seconds)
+            || !(0..NANOSECONDS_PER_SECOND).contains(&timestamp.nanos)
+        {
+            return Err("timestamp is outside the protobuf Timestamp range");
+        }
+        let timestamp: SystemTime = timestamp
+            .try_into()
+            .map_err(|_| "timestamp is out of range")?;
+        let sent_at = timestamp
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| "timestamp predates the Unix epoch")?;
+        self.epoch
+            .elapsed()
+            .checked_sub(sent_at)
+            .ok_or("timestamp is ahead of this session's clock")
     }
 
     fn get_send_delay() -> Duration {
@@ -946,6 +1051,7 @@ impl Actor for NodeSession {
 
         let state = Self::State {
             tcp: Some(actor),
+            ping_task: None,
             name: None,
             connection_id: self.connection_id,
             auth: if self.is_server {
@@ -955,9 +1061,11 @@ impl Actor for NodeSession {
             },
             ready: ReadyState::Open,
             remote_actors: HashMap::new(),
+            advertised_local_pids: HashSet::new(),
             peer_addr,
             local_addr,
             epoch: Instant::now(),
+            pong_warnings: PongWarnings::default(),
         };
 
         // If a client-connection, startup the handshake
@@ -975,8 +1083,11 @@ impl Actor for NodeSession {
     async fn post_stop(
         &self,
         myself: ActorRef<Self::Msg>,
-        _state: &mut Self::State,
+        state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        if let Some(mut ping_task) = state.ping_task.take() {
+            ping_task.abort();
+        }
         // unhook monitoring sessions
         ractor::pg::demonitor_scope(
             ractor::pg::ALL_SCOPES_NOTIFICATION.to_string(),
@@ -1188,6 +1299,7 @@ impl Actor for NodeSession {
             SupervisionEvent::PidLifecycleEvent(pid) => match pid {
                 PidLifecycleEvent::Spawn(who) => {
                     if who.supports_remoting() {
+                        state.advertised_local_pids.insert(who.get_id().pid());
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::Spawn(
                                 control_protocol::Spawn {
@@ -1203,6 +1315,7 @@ impl Actor for NodeSession {
                 }
                 PidLifecycleEvent::Terminate(who) => {
                     if who.supports_remoting() {
+                        state.advertised_local_pids.remove(&who.get_id().pid());
                         let msg = control_protocol::ControlMessage {
                             msg: Some(control_protocol::control_message::Msg::Terminate(
                                 control_protocol::Terminate {

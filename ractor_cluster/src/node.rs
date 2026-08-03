@@ -746,8 +746,10 @@ impl Actor for NodeServer {
             }
             Self::Msg::GetSessions(reply) => {
                 let mut map = HashMap::new();
-                for value in state.node_sessions.values() {
-                    map.insert(value.node_id, value.clone());
+                for (actor_id, value) in &state.node_sessions {
+                    if state.authenticated_sessions.contains(actor_id) {
+                        map.insert(value.node_id, value.clone());
+                    }
                 }
                 let _ = reply.send(map);
             }
@@ -1295,6 +1297,29 @@ mod tests {
             is_server: connection.b_is_server,
         })
         .expect("node B connection should enqueue");
+    }
+
+    #[ractor::concurrency::test]
+    async fn unauthenticated_sessions_are_not_externally_visible() {
+        let nodes = TestNodes::spawn().await;
+        let stalled = connection("stalled", true);
+
+        nodes
+            .a
+            .cast(NodeServerMessage::ConnectionOpenedExternal {
+                stream: Box::new(stalled.a),
+                is_server: stalled.a_is_server,
+            })
+            .expect("stalled session should enqueue");
+
+        // This RPC is a mailbox barrier after the session was opened. Its peer
+        // remains connected but sends no authentication message.
+        let visible = ractor::call_t!(nodes.a, NodeServerMessage::GetSessions, 1_000)
+            .expect("session topology should be available");
+        assert!(visible.is_empty());
+
+        drop(stalled.b);
+        nodes.stop().await;
     }
 
     #[ractor::concurrency::test]

@@ -5,10 +5,12 @@
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
+use std::time::SystemTime;
 
 use ractor::concurrency::sleep;
 
@@ -82,6 +84,279 @@ impl Actor for DummyNodeSession {
     }
 }
 
+struct PingCounter {
+    pings: Arc<AtomicU8>,
+}
+
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+impl Actor for PingCounter {
+    type Msg = SessionMessage;
+    type State = ();
+    type Arguments = ();
+
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
+
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        message: Self::Msg,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        if matches!(
+            message,
+            SessionMessage::Send(crate::protocol::NetworkMessage {
+                message: Some(crate::protocol::meta::network_message::Message::Control(
+                    control_protocol::ControlMessage {
+                        msg: Some(control_protocol::control_message::Msg::Ping(_)),
+                    },
+                )),
+            })
+        ) {
+            self.pings.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+}
+
+fn authenticated_state(tcp: Option<ActorRef<SessionMessage>>) -> NodeSessionState {
+    NodeSessionState {
+        auth: AuthenticationState::AsClient(auth::ClientAuthenticationProcess::Ok),
+        ready: ReadyState::Open,
+        local_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        peer_addr: SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+        name: None,
+        connection_id: 0,
+        remote_actors: HashMap::new(),
+        advertised_local_pids: HashSet::new(),
+        tcp,
+        ping_task: None,
+        epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
+    }
+}
+
+#[test]
+fn malformed_pongs_are_ignored() {
+    let mut state = authenticated_state(None);
+    let future_timestamp = prost_types::Timestamp::from(
+        SystemTime::UNIX_EPOCH + state.epoch.elapsed() + Duration::from_secs(60),
+    );
+
+    for timestamp in [
+        None,
+        Some(prost_types::Timestamp {
+            seconds: 0,
+            nanos: 1_000_000_000,
+        }),
+        Some(prost_types::Timestamp {
+            seconds: -1,
+            nanos: 0,
+        }),
+        Some(future_timestamp),
+    ] {
+        assert!(state.pong_latency(timestamp.clone()).is_err());
+        state.handle_pong(control_protocol::Pong { timestamp });
+    }
+
+    assert!(state.pong_warnings.invalid);
+    assert!(state.ping_task.is_none());
+}
+
+#[ractor::concurrency::test]
+async fn ping_loop_is_single_and_aborted_with_session_state() {
+    let pings = Arc::new(AtomicU8::new(0));
+    let (tcp, tcp_handle) = Actor::spawn(
+        None,
+        PingCounter {
+            pings: pings.clone(),
+        },
+        (),
+    )
+    .await
+    .unwrap();
+    let mut state = authenticated_state(Some(tcp.clone()));
+    let task_capture = Arc::new(AtomicBool::new(false));
+    let weak_task_capture = Arc::downgrade(&task_capture);
+
+    assert!(state.start_ping_loop_with_delay(move || {
+        task_capture.store(true, Ordering::Relaxed);
+        Duration::from_millis(5)
+    }));
+    assert!(!state.start_ping_loop_with_delay(|| Duration::from_millis(1)));
+
+    ractor::concurrency::timeout(Duration::from_millis(250), async {
+        while pings.load(Ordering::Relaxed) < 2 {
+            sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    drop(state);
+    ractor::concurrency::timeout(Duration::from_millis(250), async {
+        while weak_task_capture.upgrade().is_some() {
+            sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    let final_count = pings.load(Ordering::Relaxed);
+    sleep(Duration::from_millis(20)).await;
+    assert_eq!(final_count, pings.load(Ordering::Relaxed));
+
+    tcp.stop(None);
+    tcp_handle.await.unwrap();
+}
+
+struct RemotableMessage;
+
+impl ractor::Message for RemotableMessage {
+    fn serializable() -> bool {
+        true
+    }
+
+    fn deserialize(message: SerializedMessage) -> Result<Self, ractor::message::BoxedDowncastErr> {
+        match message {
+            SerializedMessage::Cast { .. } | SerializedMessage::Call { .. } => Ok(Self),
+            SerializedMessage::CallReply(_, _) => Err(ractor::message::BoxedDowncastErr),
+        }
+    }
+}
+
+struct RemotableCounter {
+    received: Arc<AtomicU8>,
+}
+
+#[cfg_attr(feature = "async-trait", ractor::async_trait)]
+impl Actor for RemotableCounter {
+    type Msg = RemotableMessage;
+    type State = ();
+    type Arguments = ();
+
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
+
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        _message: Self::Msg,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        self.received.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+#[ractor::concurrency::test]
+async fn inbound_messages_require_an_advertised_remotable_pid() {
+    let (server, server_handle) = Actor::spawn(None, DummyNodeServer, ()).await.unwrap();
+    let (session_actor, session_handle) = Actor::spawn(None, DummyNodeSession, ()).await.unwrap();
+    let received = Arc::new(AtomicU8::new(0));
+    let (target, target_handle) = Actor::spawn(
+        None,
+        RemotableCounter {
+            received: received.clone(),
+        },
+        (),
+    )
+    .await
+    .unwrap();
+    assert!(target.supports_remoting());
+
+    let session = NodeSession {
+        cookie: "cookie".to_string(),
+        is_server: true,
+        node_id: 1,
+        this_node_name: auth_protocol::NameMessage {
+            name: "myself".to_string(),
+            flags: Some(auth_protocol::NodeFlags { version: 1 }),
+            connection_string: "localhost:123".to_string(),
+            connection_id: 0,
+        },
+        node_server: server.get_cell().into(),
+        connection_mode: NodeConnectionMode::Isolated,
+        max_inbound_frame_size: super::super::DEFAULT_MAX_INBOUND_FRAME_SIZE,
+        connection_id: 0,
+    };
+    let mut state = authenticated_state(None);
+    let pid = target.get_id().pid();
+    let session_ref: ActorRef<NodeSessionMessage> = session_actor.get_cell().into();
+
+    session.handle_node(
+        &mut state,
+        node_protocol::NodeMessage {
+            msg: Some(node_protocol::node_message::Msg::Cast(
+                node_protocol::Cast {
+                    to: pid,
+                    what: vec![],
+                    variant: "Cast".to_string(),
+                    metadata: None,
+                },
+            )),
+        },
+        session_ref.clone(),
+    );
+    sleep(Duration::from_millis(20)).await;
+    assert_eq!(received.load(Ordering::Relaxed), 0);
+
+    state.advertised_local_pids.insert(pid);
+    session.handle_node(
+        &mut state,
+        node_protocol::NodeMessage {
+            msg: Some(node_protocol::node_message::Msg::Cast(
+                node_protocol::Cast {
+                    to: pid,
+                    what: vec![],
+                    variant: "Cast".to_string(),
+                    metadata: None,
+                },
+            )),
+        },
+        session_ref.clone(),
+    );
+    sleep(Duration::from_millis(20)).await;
+    assert_eq!(received.load(Ordering::Relaxed), 1);
+
+    state.advertised_local_pids.remove(&pid);
+    session.handle_node(
+        &mut state,
+        node_protocol::NodeMessage {
+            msg: Some(node_protocol::node_message::Msg::Call(
+                node_protocol::Call {
+                    to: pid,
+                    tag: 1,
+                    what: vec![],
+                    timeout_ms: Some(10),
+                    variant: "Call".to_string(),
+                    metadata: None,
+                },
+            )),
+        },
+        session_ref.clone(),
+    );
+    sleep(Duration::from_millis(20)).await;
+    assert_eq!(received.load(Ordering::Relaxed), 1);
+
+    target.stop(None);
+    server.stop(None);
+    session_actor.stop(None);
+    target_handle.await.unwrap();
+    server_handle.await.unwrap();
+    session_handle.await.unwrap();
+}
+
 #[ractor::concurrency::test]
 async fn node_sesison_client_auth_success() {
     let (dummy_server, dummy_shandle) = Actor::spawn(None, DummyNodeServer, ())
@@ -120,8 +395,11 @@ async fn node_sesison_client_auth_success() {
         name: None,
         connection_id: 0,
         remote_actors: HashMap::new(),
+        advertised_local_pids: HashSet::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // Client sends their name, Server responds with Ok
@@ -270,8 +548,11 @@ async fn node_session_client_auth_session_state_failures() {
         name: None,
         connection_id: 0,
         remote_actors: HashMap::new(),
+        advertised_local_pids: HashSet::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // Client sends their name, Server responds with Ok
@@ -405,8 +686,11 @@ async fn node_session_server_auth_success() {
         name: None,
         connection_id: 0,
         remote_actors: HashMap::new(),
+        advertised_local_pids: HashSet::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // Client sends their name
@@ -505,8 +789,11 @@ async fn node_session_server_auth_session_state_failures() {
         name: None,
         connection_id: 0,
         remote_actors: HashMap::new(),
+        advertised_local_pids: HashSet::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // Other session continues, this one dies
@@ -661,8 +948,11 @@ async fn node_session_handle_node_msg() {
         name: None,
         connection_id: 0,
         remote_actors: HashMap::new(),
+        advertised_local_pids: HashSet::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
     // add the "remote" actor
     state
@@ -763,8 +1053,11 @@ async fn node_session_handle_control() {
         name: None,
         connection_id: 0,
         remote_actors: HashMap::new(),
+        advertised_local_pids: HashSet::new(),
         tcp: None,
+        ping_task: None,
         epoch: Instant::now(),
+        pong_warnings: PongWarnings::default(),
     };
 
     // check spawn creates a remote actor

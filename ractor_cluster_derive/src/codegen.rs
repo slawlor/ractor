@@ -207,7 +207,11 @@ fn gen_cast_deserialize_arm(variant: &ParsedVariant) -> impl ToTokens {
         };
         quote! {
             #variant_name => {
-                Ok(#construct)
+                if __args.is_empty() {
+                    Ok(#construct)
+                } else {
+                    Err(ractor::message::BoxedDowncastErr)
+                }
             }
         }
     } else {
@@ -221,7 +225,11 @@ fn gen_cast_deserialize_arm(variant: &ParsedVariant) -> impl ToTokens {
             #variant_name => {
                 let mut __ptr = 0usize;
                 #(#unpacked;)*
-                Ok(#construct)
+                if __ptr == __args.len() {
+                    Ok(#construct)
+                } else {
+                    Err(ractor::message::BoxedDowncastErr)
+                }
             }
         }
     }
@@ -264,8 +272,12 @@ fn gen_call_deserialize_arm(variant: &ParsedVariant) -> impl ToTokens {
     if fields.is_empty() {
         quote! {
             #variant_name => {
-                let __target_port = #target_port;
-                Ok(#construct)
+                if __args.is_empty() {
+                    let __target_port = #target_port;
+                    Ok(#construct)
+                } else {
+                    Err(ractor::message::BoxedDowncastErr)
+                }
             }
         }
     } else {
@@ -274,8 +286,12 @@ fn gen_call_deserialize_arm(variant: &ParsedVariant) -> impl ToTokens {
             #variant_name => {
                 let mut __ptr = 0usize;
                 #(#unpacked;)*
-                let __target_port = #target_port;
-                Ok(#construct)
+                if __ptr == __args.len() {
+                    let __target_port = #target_port;
+                    Ok(#construct)
+                } else {
+                    Err(ractor::message::BoxedDowncastErr)
+                }
             }
         }
     }
@@ -286,8 +302,15 @@ fn pack_args(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
     quote! {
         {
             let __arg_data = <#target_type as ractor::BytesConvertable>::into_bytes(#field);
-            let __arg_len = (__arg_data.len() as u64).to_be_bytes();
-            __data.reserve(8 + __arg_data.len());
+            let __arg_len = <u64 as ::core::convert::TryFrom<usize>>::try_from(__arg_data.len())
+                .map_err(|_| ractor::message::BoxedDowncastErr)?
+                .to_be_bytes();
+            let __additional = ::core::mem::size_of::<u64>()
+                .checked_add(__arg_data.len())
+                .ok_or(ractor::message::BoxedDowncastErr)?;
+            __data
+                .try_reserve(__additional)
+                .map_err(|_| ractor::message::BoxedDowncastErr)?;
             __data.extend(__arg_len);
             __data.extend(__arg_data);
         }
@@ -298,14 +321,31 @@ fn pack_args(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
 fn unpack_arg(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
     quote! {
         let #field = {
+            let __len_end = __ptr
+                .checked_add(::core::mem::size_of::<u64>())
+                .ok_or(ractor::message::BoxedDowncastErr)?;
             let mut __len_bytes = [0u8; 8];
-            __len_bytes.copy_from_slice(&__args[__ptr..__ptr+8]);
-            let __len = u64::from_be_bytes(__len_bytes) as usize;
+            let __encoded_len = __args
+                .get(__ptr..__len_end)
+                .ok_or(ractor::message::BoxedDowncastErr)?;
+            __len_bytes.copy_from_slice(__encoded_len);
+            let __len = <usize as ::core::convert::TryFrom<u64>>::try_from(
+                u64::from_be_bytes(__len_bytes)
+            )
+                .map_err(|_| ractor::message::BoxedDowncastErr)?;
 
-            __ptr += 8;
-            let __data_bytes = __args[__ptr..__ptr+__len].to_vec();
-            let __t_result = <#target_type as ractor::BytesConvertable>::from_bytes(__data_bytes);
-            __ptr += __len;
+            let __data_end = __len_end
+                .checked_add(__len)
+                .ok_or(ractor::message::BoxedDowncastErr)?;
+            let __data_bytes = __args
+                .get(__len_end..__data_end)
+                .ok_or(ractor::message::BoxedDowncastErr)?
+                .to_vec();
+            let __t_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                <#target_type as ractor::BytesConvertable>::from_bytes(__data_bytes)
+            }))
+                .map_err(|_| ractor::message::BoxedDowncastErr)?;
+            __ptr = __data_end;
             __t_result
         };
     }
@@ -316,7 +356,6 @@ fn gen_serialize_port(
     the_port: &Ident,
     target_type: &AngleBracketedGenericArguments,
 ) -> impl ToTokens {
-    // TODO: catch unwind for the conversion? returning Err(BoxedDowncastErr)
     let generic_args = &target_type.args;
     quote! {
         {
@@ -325,13 +364,23 @@ fn gen_serialize_port(
             ractor::concurrency::spawn(async move {
                 if let Some(timeout) = o_timeout {
                     if let Ok(Ok(result)) = ractor::concurrency::timeout(timeout, rx).await {
-                        let typed_result = <#generic_args as ractor::BytesConvertable>::from_bytes(result);
-                        let _ = #the_port.send(typed_result);
+                        if let Ok(typed_result) = ::std::panic::catch_unwind(
+                            ::std::panic::AssertUnwindSafe(|| {
+                                <#generic_args as ractor::BytesConvertable>::from_bytes(result)
+                            })
+                        ) {
+                            let _ = #the_port.send(typed_result);
+                        }
                     }
                 } else {
                     if let Ok(result) = rx.await {
-                        let typed_result = <#generic_args as ractor::BytesConvertable>::from_bytes(result);
-                        let _ = #the_port.send(typed_result);
+                        if let Ok(typed_result) = ::std::panic::catch_unwind(
+                            ::std::panic::AssertUnwindSafe(|| {
+                                <#generic_args as ractor::BytesConvertable>::from_bytes(result)
+                            })
+                        ) {
+                            let _ = #the_port.send(typed_result);
+                        }
                     }
                 }
             });
@@ -350,7 +399,6 @@ fn gen_deserialize_port(
     port_type: &AngleBracketedGenericArguments,
 ) -> impl ToTokens {
     let generic_args = &port_type.args;
-    // TODO: catch unwind for the conversion? returning Err(BoxedDowncastErr)
     quote! {
         {
             let (tx, rx) = ractor::concurrency::oneshot::#port_type();
@@ -358,11 +406,23 @@ fn gen_deserialize_port(
             ractor::concurrency::spawn(async move {
                 if let Some(timeout) = o_timeout {
                     if let Ok(Ok(result)) = ractor::concurrency::timeout(timeout, rx).await {
-                        let _ = #the_port.send(<#generic_args as BytesConvertable>::into_bytes(result));
+                        if let Ok(bytes) = ::std::panic::catch_unwind(
+                            ::std::panic::AssertUnwindSafe(|| {
+                                <#generic_args as BytesConvertable>::into_bytes(result)
+                            })
+                        ) {
+                            let _ = #the_port.send(bytes);
+                        }
                     }
                 } else {
                     if let Ok(result) = rx.await {
-                        let _ = #the_port.send(<#generic_args as BytesConvertable>::into_bytes(result));
+                        if let Ok(bytes) = ::std::panic::catch_unwind(
+                            ::std::panic::AssertUnwindSafe(|| {
+                                <#generic_args as BytesConvertable>::into_bytes(result)
+                            })
+                        ) {
+                            let _ = #the_port.send(bytes);
+                        }
                     }
                 }
             });

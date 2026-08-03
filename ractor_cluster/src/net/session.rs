@@ -28,28 +28,23 @@ use tokio::net::TcpStream;
 
 use crate::RactorMessage;
 
-/// Helper method to read exactly `len` bytes from the stream into a pre-allocated buffer
-/// of bytes
+const FRAME_READ_CHUNK_SIZE: usize = 8 * 1024;
+
+/// Helper method to read exactly `len` bytes while growing the payload only as data arrives.
 async fn read_n_bytes(stream: &mut ActorReadHalf, len: usize) -> Result<Vec<u8>, tokio::io::Error> {
     let mut buf = Vec::new();
-    buf.try_reserve_exact(len).map_err(|reserve_err| {
-        tokio::io::Error::new(
-            ErrorKind::InvalidData,
-            format!("cluster frame length {len} could not be allocated: {reserve_err}"),
-        )
-    })?;
-    buf.resize(len, 0);
-    let mut c_len = 0;
+    let mut chunk = [0u8; FRAME_READ_CHUNK_SIZE];
     if let ActorReadHalf::Regular(r) = stream {
         r.readable().await?;
     }
 
-    while c_len < len {
+    while buf.len() < len {
+        let read_len = (len - buf.len()).min(chunk.len());
         let n = match stream {
-            ActorReadHalf::ServerTls(t) => t.read(&mut buf[c_len..]).await?,
-            ActorReadHalf::ClientTls(t) => t.read(&mut buf[c_len..]).await?,
-            ActorReadHalf::Regular(t) => t.read(&mut buf[c_len..]).await?,
-            ActorReadHalf::External(t) => t.read(&mut buf[c_len..]).await?,
+            ActorReadHalf::ServerTls(t) => t.read(&mut chunk[..read_len]).await?,
+            ActorReadHalf::ClientTls(t) => t.read(&mut chunk[..read_len]).await?,
+            ActorReadHalf::Regular(t) => t.read(&mut chunk[..read_len]).await?,
+            ActorReadHalf::External(t) => t.read(&mut chunk[..read_len]).await?,
         };
         if n == 0 {
             // EOF
@@ -58,7 +53,13 @@ async fn read_n_bytes(stream: &mut ActorReadHalf, len: usize) -> Result<Vec<u8>,
                 "EOF",
             ));
         }
-        c_len += n;
+        buf.try_reserve(n).map_err(|reserve_err| {
+            tokio::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("cluster frame payload could not be extended: {reserve_err}"),
+            )
+        })?;
+        buf.extend_from_slice(&chunk[..n]);
     }
     Ok(buf)
 }
@@ -383,6 +384,14 @@ fn checked_frame_length(length: u64, max_frame_size: u64) -> tokio::io::Result<u
         ));
     }
 
+    let max_vec_len = u64::try_from(isize::MAX).expect("isize::MAX always fits in u64");
+    if length > max_vec_len {
+        return Err(tokio::io::Error::new(
+            ErrorKind::InvalidData,
+            format!("cluster frame length {length} could not be allocated by a Vec"),
+        ));
+    }
+
     usize::try_from(length).map_err(|_| {
         tokio::io::Error::new(
             ErrorKind::InvalidData,
@@ -488,6 +497,8 @@ mod tests {
     use std::io::Cursor;
     use std::mem::size_of;
     use std::pin::Pin;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::task::Context;
     use std::task::Poll;
 
@@ -519,6 +530,43 @@ mod tests {
         frame.extend_from_slice(&payload_len.to_be_bytes());
         frame.extend_from_slice(&payload);
         frame
+    }
+
+    struct IncrementalReader {
+        remaining: usize,
+        max_requested: Arc<AtomicUsize>,
+    }
+
+    impl AsyncRead for IncrementalReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<tokio::io::Result<()>> {
+            self.max_requested
+                .fetch_max(buf.remaining(), Ordering::Relaxed);
+            let count = self.remaining.min(buf.remaining()).min(1024);
+            let bytes = [7u8; 1024];
+            buf.put_slice(&bytes[..count]);
+            self.remaining -= count;
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn frame_payload_is_read_in_bounded_chunks() {
+        let len = FRAME_READ_CHUNK_SIZE * 3 + 1;
+        let max_requested = Arc::new(AtomicUsize::new(0));
+        let mut reader = ActorReadHalf::External(Box::new(IncrementalReader {
+            remaining: len,
+            max_requested: max_requested.clone(),
+        }));
+
+        let payload = read_n_bytes(&mut reader, len).await.unwrap();
+
+        assert_eq!(payload.len(), len);
+        assert!(payload.iter().all(|byte| *byte == 7));
+        assert!(max_requested.load(Ordering::Relaxed) <= FRAME_READ_CHUNK_SIZE);
     }
 
     #[test]
