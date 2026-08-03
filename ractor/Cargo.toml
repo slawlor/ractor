@@ -45,7 +45,7 @@ strum = { version = "0.28", features = ["derive"] }
 # async-std feature 'unstable' is required for spawn_local: https://docs.rs/async-std/latest/async_std/task/fn.spawn_local.html
 async-std = { version = "1", features = ["attributes", "unstable"], optional = true }
 async-trait = { version = "0.1", optional = true }
-ractor_macros = { path = "../ractor_macros", version = "0.16.3", optional = true }
+ractor_macros = { path = "../ractor_macros", version = "0.16.4", optional = true }
 tokio = { version = "1", features = ["sync"] }
 tracing = { version = "0.1", features = ["attributes"] }
 
