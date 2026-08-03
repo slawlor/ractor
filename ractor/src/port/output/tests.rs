@@ -84,7 +84,10 @@ async fn test_single_forward() {
 }
 
 #[crate::concurrency::test]
-#[cfg(not(feature = "output-port-v2"))]
+#[cfg(all(
+    not(feature = "output-port-v2"),
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
 async fn lagged_subscription_continues_forwarding() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Barrier};
@@ -145,6 +148,65 @@ async fn lagged_subscription_continues_forwarding() {
         crate::concurrency::sleep(Duration::from_millis(1)).await;
     }
     producer.join().expect("producer thread should not panic");
+    timeout(Duration::from_secs(1), async {
+        while !delivered_after_lag.load(Ordering::SeqCst) {
+            crate::concurrency::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("subscriber should continue after reporting lag");
+
+    actor.stop(None);
+    handle.await.expect("actor should stop cleanly");
+}
+
+#[crate::concurrency::test]
+#[cfg(all(
+    not(feature = "output-port-v2"),
+    target_arch = "wasm32",
+    target_os = "unknown"
+))]
+async fn lagged_subscription_continues_forwarding() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    struct TestActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = ();
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("failed to start test actor");
+    let output = OutputPort::<u32>::default();
+    let delivered_after_lag = Arc::new(AtomicBool::new(false));
+    let converter_delivered = delivered_after_lag.clone();
+    output.subscribe(actor.clone(), move |message| {
+        if message == u32::MAX {
+            converter_delivered.store(true, Ordering::SeqCst);
+        }
+        None
+    });
+
+    // The browser executor is single-threaded, so this burst fills the broadcast
+    // buffer before the subscription task can poll its receiver.
+    for message in 0..=100 {
+        output.send(message);
+    }
+    output.send(u32::MAX);
+
     timeout(Duration::from_secs(1), async {
         while !delivered_after_lag.load(Ordering::SeqCst) {
             crate::concurrency::sleep(Duration::from_millis(1)).await;
