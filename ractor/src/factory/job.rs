@@ -321,6 +321,9 @@ where
         maybe_bytes: Option<Vec<u8>>,
     ) -> Result<(TKey, JobOptions), BoxedDowncastErr> {
         if let Some(mut meta_bytes) = maybe_bytes {
+            if meta_bytes.len() < 16 {
+                return Err(BoxedDowncastErr);
+            }
             let key_bytes = meta_bytes.split_off(16);
             Ok((
                 TKey::from_bytes(key_bytes),
@@ -575,6 +578,11 @@ impl<TKey: JobKey, TMessage: Message> Drop for RetriableMessage<TKey, TMessage> 
             // can't do a retry if the factory and options are not available
             return;
         };
+        if factory.is_message_type_of::<FactoryMessage<TKey, Self>>() != Some(true) {
+            // RetriableMessage is local-only. Avoid consuming it in an invalid or remote
+            // send path, where the payload cannot be recovered and Drop would recurse.
+            return;
+        }
         // construct the new retriable message
         let msg = Self {
             key: self.key.clone(),
@@ -589,6 +597,11 @@ impl<TKey: JobKey, TMessage: Message> Drop for RetriableMessage<TKey, TMessage> 
             msg,
             options: options.clone(),
         };
+        if job.is_expired() {
+            let mut expired_job = job;
+            expired_job.msg.completed();
+            return;
+        }
         // Execute the custom retry hook, if provided
         if let Some(handler) = job.msg.retry_hook.as_ref() {
             let key = std::panic::AssertUnwindSafe(&job.key);
@@ -599,10 +612,17 @@ impl<TKey: JobKey, TMessage: Message> Drop for RetriableMessage<TKey, TMessage> 
             "A retriable job is being resubmitted to the factory. Number of retries left {:?}",
             self.strategy
         );
-        // SAFETY: A silent-drop here is OK should the dispatch to the factory fail. This is
-        // because if a worker died, it would be a silent drop anyways so there's no loss
-        // in functionality
-        _ = factory.cast(FactoryMessage::Dispatch(job));
+        let failed_job = match factory.cast(FactoryMessage::Dispatch(job)) {
+            Err(crate::MessagingErr::SendErr(FactoryMessage::Dispatch(failed_job))) => {
+                Some(failed_job)
+            }
+            _ => None,
+        };
+        if let Some(mut failed_job) = failed_job {
+            // The send error owns the job. Disarm it before dropping so a closed factory
+            // cannot recursively retry from this Drop implementation.
+            failed_job.msg.completed();
+        }
     }
 }
 
@@ -702,6 +722,127 @@ impl<TKey: JobKey, TMessage: Message> RetriableMessage<TKey, TMessage> {
     pub fn completed(&mut self) {
         self.strategy = MessageRetryStrategy::NoRetry;
         self.message = None;
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::{Actor, ActorCell, ActorProcessingErr};
+
+    type RetryMessage = RetriableMessage<(), ()>;
+    type RetryFactoryMessage = FactoryMessage<(), RetryMessage>;
+
+    struct RetrySink;
+
+    struct WrongRetrySink;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for RetrySink {
+        type Msg = RetryFactoryMessage;
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _args: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for WrongRetrySink {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _args: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    fn closed_factory() -> ActorRef<RetryFactoryMessage> {
+        let (actor, ports) =
+            ActorCell::new::<RetrySink>(None).expect("actor cell should be created");
+        drop(ports);
+        actor.into()
+    }
+
+    #[test]
+    fn failed_retry_send_is_disarmed_before_drop() {
+        let retry_count = Arc::new(AtomicUsize::new(0));
+        let mut job = RetriableMessage::from_job(
+            Job::new((), ()),
+            MessageRetryStrategy::RetryForever,
+            closed_factory(),
+        );
+        job.msg.set_retry_hook({
+            let retry_count = retry_count.clone();
+            move |_| {
+                retry_count.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+
+        drop(job);
+
+        assert_eq!(1, retry_count.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn invalid_retry_target_is_rejected_before_consuming_the_job() {
+        let retry_count = Arc::new(AtomicUsize::new(0));
+        let (actor, _ports) =
+            ActorCell::new::<WrongRetrySink>(None).expect("actor cell should be created");
+        let invalid_factory: ActorRef<RetryFactoryMessage> = actor.into();
+        let mut job = RetriableMessage::from_job(
+            Job::new((), ()),
+            MessageRetryStrategy::RetryForever,
+            invalid_factory,
+        );
+        job.msg.set_retry_hook({
+            let retry_count = retry_count.clone();
+            move |_| {
+                retry_count.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+
+        drop(job);
+
+        assert_eq!(0, retry_count.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn expired_message_is_not_retried() {
+        let retry_count = Arc::new(AtomicUsize::new(0));
+        let mut options = JobOptions::new(Some(Duration::from_secs(1)));
+        options.submit_time = SystemTime::now()
+            .checked_sub(Duration::from_secs(2))
+            .expect("test timestamp should be representable");
+        options.reset_ttl_timer();
+        let mut job = RetriableMessage::from_job(
+            Job::with_options((), (), options),
+            MessageRetryStrategy::RetryForever,
+            closed_factory(),
+        );
+        job.msg.set_retry_hook({
+            let retry_count = retry_count.clone();
+            move |_| {
+                retry_count.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+
+        drop(job);
+
+        assert_eq!(0, retry_count.load(Ordering::Relaxed));
     }
 }
 
@@ -894,6 +1035,17 @@ mod tests {
         } else {
             panic!("Failed to deserialize the message payload");
         }
+    }
+
+    #[test]
+    fn short_job_metadata_is_rejected() {
+        let serialized = SerializedMessage::Cast {
+            variant: "A".to_string(),
+            args: String::new().into_bytes(),
+            metadata: Some(vec![0; 15]),
+        };
+
+        assert!(TheJob::deserialize(serialized).is_err());
     }
 
     #[test]

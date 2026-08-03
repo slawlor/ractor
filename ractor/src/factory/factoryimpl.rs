@@ -770,12 +770,20 @@ where
         let worker_availability = self
             .pool
             .values()
-            .filter(|worker| worker.is_available())
+            .filter(|worker| !worker.is_draining && worker.is_available())
             .count();
         match self.discard_settings.get_limit_and_mode() {
             Some((limit, _)) => {
-                // get the queue space and add it to the worker availability
-                let count = std::cmp::max(limit - self.queue.len(), 0) + worker_availability;
+                let queue_capacity = if self.router.is_factory_queueing() {
+                    limit.saturating_sub(self.queue.len())
+                } else {
+                    self.pool
+                        .values()
+                        .filter(|worker| !worker.is_draining)
+                        .map(|worker| limit.saturating_sub(worker.queued_job_count()))
+                        .fold(0usize, usize::saturating_add)
+                };
+                let count = worker_availability.saturating_add(queue_capacity);
                 let _ = reply.send(count);
             }
             None => {

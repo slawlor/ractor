@@ -700,6 +700,10 @@ where
         !self.is_available()
     }
 
+    pub(crate) fn queued_job_count(&self) -> usize {
+        self.message_queue.len()
+    }
+
     /// Denotes if the worker is stuck (i.e. unable to complete it's current job)
     pub(crate) fn is_stuck(&self, duration: Duration) -> bool {
         if self.heartbeat.is_stuck(duration) {
@@ -726,7 +730,7 @@ where
         self.stats.new_job(&self.factory_name);
 
         if let Some((limit, DiscardMode::Newest)) = self.discard_settings.get_limit_and_mode() {
-            if limit > 0 && self.message_queue.len() >= limit {
+            if !self.is_available() && self.message_queue.len() >= limit {
                 // Discard THIS job as it's the newest one
                 self.stats.job_discarded(&self.factory_name);
                 if let Some(handler) = &self.discard_handler {
@@ -755,7 +759,7 @@ where
 
         if let Some((limit, DiscardMode::Oldest)) = self.discard_settings.get_limit_and_mode() {
             // load-shed the OLDEST jobs
-            while limit > 0 && self.message_queue.len() > limit {
+            while self.message_queue.len() > limit {
                 if let Some(mut discarded) = self.get_next_non_expired_job() {
                     self.stats.job_discarded(&self.factory_name);
                     if let Some(handler) = &self.discard_handler {

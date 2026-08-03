@@ -234,3 +234,110 @@ async fn one_way_helper_recovers_job_when_factory_is_stopped() {
         other => panic!("expected the failed job to be returned, got {other:?}"),
     }
 }
+
+#[crate::concurrency::test]
+async fn worker_queue_capacity_includes_each_workers_queue() {
+    let handled = Arc::new(AtomicUsize::new(0));
+    let definition = Factory::<
+        (),
+        TestMessage,
+        (),
+        TestWorker,
+        routing::KeyPersistentRouting<(), TestMessage>,
+        queues::DefaultQueue<(), TestMessage>,
+    >::default();
+    let arguments = FactoryArguments::builder()
+        .worker_builder(Box::new(worker_builder(move |_wid| {
+            (
+                TestWorker {
+                    handled: handled.clone(),
+                    generation: 1,
+                },
+                (),
+            )
+        })))
+        .num_initial_workers(2)
+        .router(routing::KeyPersistentRouting::default())
+        .queue(queues::DefaultQueue::default())
+        .discard_settings(DiscardSettings::Static {
+            limit: 3,
+            mode: DiscardMode::Newest,
+        })
+        .build();
+    let (factory, handle) = Actor::spawn(None, definition, arguments)
+        .await
+        .expect("factory should start");
+    let factory: FactoryRef<(), TestMessage> = factory;
+
+    assert_eq!(
+        CallResult::Success(8),
+        factory
+            .available_capacity(Some(Duration::from_secs(1)))
+            .await
+            .expect("capacity query should be sent")
+    );
+
+    factory.stop(None);
+    handle.await.expect("factory should stop cleanly");
+}
+
+#[crate::concurrency::test]
+async fn shared_queue_capacity_saturates_after_limit_reduction() {
+    let handled = Arc::new(AtomicUsize::new(0));
+    let definition = Factory::<
+        (),
+        TestMessage,
+        (),
+        TestWorker,
+        routing::QueuerRouting<(), TestMessage>,
+        queues::DefaultQueue<(), TestMessage>,
+    >::default();
+    let arguments = FactoryArguments::builder()
+        .worker_builder(Box::new(worker_builder({
+            let handled = handled.clone();
+            move |_wid| {
+                (
+                    TestWorker {
+                        handled: handled.clone(),
+                        generation: 1,
+                    },
+                    (),
+                )
+            }
+        })))
+        .num_initial_workers(1)
+        .router(routing::QueuerRouting::default())
+        .queue(queues::DefaultQueue::default())
+        .build();
+    let (factory, handle) = Actor::spawn(None, definition, arguments)
+        .await
+        .expect("factory should start");
+    let factory: FactoryRef<(), TestMessage> = factory;
+
+    for _ in 0..32 {
+        factory
+            .dispatch((), TestMessage::Increment)
+            .expect("message should be dispatched");
+    }
+    factory
+        .update_settings(
+            UpdateSettingsRequest::builder()
+                .discard_settings(DiscardSettings::Static {
+                    limit: 0,
+                    mode: DiscardMode::Newest,
+                })
+                .build(),
+        )
+        .expect("settings update should be sent");
+
+    assert_eq!(
+        CallResult::Success(0),
+        factory
+            .available_capacity(Some(Duration::from_secs(1)))
+            .await
+            .expect("capacity query should be sent")
+    );
+
+    factory.stop(None);
+    handle.await.expect("factory should stop cleanly");
+}
