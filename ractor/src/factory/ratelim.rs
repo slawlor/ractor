@@ -107,7 +107,7 @@ pub struct LeakyBucketRateLimiter {
     /// The "balance" of the rate limiter, i.e. the number of tokens still available
     pub balance: usize,
     /// The deadline to perform another refill
-    deadline: Instant,
+    deadline: Option<Instant>,
 }
 
 #[bon::bon]
@@ -131,34 +131,42 @@ impl LeakyBucketRateLimiter {
             refill,
             interval,
             max,
-            balance: initial.unwrap_or(max),
-            deadline: Instant::now() + interval,
+            balance: initial.unwrap_or(max).min(max),
+            deadline: Instant::now().checked_add(interval),
         }
     }
 
     fn refresh(&mut self, now: Instant) {
-        if now < self.deadline {
+        let Some(deadline) = self.deadline else {
+            return;
+        };
+        if now < deadline {
             return;
         }
 
-        // Time elapsed in milliseconds since the last deadline.
-        let millis = self.interval.as_millis();
-        let since = now.saturating_duration_since(self.deadline).as_millis();
+        let interval_nanos = self.interval.as_nanos();
+        if interval_nanos == 0 {
+            self.balance = self.balance.saturating_add(self.refill).min(self.max);
+            self.deadline = Some(now);
+            return;
+        }
 
-        let periods = usize::try_from(since / millis + 1).unwrap_or(usize::MAX);
+        let since_nanos = now.saturating_duration_since(deadline).as_nanos();
 
-        let tokens = periods
-            .checked_mul(self.refill)
-            .unwrap_or(MAX_LB_BALANCE)
-            .min(MAX_LB_BALANCE);
+        let periods =
+            usize::try_from((since_nanos / interval_nanos).saturating_add(1)).unwrap_or(usize::MAX);
 
-        let remaining_millis_until_next_deadline =
-            u64::try_from(since % millis).unwrap_or(u64::MAX);
-        self.deadline = now
-            + self
-                .interval
-                .saturating_sub(Duration::from_millis(remaining_millis_until_next_deadline));
-        self.balance = (self.balance + tokens).min(self.max);
+        let tokens = periods.saturating_mul(self.refill).min(MAX_LB_BALANCE);
+
+        let nanos_since_last_period = since_nanos % interval_nanos;
+        let seconds = u64::try_from(nanos_since_last_period / 1_000_000_000).unwrap_or(u64::MAX);
+        let subsec_nanos =
+            u32::try_from(nanos_since_last_period % 1_000_000_000).unwrap_or(u32::MAX);
+        self.deadline = now.checked_add(
+            self.interval
+                .saturating_sub(Duration::new(seconds, subsec_nanos)),
+        );
+        self.balance = self.balance.saturating_add(tokens).min(self.max);
     }
 }
 
@@ -219,6 +227,55 @@ mod tests {
 
         assert!(limiter.check());
         limiter.bump();
+        assert!(!limiter.check());
+    }
+
+    #[test]
+    fn test_leaky_bucket_handles_zero_interval_and_saturates() {
+        let mut limiter = LeakyBucketRateLimiter::builder()
+            .refill(usize::MAX)
+            .initial(usize::MAX)
+            .interval(Duration::ZERO)
+            .max(2)
+            .build();
+
+        assert_eq!(2, limiter.balance);
+        limiter.bump();
+        assert!(limiter.check());
+        assert_eq!(2, limiter.balance);
+    }
+
+    #[test]
+    fn test_leaky_bucket_tracks_sub_millisecond_periods() {
+        let mut limiter = LeakyBucketRateLimiter::builder()
+            .refill(1)
+            .initial(0)
+            .interval(Duration::from_micros(500))
+            .max(10)
+            .build();
+        let first_deadline = limiter.deadline.expect("deadline should be representable");
+
+        limiter.refresh(first_deadline + Duration::from_micros(1_250));
+
+        assert_eq!(3, limiter.balance);
+        assert_eq!(
+            first_deadline + Duration::from_micros(1_500),
+            limiter
+                .deadline
+                .expect("deadline should remain representable")
+        );
+    }
+
+    #[test]
+    fn test_leaky_bucket_handles_unrepresentable_interval() {
+        let mut limiter = LeakyBucketRateLimiter::builder()
+            .refill(1)
+            .initial(0)
+            .interval(Duration::MAX)
+            .max(10)
+            .build();
+
+        assert!(limiter.deadline.is_none());
         assert!(!limiter.check());
     }
 }

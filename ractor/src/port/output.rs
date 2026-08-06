@@ -147,12 +147,18 @@ mod v1 {
             TReceiverMsg: Message,
         {
             let handle = crate::concurrency::spawn(async move {
-                while let Ok(Some(msg)) = port.recv().await {
-                    if let Some(new_msg) = converter(msg) {
-                        if receiver.cast(new_msg).is_err() {
-                            // kill the subscription process, as the forwarding agent is stopped
-                            return;
+                loop {
+                    match port.recv().await {
+                        Ok(Some(msg)) => {
+                            if let Some(new_msg) = converter(msg) {
+                                if receiver.cast(new_msg).is_err() {
+                                    // kill the subscription process, as the forwarding agent is stopped
+                                    return;
+                                }
+                            }
                         }
+                        Ok(None) | Err(pubsub::error::RecvError::Closed) => return,
+                        Err(pubsub::error::RecvError::Lagged(_)) => continue,
                     }
                 }
             });

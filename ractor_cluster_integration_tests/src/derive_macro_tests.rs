@@ -56,6 +56,64 @@ fn test_serializable_generation() {
     assert!(matches!(TheMessage::deserialize(data), Ok(TheMessage::A)));
 }
 
+#[test]
+fn malformed_derived_framing_returns_an_error() {
+    #[derive(RactorClusterMessage)]
+    enum FramedMessage {
+        Empty,
+        Value(u32),
+    }
+
+    let cast = |variant: &str, args: Vec<u8>| SerializedMessage::Cast {
+        variant: variant.to_string(),
+        args,
+        metadata: None,
+    };
+
+    assert!(FramedMessage::deserialize(cast("Empty", vec![1])).is_err());
+    assert!(FramedMessage::deserialize(cast("Value", vec![0; 7])).is_err());
+    assert!(FramedMessage::deserialize(cast("Value", u64::MAX.to_be_bytes().to_vec())).is_err());
+
+    let mut truncated_value = 4u64.to_be_bytes().to_vec();
+    truncated_value.extend_from_slice(&[1, 2, 3]);
+    assert!(FramedMessage::deserialize(cast("Value", truncated_value)).is_err());
+
+    let mut decoder_panic = 0u64.to_be_bytes().to_vec();
+    assert!(FramedMessage::deserialize(cast("Value", decoder_panic.clone())).is_err());
+
+    decoder_panic.extend_from_slice(&[9]);
+    assert!(FramedMessage::deserialize(cast("Value", decoder_panic)).is_err());
+
+    let mut trailing_data = FramedMessage::Value(42).serialize().unwrap();
+    if let SerializedMessage::Cast { args, .. } = &mut trailing_data {
+        args.push(0);
+    }
+    assert!(FramedMessage::deserialize(trailing_data).is_err());
+}
+
+#[ractor::concurrency::test]
+async fn malformed_rpc_reply_closes_the_typed_reply_port() {
+    #[derive(RactorClusterMessage)]
+    enum RpcMessage {
+        #[rpc]
+        Request(RpcReplyPort<String>),
+    }
+
+    let (typed_tx, typed_rx) = ractor::concurrency::oneshot();
+    let serialized = RpcMessage::Request(typed_tx.into())
+        .serialize()
+        .expect("RPC message should serialize");
+    let SerializedMessage::Call { reply, .. } = serialized else {
+        panic!("RPC variant should serialize as a call");
+    };
+
+    reply
+        .send(vec![0xff])
+        .expect("malformed reply should reach the conversion bridge");
+
+    assert!(typed_rx.await.is_err());
+}
+
 #[ractor::concurrency::test]
 async fn test_complex_serializable_generation() {
     #[derive(RactorClusterMessage, Debug)]

@@ -594,6 +594,83 @@ async fn test_serialized_cast() {
 }
 
 #[cfg(feature = "cluster")]
+#[crate::concurrency::test]
+async fn serialized_decode_failures_do_not_terminate_the_actor() {
+    use crate::message::BoxedDowncastErr;
+    use crate::message::SerializedMessage;
+    use crate::Message;
+
+    struct TestActor(Arc<AtomicU8>);
+    struct TestMessage;
+
+    impl Message for TestMessage {
+        fn serializable() -> bool {
+            true
+        }
+
+        fn deserialize(bytes: SerializedMessage) -> Result<Self, BoxedDowncastErr> {
+            match bytes {
+                SerializedMessage::Cast { variant, .. } if variant == "valid" => Ok(Self),
+                SerializedMessage::Cast { variant, .. } if variant == "panic" => {
+                    panic!("malformed decoder input")
+                }
+                _ => Err(BoxedDowncastErr),
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = TestMessage;
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    let received = Arc::new(AtomicU8::new(0));
+    let (actor, handle) = Actor::spawn(None, TestActor(received.clone()), ())
+        .await
+        .unwrap();
+
+    for variant in ["error", "panic", "valid"] {
+        actor
+            .send_serialized(SerializedMessage::Cast {
+                variant: variant.to_string(),
+                args: vec![],
+                metadata: None,
+            })
+            .unwrap();
+    }
+
+    periodic_check(
+        || received.load(Ordering::Relaxed) == 1,
+        Duration::from_secs(2),
+    )
+    .await;
+    assert_eq!(actor.get_status(), ActorStatus::Running);
+
+    actor.stop(None);
+    handle.await.unwrap();
+}
+
+#[cfg(feature = "cluster")]
 fn port_forward<Tin, Tout, F>(
     typed_port: crate::RpcReplyPort<Tout>,
     converter: F,
@@ -1041,6 +1118,12 @@ async fn kill_and_wait() {
         .kill_and_wait(None)
         .await
         .expect("Failed to wait for actor death");
+    for _ in 0..2 {
+        actor
+            .kill_and_wait(Some(Duration::from_millis(100)))
+            .await
+            .expect("Repeated kill wait should observe the stopped actor");
+    }
     // the handle should be done and completed (after some brief scheduling delay)
     periodic_check(|| handle.is_finished(), Duration::from_millis(500)).await;
 }
@@ -1392,6 +1475,43 @@ async fn runtime_message_typing() {
 }
 
 #[crate::concurrency::test]
+async fn wrongly_typed_actor_ref_rejects_message_without_killing_actor() {
+    struct TestActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = EmptyMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _this_actor: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (actor, handle) = Actor::spawn(None, TestActor, ())
+        .await
+        .expect("Failed to start test actor");
+    let wrongly_typed: ActorRef<i64> = actor.get_cell().into();
+
+    assert!(matches!(
+        wrongly_typed.send_message(42),
+        Err(MessagingErr::InvalidActorType)
+    ));
+    assert!(actor.get_status() < ActorStatus::Stopping);
+    actor
+        .cast(EmptyMessage)
+        .expect("Correctly typed message should still be accepted");
+
+    actor.stop(None);
+    handle.await.unwrap();
+}
+
+#[crate::concurrency::test]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     tracing_test::traced_test
@@ -1427,12 +1547,22 @@ async fn wait_for_death() {
         .await
         .expect("Failed to start test actor");
 
-    actor.stop(None);
-    assert!(actor.wait(Some(Duration::from_millis(100))).await.is_ok());
-
-    // cleanup
-    actor.stop(None);
+    let stop_actor = actor.clone();
+    let (first_wait, second_wait, ()) = futures::join!(
+        actor.wait(Some(Duration::from_millis(100))),
+        actor.wait(Some(Duration::from_millis(100))),
+        async move {
+            crate::concurrency::sleep(Duration::from_millis(10)).await;
+            stop_actor.stop(None);
+        }
+    );
+    assert!(first_wait.is_ok());
+    assert!(second_wait.is_ok());
     handle.await.unwrap();
+
+    for _ in 0..3 {
+        assert!(actor.wait(Some(Duration::from_millis(100))).await.is_ok());
+    }
 }
 
 #[crate::concurrency::test]

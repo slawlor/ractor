@@ -118,6 +118,9 @@ async fn test_which_scopes_and_groups() {
     let scopes_and_groups = pg::which_scopes_and_groups();
     // println!("Scopes and groups are: {:#?}", scopes_and_groups);
     assert_eq!(4, scopes_and_groups.len());
+    let scopes = pg::which_scopes();
+    assert_eq!(1, scopes.iter().filter(|scope| *scope == &scope_a).count());
+    assert_eq!(1, scopes.iter().filter(|scope| *scope == &scope_b).count());
 
     // Cleanup
     actor.stop(None);
@@ -568,6 +571,7 @@ async fn test_pg_monitoring() {
             myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
+            pg::monitor(self.pg_group.clone(), myself.clone().into());
             pg::monitor(self.pg_group.clone(), myself.into());
             Ok(())
         }
@@ -683,6 +687,7 @@ async fn test_scope_monitoring() {
             myself: crate::ActorRef<Self::Msg>,
             _: (),
         ) -> Result<Self::State, ActorProcessingErr> {
+            pg::monitor_scope(self.scope.clone(), myself.clone().into());
             pg::monitor_scope(self.scope.clone(), myself.into());
             Ok(())
         }

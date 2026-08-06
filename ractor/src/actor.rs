@@ -1035,7 +1035,30 @@ where
         #[cfg(feature = "message_span_propogation")]
         let current_span_when_message_was_sent = msg.span.take();
 
-        // An error here will bubble up to terminate the actor
+        #[cfg(feature = "cluster")]
+        let typed_msg = if msg.serialized_msg.is_some() {
+            match std::panic::catch_unwind(AssertUnwindSafe(|| TActor::Msg::from_boxed(msg))) {
+                Ok(Ok(message)) => message,
+                Ok(Err(_)) => {
+                    tracing::debug!(
+                        "Dropping serialized message that actor {:?} could not decode",
+                        myself.get_id()
+                    );
+                    return Ok(());
+                }
+                Err(_) => {
+                    tracing::debug!(
+                        "Dropping serialized message whose decoder panicked for actor {:?}",
+                        myself.get_id()
+                    );
+                    return Ok(());
+                }
+            }
+        } else {
+            TActor::Msg::from_boxed(msg)?
+        };
+
+        #[cfg(not(feature = "cluster"))]
         let typed_msg = TActor::Msg::from_boxed(msg)?;
 
         #[cfg(feature = "message_span_propogation")]

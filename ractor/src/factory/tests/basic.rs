@@ -212,6 +212,81 @@ async fn test_dispatch_key_persistent() {
 }
 
 #[crate::concurrency::test]
+async fn test_zero_worker_queue_limit_preserves_direct_slot() {
+    struct TestDiscarder {
+        counter: Arc<AtomicU16>,
+    }
+
+    impl DiscardHandler<TestKey, TestMessage> for TestDiscarder {
+        fn discard(&self, reason: DiscardReason, _job: &mut Job<TestKey, TestMessage>) {
+            assert_eq!(DiscardReason::Loadshed, reason);
+            self.counter.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    for mode in [DiscardMode::Newest, DiscardMode::Oldest] {
+        let worker_counters: [_; NUM_TEST_WORKERS] = [
+            Arc::new(AtomicU16::new(0)),
+            Arc::new(AtomicU16::new(0)),
+            Arc::new(AtomicU16::new(0)),
+        ];
+        let discard_counter = Arc::new(AtomicU16::new(0));
+        let factory_definition = Factory::<
+            TestKey,
+            TestMessage,
+            (),
+            TestWorker,
+            routing::KeyPersistentRouting<TestKey, TestMessage>,
+            DefaultQueue,
+        >::default();
+        let (factory, factory_handle) = Actor::spawn(
+            None,
+            factory_definition,
+            FactoryArguments {
+                num_initial_workers: 1,
+                queue: DefaultQueue::default(),
+                router: Default::default(),
+                capacity_controller: None,
+                dead_mans_switch: None,
+                discard_handler: Some(Arc::new(TestDiscarder {
+                    counter: discard_counter.clone(),
+                })),
+                discard_settings: DiscardSettings::Static { limit: 0, mode },
+                lifecycle_hooks: None,
+                worker_builder: Box::new(SlowTestWorkerBuilder {
+                    counters: worker_counters.clone(),
+                }),
+                stats: None,
+            },
+        )
+        .await
+        .expect("Failed to spawn factory");
+
+        for _ in 0..2 {
+            factory
+                .cast(FactoryMessage::Dispatch(Job::new(
+                    TestKey { id: 0 },
+                    TestMessage::Ok,
+                )))
+                .expect("Failed to send to factory");
+        }
+
+        let handled = worker_counters[0].clone();
+        let discarded = discard_counter.clone();
+        periodic_check(
+            move || handled.load(Ordering::Relaxed) == 1 && discarded.load(Ordering::Relaxed) == 1,
+            Duration::from_secs(1),
+        )
+        .await;
+
+        factory.stop(None);
+        factory_handle.await.expect("factory should stop cleanly");
+        assert_eq!(1, worker_counters[0].load(Ordering::Relaxed));
+        assert_eq!(1, discard_counter.load(Ordering::Relaxed));
+    }
+}
+
+#[crate::concurrency::test]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     tracing_test::traced_test

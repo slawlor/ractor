@@ -209,9 +209,8 @@ impl ActorProperties {
 
     /// Start draining, and wait for the actor to exit
     pub(crate) async fn drain_and_wait(&self) -> Result<(), MessagingErr<()>> {
-        let rx = self.wait_handler.notified();
         self.drain()?;
-        rx.await;
+        self.wait().await;
         Ok(())
     }
 
@@ -254,16 +253,17 @@ impl ActorProperties {
         &self,
         reason: Option<String>,
     ) -> Result<(), MessagingErr<StopMessage>> {
-        let rx = self.wait_handler.notified();
         self.send_stop(reason)?;
-        rx.await;
+        self.wait().await;
         Ok(())
     }
 
     /// Wait for the actor to exit
     pub(crate) async fn wait(&self) {
-        let rx = self.wait_handler.notified();
-        rx.await;
+        let notified = self.wait_handler.notified();
+        if self.get_status() != ActorStatus::Stopped {
+            notified.await;
+        }
     }
 
     /// Send the kill signal, threading in a OneShot sender which notifies when the shutdown is completed
@@ -271,18 +271,14 @@ impl ActorProperties {
         &self,
         signal: Signal,
     ) -> Result<(), MessagingErr<()>> {
-        // first bind the wait handler
-        let rx = self.wait_handler.notified();
         let _ = self.send_signal(signal);
-        rx.await;
+        self.wait().await;
         Ok(())
     }
 
     pub(crate) fn notify_stop_listener(&self) {
         self.wait_handler.notify_waiters();
-        // make sure that any future caller immediately returns by pre-storing
-        // a notify permit (i.e. the actor stops, but you are only start waiting
-        // after the actor has already notified it's dead.)
+        // Preserve one permit for a waiter created after the actor stopped.
         self.wait_handler.notify_one();
     }
 }

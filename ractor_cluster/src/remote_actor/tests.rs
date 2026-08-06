@@ -40,11 +40,7 @@ async fn remote_actor_serialized_message_handling() {
         .expect("Failed to spawn remote actor");
 
     let remote_actor_instance = RemoteActor;
-    let mut remote_actor_state = RemoteActorState {
-        message_tag: 0,
-        pending_requests: HashMap::new(),
-        session: actor.clone(),
-    };
+    let mut remote_actor_state = RemoteActorState::new(actor.clone());
 
     // act & verify
     let bad_handler = remote_actor_instance
@@ -94,4 +90,82 @@ async fn remote_actor_serialized_message_handling() {
     actor.stop(None);
     remote_actor_handle.await.unwrap();
     handle.await.unwrap();
+}
+
+#[ractor::concurrency::test]
+async fn abandoned_requests_are_reclaimed_incrementally() {
+    let (session, session_handle) = FakeNodeSession::get_node_session().await;
+    let (remote_actor, remote_actor_handle) = Actor::spawn(None, RemoteActor, session.clone())
+        .await
+        .unwrap();
+    let mut state = RemoteActorState::new(session.clone());
+    let (reply, receiver) = ractor::concurrency::oneshot::<Vec<u8>>();
+    drop(receiver);
+
+    RemoteActor
+        .handle_serialized(
+            remote_actor.clone(),
+            SerializedMessage::Call {
+                variant: "Call".to_string(),
+                args: vec![],
+                reply: reply.into(),
+                metadata: None,
+            },
+            &mut state,
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.pending_requests.len(), 1);
+
+    RemoteActor
+        .handle_serialized(
+            remote_actor.clone(),
+            SerializedMessage::Cast {
+                variant: "Cast".to_string(),
+                args: vec![],
+                metadata: None,
+            },
+            &mut state,
+        )
+        .await
+        .unwrap();
+    assert!(state.pending_requests.is_empty());
+
+    remote_actor.stop(None);
+    session.stop(None);
+    remote_actor_handle.await.unwrap();
+    session_handle.await.unwrap();
+}
+
+#[ractor::concurrency::test]
+async fn forwarding_failure_releases_the_reply_port() {
+    let (session, session_handle) = FakeNodeSession::get_node_session().await;
+    session.stop(None);
+    session_handle.await.unwrap();
+
+    let (remote_actor, remote_actor_handle) = Actor::spawn(None, RemoteActor, session.clone())
+        .await
+        .unwrap();
+    let mut state = RemoteActorState::new(session);
+    let (reply, receiver) = ractor::concurrency::oneshot::<Vec<u8>>();
+
+    RemoteActor
+        .handle_serialized(
+            remote_actor.clone(),
+            SerializedMessage::Call {
+                variant: "Call".to_string(),
+                args: vec![],
+                reply: reply.into(),
+                metadata: None,
+            },
+            &mut state,
+        )
+        .await
+        .unwrap();
+
+    assert!(state.pending_requests.is_empty());
+    assert!(receiver.await.is_err());
+
+    remote_actor.stop(None);
+    remote_actor_handle.await.unwrap();
 }
