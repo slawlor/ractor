@@ -3,7 +3,7 @@
 // This source code is licensed under both the MIT license found in the
 // LICENSE-MIT file in the root directory of this source tree.
 
-//! A concise counter actor defined with the optional actor macros.
+//! A concise counter actor with a macro-generated, documented message enum.
 //!
 //! Execute with
 //!
@@ -19,21 +19,11 @@ use ractor::call_t;
 use ractor::Actor;
 use ractor::ActorProcessingErr;
 use ractor::ActorRef;
-use ractor::RpcReplyPort;
 
 struct Counter;
 
-enum CounterMessage {
-    Add(i64),
-    Read(RpcReplyPort<i64>),
-    Stop,
-}
-
-#[cfg(feature = "cluster")]
-impl ractor::Message for CounterMessage {}
-
 #[ractor::actor(
-    message = CounterMessage,
+    message = enum CounterMessage,
     state = i64,
     arguments = i64,
     crate_path = ::ractor,
@@ -47,21 +37,27 @@ impl Counter {
         Ok(initial)
     }
 
-    #[ractor::message(CounterMessage::Add(amount))]
+    /// Add an amount to the counter.
+    #[ractor::message(Add(amount))]
     fn add(&self, amount: i64, state: &mut i64) {
         *state += amount;
     }
 
-    #[ractor::rpc(CounterMessage::Read(reply))]
+    /// Read the current counter value.
+    #[ractor::rpc(Read)]
     fn read(&self, state: &i64) -> i64 {
         *state
     }
 
-    #[ractor::message(CounterMessage::Stop)]
+    /// Stop the counter actor.
+    #[ractor::message(Stop)]
     fn stop(&self, myself: ActorRef<CounterMessage>) {
         myself.stop(None);
     }
 }
+
+#[cfg(feature = "cluster")]
+impl ractor::Message for CounterMessage {}
 
 #[ractor_example_entry_proc::ractor_example_entry]
 async fn main() {

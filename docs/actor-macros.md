@@ -69,7 +69,11 @@ handler patterns and parameter types:
 ```rust
 struct Counter;
 
-#[ractor::actor(message = pub enum CounterMessage, state = i64, arguments = i64)]
+#[ractor::actor(
+    message = pub enum CounterMessage,
+    state = i64,
+    arguments = i64,
+)]
 impl Counter {
     async fn pre_start(
         &self,
@@ -79,11 +83,13 @@ impl Counter {
         Ok(initial)
     }
 
+    /// Add an amount to the counter.
     #[ractor::message(Add { amount })]
     fn add(&self, amount: i64, state: &mut i64) {
         *state += amount;
     }
 
+    /// Read the current counter value.
     #[ractor::rpc(Read)]
     fn read(&self, state: &i64) -> i64 {
         *state
@@ -95,7 +101,9 @@ This generates the equivalent of:
 
 ```rust
 pub enum CounterMessage {
+    /// Add an amount to the counter.
     Add { amount: i64 },
+    /// Read the current counter value.
     Read(RpcReplyPort<i64>),
 }
 ```
@@ -104,6 +112,13 @@ Unit, tuple, and struct variants are supported. Every generated field must have 
 the macro can find its type; `_` fields are therefore only supported when using an explicit enum.
 The optional visibility defaults to private and can be any normal Rust visibility, such as
 `pub(crate)`. Generated enums currently do not support generic actor implementations.
+
+Textual documentation comments (`///`, `/** ... */`, and `#[doc = ...]`) on message and RPC
+handlers are copied to the corresponding generated variants while remaining on the methods.
+Conditional `cfg` and textual documentation attributes retain their structure. Other method
+attributes are not copied, and explicit message enums remain entirely caller-owned. Copied links
+and code examples are documented in the enum variant's context, so write them as message
+documentation rather than method-specific implementation notes.
 
 The unit-form RPC attribute above describes a request with no payload. The generated enum still
 contains the reply port, so `Read` becomes `Read(RpcReplyPort<i64>)`. A tuple or struct RPC pattern
