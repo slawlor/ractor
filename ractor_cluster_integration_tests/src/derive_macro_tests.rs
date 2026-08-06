@@ -57,6 +57,117 @@ fn test_serializable_generation() {
 }
 
 #[test]
+fn derived_serialization_preserves_framing_and_validates_length_hints() {
+    #[derive(RactorClusterMessage)]
+    enum FramedMessage {
+        Value(Vec<u8>, u32),
+    }
+
+    let SerializedMessage::Cast { args, .. } =
+        FramedMessage::Value(vec![1, 2, 3], 42).serialize().unwrap()
+    else {
+        panic!("cast variant should serialize as a cast");
+    };
+    let mut expected = 3u64.to_be_bytes().to_vec();
+    expected.extend_from_slice(&[1, 2, 3]);
+    expected.extend_from_slice(&4u64.to_be_bytes());
+    expected.extend_from_slice(&42u32.to_be_bytes());
+    assert_eq!(args, expected);
+
+    struct DirectAppend(Vec<u8>);
+
+    impl ractor::BytesConvertable for DirectAppend {
+        fn into_bytes(self) -> Vec<u8> {
+            panic!("exact-length converters should use direct append");
+        }
+
+        fn serialized_len(&self) -> Option<usize> {
+            Some(self.0.len())
+        }
+
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            buffer.extend(self.0);
+        }
+
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            Self(bytes)
+        }
+    }
+
+    #[derive(RactorClusterMessage)]
+    enum DirectAppendMessage {
+        Value(DirectAppend),
+    }
+
+    assert!(DirectAppendMessage::Value(DirectAppend(vec![1, 2, 3]))
+        .serialize()
+        .is_ok());
+
+    struct IncorrectLength(Vec<u8>);
+
+    impl ractor::BytesConvertable for IncorrectLength {
+        fn into_bytes(self) -> Vec<u8> {
+            self.0
+        }
+
+        fn serialized_len(&self) -> Option<usize> {
+            Some(self.0.len() + 1)
+        }
+
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            Self(bytes)
+        }
+
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            buffer.extend(self.0);
+        }
+    }
+
+    #[derive(RactorClusterMessage)]
+    enum InvalidHintMessage {
+        Value(IncorrectLength),
+    }
+
+    assert!(InvalidHintMessage::Value(IncorrectLength(vec![1, 2, 3]))
+        .serialize()
+        .is_err());
+}
+
+#[test]
+fn derived_serialization_accepts_legacy_byte_converters() {
+    struct LegacyBytes(Vec<u8>);
+
+    impl ractor::BytesConvertable for LegacyBytes {
+        fn into_bytes(self) -> Vec<u8> {
+            self.0
+        }
+
+        fn from_bytes(bytes: Vec<u8>) -> Self {
+            Self(bytes)
+        }
+
+        fn extend_bytes(self, _: &mut Vec<u8>) {
+            panic!("legacy converters should use the owned-byte fallback");
+        }
+    }
+
+    #[derive(RactorClusterMessage)]
+    enum LegacyMessage {
+        Value(LegacyBytes),
+    }
+
+    let SerializedMessage::Cast { args, .. } = LegacyMessage::Value(LegacyBytes(vec![1, 2, 3]))
+        .serialize()
+        .unwrap()
+    else {
+        panic!("cast variant should serialize as a cast");
+    };
+    let mut expected = 3u64.to_be_bytes().to_vec();
+    expected.extend_from_slice(&[1, 2, 3]);
+    assert_eq!(args, expected);
+}
+
+#[test]
 fn malformed_derived_framing_returns_an_error() {
     #[derive(RactorClusterMessage)]
     enum FramedMessage {

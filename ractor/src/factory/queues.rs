@@ -99,6 +99,11 @@ impl crate::BytesConvertable for StandardPriority {
     fn into_bytes(self) -> Vec<u8> {
         (self as u64).into_bytes()
     }
+    #[inline]
+    fn serialized_len(&self) -> Option<usize> {
+        Some(std::mem::size_of::<u64>())
+    }
+    #[inline]
     fn extend_bytes(self, buffer: &mut Vec<u8>) {
         (self as u64).extend_bytes(buffer);
     }

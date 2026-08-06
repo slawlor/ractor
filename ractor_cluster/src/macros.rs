@@ -19,6 +19,12 @@ macro_rules! derive_serialization_for_prost_type {
             fn into_bytes(self) -> Vec<u8> {
                 <Self as prost::Message>::encode_length_delimited_to_vec(&self)
             }
+            #[inline]
+            fn serialized_len(&self) -> Option<usize> {
+                let message_len = <Self as prost::Message>::encoded_len(self);
+                message_len.checked_add(prost::length_delimiter_len(message_len))
+            }
+            #[inline]
             fn extend_bytes(self, buffer: &mut Vec<u8>) {
                 <Self as prost::Message>::encode_length_delimited(&self, buffer).unwrap()
             }
@@ -57,6 +63,7 @@ mod test {
         };
 
         let bytes = original.clone().into_bytes();
+        assert_eq!(original.serialized_len(), Some(bytes.len()));
         let decoded = <crate::protocol::NetworkMessage as BytesConvertable>::from_bytes(bytes);
         assert_eq!(original, decoded);
 

@@ -208,6 +208,12 @@ impl BytesConvertable for JobOptions {
         data
     }
 
+    #[inline]
+    fn serialized_len(&self) -> Option<usize> {
+        Some(16)
+    }
+
+    #[inline]
     fn extend_bytes(self, data: &mut Vec<u8>) {
         let submit_time = (self
             .submit_time

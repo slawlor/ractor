@@ -125,14 +125,18 @@ fn gen_serialize_arm(variant: &ParsedVariant) -> impl ToTokens {
                 }
             } else {
                 let field_names: Vec<_> = fields.iter().map(|(a, _)| a).collect();
-                let packed = fields.iter().map(|(field, ty)| pack_args(field, ty));
+                let prepare = prepare_args(fields);
+                let packed = fields
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (field, ty))| pack_args(field, ty, index));
                 let pattern = match &variant.field_style {
                     FieldStyle::Tuple => quote! { Self::#name(#(#field_names),*) },
                     FieldStyle::Named => quote! { Self::#name { #(#field_names),* } },
                 };
                 quote! {
                     #pattern => {
-                        let mut __data = vec![];
+                        #prepare
                         #(#packed ;)*
                         Ok(ractor::message::SerializedMessage::Cast {
                             variant: #variant_name.to_string(),
@@ -175,10 +179,14 @@ fn gen_serialize_arm(variant: &ParsedVariant) -> impl ToTokens {
                     }
                 }
             } else {
-                let packed = fields.iter().map(|(field, ty)| pack_args(field, ty));
+                let prepare = prepare_args(fields);
+                let packed = fields
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (field, ty))| pack_args(field, ty, index));
                 quote! {
                     #pattern => {
-                        let mut __data = vec![];
+                        #prepare
                         #(#packed;)*
                         let __target_port = #target_port;
                         Ok(ractor::message::SerializedMessage::Call {
@@ -297,26 +305,68 @@ fn gen_call_deserialize_arm(variant: &ParsedVariant) -> impl ToTokens {
     }
 }
 
+/// Generate field-length hints and reserve the complete frame when every field
+/// can report its encoded size without serializing.
+fn prepare_args(fields: &[(Ident, syn::Type)]) -> impl ToTokens {
+    let hints = fields.iter().map(|(field, ty)| {
+        quote! { <#ty as ractor::BytesConvertable>::serialized_len(&#field) }
+    });
+
+    quote! {
+        let __serialized_lens = [#(#hints),*];
+        let __total_len = __serialized_lens.iter().try_fold(0usize, |__total, __field_len| {
+            __total
+                .checked_add(::core::mem::size_of::<u64>())?
+                .checked_add((*__field_len)?)
+        });
+        let mut __data = ::std::vec::Vec::new();
+        if let Some(__total_len) = __total_len {
+            __data
+                .try_reserve_exact(__total_len)
+                .map_err(|_| ractor::message::BoxedDowncastErr)?;
+        }
+    }
+}
+
 /// Generate per-field serialization code.
-fn pack_args(field: &Ident, target_type: &syn::Type) -> impl ToTokens {
+fn pack_args(field: &Ident, target_type: &syn::Type, index: usize) -> impl ToTokens {
+    let index = syn::Index::from(index);
     quote! {
         {
-            __data
-                .try_reserve(::core::mem::size_of::<u64>())
-                .map_err(|_| ractor::message::BoxedDowncastErr)?;
-            let __length_offset = __data.len();
-            __data.extend_from_slice(&[0u8; 8]);
-            let __data_offset = __data.len();
-            <#target_type as ractor::BytesConvertable>::extend_bytes(#field, &mut __data);
-            let __arg_len = <u64 as ::core::convert::TryFrom<usize>>::try_from(
+            if let Some(__expected_len) = __serialized_lens[#index] {
+                let __arg_len = <u64 as ::core::convert::TryFrom<usize>>::try_from(__expected_len)
+                    .map_err(|_| ractor::message::BoxedDowncastErr)?
+                    .to_be_bytes();
+                let __additional = ::core::mem::size_of::<u64>()
+                    .checked_add(__expected_len)
+                    .ok_or(ractor::message::BoxedDowncastErr)?;
                 __data
+                    .try_reserve(__additional)
+                    .map_err(|_| ractor::message::BoxedDowncastErr)?;
+                __data.extend_from_slice(&__arg_len);
+                let __data_offset = __data.len();
+                <#target_type as ractor::BytesConvertable>::extend_bytes(#field, &mut __data);
+                let __actual_len = __data
                     .len()
                     .checked_sub(__data_offset)
-                    .ok_or(ractor::message::BoxedDowncastErr)?
-            )
-                .map_err(|_| ractor::message::BoxedDowncastErr)?
-                .to_be_bytes();
-            __data[__length_offset..__data_offset].copy_from_slice(&__arg_len);
+                    .ok_or(ractor::message::BoxedDowncastErr)?;
+                if __actual_len != __expected_len {
+                    return Err(ractor::message::BoxedDowncastErr);
+                }
+            } else {
+                let __arg_data = <#target_type as ractor::BytesConvertable>::into_bytes(#field);
+                let __arg_len = <u64 as ::core::convert::TryFrom<usize>>::try_from(__arg_data.len())
+                    .map_err(|_| ractor::message::BoxedDowncastErr)?
+                    .to_be_bytes();
+                let __additional = ::core::mem::size_of::<u64>()
+                    .checked_add(__arg_data.len())
+                    .ok_or(ractor::message::BoxedDowncastErr)?;
+                __data
+                    .try_reserve(__additional)
+                    .map_err(|_| ractor::message::BoxedDowncastErr)?;
+                __data.extend_from_slice(&__arg_len);
+                __data.extend(__arg_data);
+            }
         }
     }
 }
