@@ -5,6 +5,7 @@
 
 //! Supervisor tests
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::AtomicU8;
@@ -16,6 +17,7 @@ use crate::message::BoxedDowncastErr;
 use crate::periodic_check;
 use crate::Actor;
 use crate::ActorCell;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use crate::ActorId;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
