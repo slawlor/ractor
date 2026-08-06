@@ -27,8 +27,8 @@ Install `ractor_cluster` by adding the following to your Cargo.toml dependencies
 
 ```toml
 [dependencies]
-ractor = { version = "0.13", features = ["cluster"] }
-ractor_cluster = "0.13"
+ractor = { version = "0.17", features = ["cluster"] }
+ractor_cluster = "0.17"
 ```
 
 ## Ractor in distribucted clusters

@@ -111,7 +111,7 @@ async fn test_worker_death_restarts_and_gets_next_message() {
         MyWorkerMessage,
         (),
         MyWorker,
-        routing::RoundRobinRouting<(), MyWorkerMessage>,
+        routing::StickyQueuerRouting<(), MyWorkerMessage>,
         queues::DefaultQueue<(), MyWorkerMessage>,
     >::default();
     let (factory, factory_handle) = Actor::spawn(

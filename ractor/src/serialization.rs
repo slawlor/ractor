@@ -19,8 +19,41 @@
 pub trait BytesConvertable {
     /// Serialize this type to a vector of bytes. Panics are acceptable
     fn into_bytes(self) -> Vec<u8>;
+    /// Return the exact serialized length when it can be computed without encoding.
+    ///
+    /// Generated serializers use this hint to reserve the field prefix and payload in
+    /// one allocation. Implementations returning [`Some`] must return the exact number
+    /// of bytes appended by [`BytesConvertable::extend_bytes`]. The generated code
+    /// validates the hint and returns a serialization error if it does not match.
+    #[inline]
+    fn serialized_len(&self) -> Option<usize> {
+        None
+    }
+    /// Append this value's serialized representation directly to an existing buffer.
+    ///
+    /// The default preserves compatibility with existing implementations. Implementors
+    /// can override it together with [`BytesConvertable::serialized_len`] to let generated
+    /// serializers avoid allocating an intermediate [`Vec`]. When the length is unknown,
+    /// generated serializers retain the compatible [`BytesConvertable::into_bytes`] path.
+    #[inline]
+    fn extend_bytes(self, buffer: &mut Vec<u8>)
+    where
+        Self: Sized,
+    {
+        buffer.extend(self.into_bytes());
+    }
     /// Deserialize this type from a vector of bytes. Panics are acceptable
     fn from_bytes(bytes: Vec<u8>) -> Self;
+    /// Deserialize this type from a borrowed byte slice.
+    ///
+    /// The default preserves compatibility with existing implementations. Implementors
+    /// can override it to avoid copying the input into an intermediate [`Vec`].
+    fn from_bytes_ref(bytes: &[u8]) -> Self
+    where
+        Self: Sized,
+    {
+        Self::from_bytes(bytes.to_vec())
+    }
 }
 
 #[cfg(feature = "blanket_serde")]
@@ -29,8 +62,15 @@ mod impls {
     use crate::BytesConvertable;
 
     impl<T: serde::Serialize + serde::de::DeserializeOwned> BytesConvertable for T {
+        #[inline]
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            pot::to_writer(&self, buffer).unwrap();
+        }
         fn from_bytes(bytes: Vec<u8>) -> Self {
             pot::from_slice(&bytes).unwrap()
+        }
+        fn from_bytes_ref(bytes: &[u8]) -> Self {
+            pot::from_slice(bytes).unwrap()
         }
         fn into_bytes(self) -> Vec<u8> {
             pot::to_vec(&self).unwrap()
@@ -51,7 +91,18 @@ mod impls {
                 fn into_bytes(self) -> Vec<u8> {
                     self.to_be_bytes().to_vec()
                 }
+                #[inline]
+                fn serialized_len(&self) -> Option<usize> {
+                    Some(std::mem::size_of::<Self>())
+                }
+                #[inline]
+                fn extend_bytes(self, buffer: &mut Vec<u8>) {
+                    buffer.extend_from_slice(&self.to_be_bytes());
+                }
                 fn from_bytes(bytes: Vec<u8>) -> Self {
+                    Self::from_bytes_ref(&bytes)
+                }
+                fn from_bytes_ref(bytes: &[u8]) -> Self {
                     let mut data = [0u8; std::mem::size_of::<Self>()];
                     data.copy_from_slice(&bytes[..std::mem::size_of::<Self>()]);
                     Self::from_be_bytes(data)
@@ -79,7 +130,14 @@ mod impls {
         fn into_bytes(self) -> Vec<u8> {
             Vec::new()
         }
+        #[inline]
+        fn serialized_len(&self) -> Option<usize> {
+            Some(0)
+        }
+        #[inline]
+        fn extend_bytes(self, _: &mut Vec<u8>) {}
         fn from_bytes(_: Vec<u8>) -> Self {}
+        fn from_bytes_ref(_: &[u8]) -> Self {}
     }
 
     impl BytesConvertable for bool {
@@ -90,7 +148,18 @@ mod impls {
                 vec![0u8]
             }
         }
+        #[inline]
+        fn serialized_len(&self) -> Option<usize> {
+            Some(1)
+        }
+        #[inline]
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            buffer.push(u8::from(self));
+        }
         fn from_bytes(bytes: Vec<u8>) -> Self {
+            Self::from_bytes_ref(&bytes)
+        }
+        fn from_bytes_ref(bytes: &[u8]) -> Self {
             bytes[0] == 1u8
         }
     }
@@ -100,8 +169,19 @@ mod impls {
             let u = self as u32;
             u.into_bytes()
         }
+        #[inline]
+        fn serialized_len(&self) -> Option<usize> {
+            Some(std::mem::size_of::<u32>())
+        }
+        #[inline]
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            buffer.extend_from_slice(&(self as u32).to_be_bytes());
+        }
         fn from_bytes(bytes: Vec<u8>) -> Self {
-            let u = u32::from_bytes(bytes);
+            Self::from_bytes_ref(&bytes)
+        }
+        fn from_bytes_ref(bytes: &[u8]) -> Self {
+            let u = u32::from_bytes_ref(bytes);
             Self::from_u32(u).unwrap()
         }
     }
@@ -110,8 +190,19 @@ mod impls {
         fn into_bytes(self) -> Vec<u8> {
             self.into_bytes()
         }
+        #[inline]
+        fn serialized_len(&self) -> Option<usize> {
+            Some(self.len())
+        }
+        #[inline]
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            buffer.extend_from_slice(self.as_bytes());
+        }
         fn from_bytes(bytes: Vec<u8>) -> Self {
             String::from_utf8(bytes).unwrap()
+        }
+        fn from_bytes_ref(bytes: &[u8]) -> Self {
+            std::str::from_utf8(bytes).unwrap().to_owned()
         }
     }
 
@@ -127,7 +218,21 @@ mod impls {
                     }
                     result
                 }
+                #[inline]
+                fn serialized_len(&self) -> Option<usize> {
+                    self.len().checked_mul(std::mem::size_of::<$ty>())
+                }
+                #[inline]
+                fn extend_bytes(self, buffer: &mut Vec<u8>) {
+                    buffer.reserve(self.len() * std::mem::size_of::<$ty>());
+                    for item in self {
+                        buffer.extend_from_slice(&item.to_be_bytes());
+                    }
+                }
                 fn from_bytes(bytes: Vec<u8>) -> Self {
+                    Self::from_bytes_ref(&bytes)
+                }
+                fn from_bytes_ref(bytes: &[u8]) -> Self {
                     let num_el = bytes.len() / std::mem::size_of::<$ty>();
                     let mut result = vec![<$ty>::MIN; num_el];
 
@@ -155,8 +260,19 @@ mod impls {
         fn into_bytes(self) -> Vec<u8> {
             self
         }
+        #[inline]
+        fn serialized_len(&self) -> Option<usize> {
+            Some(self.len())
+        }
+        #[inline]
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            buffer.extend(self);
+        }
         fn from_bytes(bytes: Vec<u8>) -> Self {
             bytes
+        }
+        fn from_bytes_ref(bytes: &[u8]) -> Self {
+            bytes.to_vec()
         }
     }
     implement_vectorized_numeric! {u16}
@@ -176,14 +292,20 @@ mod impls {
             }
             result
         }
+        #[inline]
+        fn serialized_len(&self) -> Option<usize> {
+            Some(self.len())
+        }
+        #[inline]
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            buffer.reserve(self.len());
+            buffer.extend(self.into_iter().map(u8::from));
+        }
         fn from_bytes(bytes: Vec<u8>) -> Self {
-            let num_el = bytes.len();
-            let mut result = vec![false; num_el];
-            for (ptr, byte) in bytes.into_iter().enumerate() {
-                result[ptr] = byte == 1u8;
-            }
-
-            result
+            Self::from_bytes_ref(&bytes)
+        }
+        fn from_bytes_ref(bytes: &[u8]) -> Self {
+            bytes.iter().map(|byte| *byte == 1u8).collect()
         }
     }
 
@@ -192,11 +314,28 @@ mod impls {
             let data = self.into_iter().map(|c| c as u32).collect::<Vec<_>>();
             data.into_bytes()
         }
+        #[inline]
+        fn serialized_len(&self) -> Option<usize> {
+            self.len().checked_mul(std::mem::size_of::<u32>())
+        }
+        #[inline]
+        fn extend_bytes(self, buffer: &mut Vec<u8>) {
+            buffer.reserve(self.len() * std::mem::size_of::<u32>());
+            for character in self {
+                buffer.extend_from_slice(&(character as u32).to_be_bytes());
+            }
+        }
         fn from_bytes(bytes: Vec<u8>) -> Self {
-            let u32s = <Vec<u32>>::from_bytes(bytes);
-            u32s.into_iter()
-                .map(|u| char::from_u32(u).unwrap())
-                .collect::<Vec<_>>()
+            Self::from_bytes_ref(&bytes)
+        }
+        fn from_bytes_ref(bytes: &[u8]) -> Self {
+            bytes
+                .chunks_exact(std::mem::size_of::<u32>())
+                .map(|chunk| {
+                    let data: [u8; std::mem::size_of::<u32>()] = chunk.try_into().unwrap();
+                    char::from_u32(u32::from_be_bytes(data)).unwrap()
+                })
+                .collect()
         }
     }
 }
@@ -217,6 +356,76 @@ mod tests {
             .take(30)
             .map(char::from)
             .collect()
+    }
+
+    #[test]
+    fn default_buffer_hooks_preserve_legacy_implementations() {
+        #[derive(Debug, Eq, PartialEq)]
+        struct LegacyBytes(Vec<u8>);
+
+        impl BytesConvertable for LegacyBytes {
+            fn into_bytes(self) -> Vec<u8> {
+                self.0
+            }
+
+            fn from_bytes(bytes: Vec<u8>) -> Self {
+                Self(bytes)
+            }
+        }
+
+        assert_eq!(LegacyBytes(vec![]).serialized_len(), None);
+        let mut output = vec![9];
+        LegacyBytes(vec![1, 2, 3]).extend_bytes(&mut output);
+        assert_eq!(output, vec![9, 1, 2, 3]);
+        assert_eq!(
+            LegacyBytes::from_bytes_ref(&output[1..]),
+            LegacyBytes(vec![1, 2, 3])
+        );
+    }
+
+    #[cfg(not(feature = "blanket_serde"))]
+    #[test]
+    fn optimized_buffer_hooks_round_trip_builtin_values() {
+        let mut output = vec![9];
+        assert_eq!(42u32.serialized_len(), Some(4));
+        42u32.extend_bytes(&mut output);
+        assert_eq!(u32::from_bytes_ref(&output[1..]), 42);
+
+        output.clear();
+        let value = String::from("ractor");
+        assert_eq!(value.serialized_len(), Some(6));
+        value.extend_bytes(&mut output);
+        assert_eq!(String::from_bytes_ref(&output), "ractor");
+
+        output.clear();
+        let value = vec![true, false, true];
+        assert_eq!(value.serialized_len(), Some(3));
+        value.extend_bytes(&mut output);
+        assert_eq!(Vec::<bool>::from_bytes_ref(&output), [true, false, true]);
+
+        output.clear();
+        let value = vec!['a', 'r'];
+        assert_eq!(value.serialized_len(), Some(8));
+        value.extend_bytes(&mut output);
+        assert_eq!(Vec::<char>::from_bytes_ref(&output), ['a', 'r']);
+
+        output.clear();
+        let value = vec![1u8, 2, 3];
+        assert_eq!(value.serialized_len(), Some(3));
+        value.extend_bytes(&mut output);
+        assert_eq!(output, [1, 2, 3]);
+    }
+
+    #[cfg(feature = "blanket_serde")]
+    #[test]
+    fn blanket_serde_uses_the_unknown_length_fallback() {
+        let value = String::from("ractor");
+        assert_eq!(value.serialized_len(), None);
+
+        let expected = <String as BytesConvertable>::into_bytes(value.clone());
+        let mut output = Vec::new();
+        value.extend_bytes(&mut output);
+        assert_eq!(output, expected);
     }
 
     macro_rules! run_basic_type_test {

@@ -1390,6 +1390,7 @@ fn generated_handle(ractor: &Path, handlers: &[Handler]) -> syn::Result<ImplItem
 
     syn::parse2(quote! {
         #[allow(unused_variables)]
+        #[deny(unreachable_patterns)]
         async fn handle(
             &self,
             #myself_ident: #ractor::ActorRef<Self::Msg>,
@@ -1411,6 +1412,7 @@ fn generated_supervision_handler(ractor: &Path, handlers: &[Handler]) -> syn::Re
 
     syn::parse2(quote! {
         #[allow(unused_variables)]
+        #[deny(unreachable_patterns)]
         async fn handle_supervisor_evt(
             &self,
             #myself_ident: #ractor::ActorRef<Self::Msg>,

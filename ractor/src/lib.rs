@@ -12,7 +12,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ractor = "0.16"
+//! ractor = "0.17"
 //! ```
 //!
 //! The minimum supported Rust version (MSRV) is 1.85.

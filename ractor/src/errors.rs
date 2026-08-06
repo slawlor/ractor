@@ -133,6 +133,16 @@ impl<T> MessagingErr<T> {
             MessagingErr::InvalidActorType => MessagingErr::InvalidActorType,
         }
     }
+
+    /// Discard any message embedded within the error.
+    ///
+    /// This is useful when converting a messaging error containing a
+    /// `Send + !Sync` message into an [`ActorProcessingErr`]. The original
+    /// error cannot soundly be shared between threads, while the erased error
+    /// can be.
+    pub fn discard_message(self) -> MessagingErr<()> {
+        self.map(drop)
+    }
 }
 
 impl<T> std::fmt::Debug for MessagingErr<T> {
@@ -145,16 +155,7 @@ impl<T> std::fmt::Debug for MessagingErr<T> {
     }
 }
 
-// SAFETY: This is required in order to map [MessagingErr] to
-// ActorProcessingErr which requires errors to be Sync.
 impl<T> std::error::Error for MessagingErr<T> {}
-
-// SAFETY: This bound will make the MessagingErr be marked as `Sync`,
-// even though all messages must only be `Send`. HOWEVER errors are generally
-// never read in a `Sync` required context, and this bound is only
-// required due to the auto-conversion to `std::error::Error``
-#[allow(unsafe_code)]
-unsafe impl<T> Sync for MessagingErr<T> {}
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for MessagingErr<T> {
     fn from(e: tokio::sync::mpsc::error::SendError<T>) -> Self {
@@ -232,6 +233,15 @@ impl<T> RactorErr<T> {
             RactorErr::Actor(err) => RactorErr::Actor(err),
             RactorErr::Timeout => RactorErr::Timeout,
         }
+    }
+
+    /// Discard any message embedded within the error.
+    ///
+    /// This allows an error containing a `Send + !Sync` message to cross an
+    /// error boundary that requires [`Sync`] without asserting that the message
+    /// itself is safe to share between threads.
+    pub fn discard_message(self) -> RactorErr<()> {
+        self.map(drop)
     }
 }
 

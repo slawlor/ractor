@@ -611,6 +611,88 @@ async fn test_dispatch_sticky_queueing() {
     not(all(target_arch = "wasm32", target_os = "unknown")),
     tracing_test::traced_test
 )]
+async fn test_sticky_queueing_preserves_key_during_pool_shrink() {
+    let worker_counters: [_; NUM_TEST_WORKERS] = [
+        Arc::new(AtomicU16::new(0)),
+        Arc::new(AtomicU16::new(0)),
+        Arc::new(AtomicU16::new(0)),
+    ];
+
+    let factory_definition = Factory::<
+        TestKey,
+        TestMessage,
+        (),
+        TestWorker,
+        routing::StickyQueuerRouting<TestKey, TestMessage>,
+        DefaultQueue,
+    >::default();
+    let (factory, factory_handle) = Actor::spawn(
+        None,
+        factory_definition,
+        FactoryArguments {
+            num_initial_workers: NUM_TEST_WORKERS,
+            queue: DefaultQueue::default(),
+            router: Default::default(),
+            capacity_controller: None,
+            dead_mans_switch: None,
+            discard_handler: None,
+            discard_settings: DiscardSettings::None,
+            lifecycle_hooks: None,
+            worker_builder: Box::new(SlowTestWorkerBuilder {
+                counters: worker_counters.clone(),
+            }),
+            stats: None,
+        },
+    )
+    .await
+    .expect("Failed to spawn factory");
+
+    // Worker 0 takes key 0 and worker 1 takes key 1. Shrinking to one worker
+    // drains worker 1, so the second key-1 job must wait rather than move early.
+    for key in [0, 1] {
+        factory
+            .cast(FactoryMessage::Dispatch(Job::new(
+                TestKey { id: key },
+                TestMessage::Ok,
+            )))
+            .expect("Failed to send to factory");
+    }
+    factory
+        .cast(FactoryMessage::AdjustWorkerPool(1))
+        .expect("Failed to resize factory");
+    factory
+        .cast(FactoryMessage::Dispatch(Job::new(
+            TestKey { id: 1 },
+            TestMessage::Ok,
+        )))
+        .expect("Failed to send to factory");
+
+    let check_counters = worker_counters.clone();
+    periodic_check(
+        move || {
+            check_counters
+                .iter()
+                .map(|counter| counter.load(Ordering::Relaxed))
+                .sum::<u16>()
+                == 3
+        },
+        Duration::from_secs(3),
+    )
+    .await;
+
+    assert_eq!(2, worker_counters[0].load(Ordering::Relaxed));
+    assert_eq!(1, worker_counters[1].load(Ordering::Relaxed));
+    assert_eq!(0, worker_counters[2].load(Ordering::Relaxed));
+
+    factory.stop(None);
+    factory_handle.await.unwrap();
+}
+
+#[crate::concurrency::test]
+#[cfg_attr(
+    not(all(target_arch = "wasm32", target_os = "unknown")),
+    tracing_test::traced_test
+)]
 async fn test_discarding_old_records_on_queuer() {
     let worker_counters: [_; NUM_TEST_WORKERS] = [
         Arc::new(AtomicU16::new(0)),
