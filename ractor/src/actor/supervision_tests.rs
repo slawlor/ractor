@@ -1158,6 +1158,153 @@ async fn test_supervisor_captures_dead_childs_state() {
     assert_eq!(0, supervisor_ref.get_num_children());
 }
 
+#[test]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn terminating_a_deep_supervision_tree_is_iterative() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            struct Who;
+
+            #[cfg_attr(feature = "async-trait", crate::async_trait)]
+            impl Actor for Who {
+                type Msg = ();
+                type State = ();
+                type Arguments = ();
+
+                async fn pre_start(
+                    &self,
+                    _: ActorRef<Self::Msg>,
+                    _: Self::Arguments,
+                ) -> Result<Self::State, ActorProcessingErr> {
+                    Ok(())
+                }
+            }
+
+            const DEPTH: usize = 2_048;
+            let mut actors = Vec::with_capacity(DEPTH);
+            let mut ports = Vec::with_capacity(DEPTH);
+            for _ in 0..DEPTH {
+                let (actor, actor_ports) =
+                    ActorCell::new::<Who>(None).expect("actor should be created");
+                actors.push(actor);
+                ports.push(actor_ports);
+            }
+            for index in 1..DEPTH {
+                actors[index].link(actors[index - 1].clone());
+            }
+
+            actors[0].terminate();
+
+            assert!(actors.iter().all(|actor| actor.get_children().is_empty()));
+            assert!(actors
+                .iter()
+                .all(|actor| actor.try_get_supervisor().is_none()));
+            drop(ports);
+        })
+        .expect("test thread should spawn")
+        .join()
+        .expect("iterative termination should fit on a small stack");
+}
+
+#[crate::concurrency::test]
+async fn relinking_replaces_and_cleans_up_the_current_supervisor() {
+    struct Who;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for Who {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle_supervisor_evt(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: SupervisionEvent,
+            _: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (first, first_handle) = Actor::spawn(None, Who, ())
+        .await
+        .expect("first supervisor should start");
+    let (second, second_handle) = Actor::spawn(None, Who, ())
+        .await
+        .expect("second supervisor should start");
+    let (child, child_handle) = Actor::spawn(None, Who, ())
+        .await
+        .expect("child should start");
+
+    child.link(first.get_cell());
+    assert_eq!(1, first.get_num_children());
+    child.link(second.get_cell());
+    assert_eq!(0, first.get_num_children());
+    assert_eq!(1, second.get_num_children());
+    assert_eq!(
+        Some(second.get_id()),
+        child.try_get_supervisor().map(|actor| actor.get_id())
+    );
+
+    first.stop(None);
+    first_handle.await.expect("first supervisor should stop");
+    assert!(child.get_status() < ActorStatus::Stopping);
+
+    // A parent whose shutdown has begun cannot replace the current supervisor.
+    child.link(first.get_cell());
+    assert_eq!(
+        Some(second.get_id()),
+        child.try_get_supervisor().map(|actor| actor.get_id())
+    );
+
+    child.stop(None);
+    child_handle.await.expect("child should stop");
+    assert_eq!(0, second.get_num_children());
+
+    second.stop(None);
+    second_handle.await.expect("second supervisor should stop");
+}
+
+#[crate::concurrency::test]
+async fn linked_spawn_rejects_a_draining_supervisor() {
+    struct Who;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for Who {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (supervisor, ports) = ActorCell::new::<Who>(None).expect("supervisor should be created");
+    supervisor.set_status(ActorStatus::Draining);
+
+    assert!(Actor::spawn_linked(None, Who, (), supervisor.clone())
+        .await
+        .is_err());
+    assert!(supervisor.get_children().is_empty());
+
+    supervisor.set_status(ActorStatus::Stopped);
+    drop(ports);
+}
+
 // TODO: Still to be tested
 // 1. terminate_children_after()
 

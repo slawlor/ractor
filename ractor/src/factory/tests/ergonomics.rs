@@ -185,8 +185,7 @@ async fn factory_ref_and_closure_builder_cover_common_operations() {
         .expect("factory should exit cleanly");
 
     assert_eq!(5, handled.load(Ordering::Relaxed));
-    // Both the factory and worker layers observe each new job.
-    assert_eq!(10, stats.count.load(Ordering::Relaxed));
+    assert_eq!(5, stats.count.load(Ordering::Relaxed));
 }
 
 #[crate::concurrency::test]
@@ -340,4 +339,113 @@ async fn shared_queue_capacity_saturates_after_limit_reduction() {
 
     factory.stop(None);
     handle.await.expect("factory should stop cleanly");
+}
+
+#[crate::concurrency::test]
+async fn zero_initial_worker_pool_queues_until_resized() {
+    let handled = Arc::new(AtomicUsize::new(0));
+    let definition = Factory::<
+        (),
+        TestMessage,
+        (),
+        TestWorker,
+        routing::RoundRobinRouting<(), TestMessage>,
+        queues::DefaultQueue<(), TestMessage>,
+    >::default();
+    let arguments = FactoryArguments::builder()
+        .worker_builder(Box::new(worker_builder({
+            let handled = handled.clone();
+            move |_wid| {
+                (
+                    TestWorker {
+                        handled: handled.clone(),
+                        generation: 1,
+                    },
+                    (),
+                )
+            }
+        })))
+        .num_initial_workers(0)
+        .router(routing::RoundRobinRouting::default())
+        .queue(queues::DefaultQueue::default())
+        .build();
+
+    let (factory, handle) = Actor::spawn(None, definition, arguments).await.unwrap();
+    factory
+        .cast(FactoryMessage::Dispatch(Job::new(
+            (),
+            TestMessage::Increment,
+        )))
+        .unwrap();
+    assert_eq!(handled.load(Ordering::Relaxed), 0);
+
+    factory.cast(FactoryMessage::AdjustWorkerPool(1)).unwrap();
+    crate::periodic_check(
+        || handled.load(Ordering::Relaxed) == 1,
+        Duration::from_secs(1),
+    )
+    .await;
+
+    factory.stop(None);
+    handle.await.unwrap();
+}
+
+#[crate::concurrency::test]
+async fn invalid_custom_worker_selection_is_bounded_to_the_pool() {
+    struct InvalidHasher;
+
+    impl routing::CustomHashFunction<()> for InvalidHasher {
+        fn hash(&self, _key: &(), worker_count: usize) -> usize {
+            worker_count
+        }
+    }
+
+    let handled = Arc::new(AtomicUsize::new(0));
+    let definition = Factory::<
+        (),
+        TestMessage,
+        (),
+        TestWorker,
+        routing::CustomRouting<(), TestMessage, InvalidHasher>,
+        queues::DefaultQueue<(), TestMessage>,
+    >::default();
+    let arguments = FactoryArguments::builder()
+        .worker_builder(Box::new(worker_builder({
+            let handled = handled.clone();
+            move |_wid| {
+                (
+                    TestWorker {
+                        handled: handled.clone(),
+                        generation: 1,
+                    },
+                    (),
+                )
+            }
+        })))
+        .num_initial_workers(1)
+        .router(routing::CustomRouting::new(InvalidHasher))
+        .queue(queues::DefaultQueue::default())
+        .build();
+    let (factory, handle) = Actor::spawn(None, definition, arguments).await.unwrap();
+    let (accepted, receiver) = crate::concurrency::oneshot();
+
+    factory
+        .cast(FactoryMessage::Dispatch(Job {
+            key: (),
+            msg: TestMessage::Increment,
+            options: JobOptions::default(),
+            accepted: Some(accepted.into()),
+        }))
+        .unwrap();
+
+    assert!(receiver.await.unwrap().is_none());
+    crate::periodic_check(
+        || handled.load(Ordering::Relaxed) == 1,
+        Duration::from_secs(1),
+    )
+    .await;
+    assert!(factory.get_status() < crate::ActorStatus::Stopping);
+
+    factory.stop(None);
+    handle.await.unwrap();
 }

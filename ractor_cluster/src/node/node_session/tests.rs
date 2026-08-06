@@ -82,6 +82,15 @@ impl Actor for DummyNodeSession {
     ) -> Result<(), ActorProcessingErr> {
         Ok(())
     }
+
+    async fn handle_supervisor_evt(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        _message: ractor::SupervisionEvent,
+        _state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        Ok(())
+    }
 }
 
 struct PingCounter {

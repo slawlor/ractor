@@ -881,7 +881,7 @@ async fn local_vs_remote_pg_members_in_named_scopes() {
         }
     }
 
-    let remote_pid = crate::ActorId::Remote { node_id: 1, pid: 1 };
+    let remote_pid = crate::ActorId::Remote { node_id: 1, pid: 2 };
 
     let mut actors: Vec<crate::ActorCell> = vec![];
     let mut handles = vec![];

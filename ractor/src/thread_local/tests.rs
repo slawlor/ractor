@@ -566,6 +566,147 @@ async fn kill_and_wait() {
     periodic_check(|| handle.is_finished(), Duration::from_millis(500)).await;
 }
 
+#[crate::concurrency::test]
+async fn kill_interrupts_lifecycle_hooks() {
+    #[derive(Default)]
+    struct PreStartActor;
+
+    impl Actor for PreStartActor {
+        type Msg = ();
+        type State = ();
+        type Arguments = Arc<AtomicU8>;
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            phase.store(1, Ordering::SeqCst);
+            std::future::pending().await
+        }
+    }
+
+    let phase = Arc::new(AtomicU8::new(0));
+    let (actor, startup_handle) = PreStartActor::spawn_instant(None, phase.clone(), get_spawner())
+        .expect("actor should be created");
+    periodic_check(|| phase.load(Ordering::SeqCst) == 1, Duration::from_secs(1)).await;
+    actor
+        .kill_and_wait(Some(Duration::from_secs(1)))
+        .await
+        .expect("kill should interrupt pre_start");
+    assert!(startup_handle
+        .await
+        .expect("startup task should not panic")
+        .is_err());
+
+    #[derive(Default)]
+    struct PostStartActor;
+
+    impl Actor for PostStartActor {
+        type Msg = ();
+        type State = Arc<AtomicU8>;
+        type Arguments = Arc<AtomicU8>;
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(phase)
+        }
+
+        async fn post_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            phase.store(1, Ordering::SeqCst);
+            std::future::pending().await
+        }
+    }
+
+    let phase = Arc::new(AtomicU8::new(0));
+    let (actor, handle) = crate::spawn_local::<PostStartActor>(phase.clone(), get_spawner())
+        .await
+        .expect("actor should complete pre_start");
+    periodic_check(|| phase.load(Ordering::SeqCst) == 1, Duration::from_secs(1)).await;
+    actor
+        .kill_and_wait(Some(Duration::from_secs(1)))
+        .await
+        .expect("kill should interrupt post_start");
+    handle.await.expect("actor task should finish");
+
+    #[derive(Default)]
+    struct PostStopActor;
+
+    impl Actor for PostStopActor {
+        type Msg = ();
+        type State = Arc<AtomicU8>;
+        type Arguments = Arc<AtomicU8>;
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(phase)
+        }
+
+        async fn post_stop(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            phase.store(1, Ordering::SeqCst);
+            std::future::pending().await
+        }
+    }
+
+    let phase = Arc::new(AtomicU8::new(0));
+    let (actor, handle) = crate::spawn_local::<PostStopActor>(phase.clone(), get_spawner())
+        .await
+        .expect("actor should start");
+    actor.stop(None);
+    periodic_check(|| phase.load(Ordering::SeqCst) == 1, Duration::from_secs(1)).await;
+    actor
+        .kill_and_wait(Some(Duration::from_secs(1)))
+        .await
+        .expect("kill should interrupt post_stop");
+    handle.await.expect("actor task should finish");
+}
+
+#[crate::concurrency::test]
+async fn linked_spawn_rejects_a_stopped_supervisor() {
+    #[derive(Default)]
+    struct Who;
+
+    impl Actor for Who {
+        type Msg = ();
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            _: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    let (supervisor, handle) = Who::spawn(None, (), get_spawner())
+        .await
+        .expect("supervisor should start");
+    supervisor.stop(None);
+    handle.await.expect("supervisor should stop");
+
+    assert!(
+        Who::spawn_linked(None, (), supervisor.get_cell(), get_spawner())
+            .await
+            .is_err()
+    );
+}
+
 /// https://github.com/slawlor/ractor/issues/254
 #[crate::concurrency::test]
 #[cfg_attr(

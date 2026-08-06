@@ -18,8 +18,11 @@ use super::actor_cell::ActorCell;
 use super::messages::SupervisionEvent;
 use crate::ActorId;
 
+// Structural updates span multiple actors, so they share one private writer lock.
+static TREE_MUTATION_LOCK: Mutex<()> = Mutex::new(());
+
 /// A supervision tree
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub(crate) struct SupervisionTree {
     children: Mutex<Option<HashMap<ActorId, ActorCell>>>,
     supervisor: Mutex<Option<ActorCell>>,
@@ -27,33 +30,95 @@ pub(crate) struct SupervisionTree {
     monitors: Mutex<Option<HashMap<ActorId, ActorCell>>>,
 }
 
+impl Default for SupervisionTree {
+    fn default() -> Self {
+        Self {
+            // `None` permanently closes the tree to new children once termination starts.
+            children: Mutex::new(Some(HashMap::new())),
+            supervisor: Mutex::new(None),
+            #[cfg(feature = "monitors")]
+            monitors: Mutex::new(None),
+        }
+    }
+}
+
 impl SupervisionTree {
-    /// Push a child into the tere
-    pub(crate) fn insert_child(&self, child: ActorCell) {
-        let mut guard = self.children.lock().unwrap();
-        if let Some(map) = &mut *(guard) {
-            map.insert(child.get_id(), child);
-        } else {
-            *guard = Some(HashMap::from_iter([(child.get_id(), child)]));
+    /// Transactionally replace a child's supervisor and update both parents' child sets.
+    pub(crate) fn link(child: &ActorCell, supervisor: ActorCell) -> bool {
+        let _mutation_guard = TREE_MUTATION_LOCK.lock().unwrap();
+
+        if child.get_status() >= super::actor_cell::ActorStatus::Draining
+            || supervisor.get_status() >= super::actor_cell::ActorStatus::Draining
+        {
+            return false;
         }
-    }
 
-    /// Remove a specific actor from the supervision tree (e.g. actor died)
-    pub(crate) fn remove_child(&self, child: ActorId) {
-        let mut guard = self.children.lock().unwrap();
-        if let Some(map) = &mut *(guard) {
-            map.remove(&child);
+        let child_id = child.get_id();
+        let mut new_children_guard = supervisor.inner.tree.children.lock().unwrap();
+        let Some(new_children) = new_children_guard.as_mut() else {
+            return false;
+        };
+
+        let mut current_supervisor = child.inner.tree.supervisor.lock().unwrap();
+        if current_supervisor
+            .as_ref()
+            .is_some_and(|current| current.get_id() == supervisor.get_id())
+        {
+            new_children.insert(child_id, child.clone());
+            return true;
         }
+
+        new_children.insert(child_id, child.clone());
+        let previous_supervisor = current_supervisor.replace(supervisor.clone());
+        drop(current_supervisor);
+        drop(new_children_guard);
+
+        if let Some(previous_supervisor) = previous_supervisor {
+            let mut previous_children = previous_supervisor.inner.tree.children.lock().unwrap();
+            if let Some(previous_children) = previous_children.as_mut() {
+                previous_children.remove(&child_id);
+            }
+        }
+        true
     }
 
-    /// Push a parent into the tere
-    pub(crate) fn set_supervisor(&self, parent: ActorCell) {
-        *(self.supervisor.lock().unwrap()) = Some(parent);
+    /// Unlink a child if `supervisor` is still its current supervisor.
+    pub(crate) fn unlink(child: &ActorCell, supervisor: &ActorCell) {
+        let _mutation_guard = TREE_MUTATION_LOCK.lock().unwrap();
+        let mut current_supervisor = child.inner.tree.supervisor.lock().unwrap();
+        if !current_supervisor
+            .as_ref()
+            .is_some_and(|current| current.get_id() == supervisor.get_id())
+        {
+            return;
+        }
+
+        let mut children = supervisor.inner.tree.children.lock().unwrap();
+        if let Some(children) = children.as_mut() {
+            children.remove(&child.get_id());
+        }
+        *current_supervisor = None;
     }
 
-    /// Remove a specific actor from the supervision tree (e.g. actor died)
-    pub(crate) fn clear_supervisor(&self) {
-        *(self.supervisor.lock().unwrap()) = None;
+    /// Close this actor's child set and detach the children for iterative termination.
+    pub(crate) fn take_children(parent: &ActorCell) -> Vec<ActorCell> {
+        let _mutation_guard = TREE_MUTATION_LOCK.lock().unwrap();
+        let mut children = parent.inner.tree.children.lock().unwrap();
+        let cells = children
+            .take()
+            .map_or_else(Vec::new, |children| children.into_values().collect());
+
+        for child in &cells {
+            let mut supervisor = child.inner.tree.supervisor.lock().unwrap();
+            if supervisor
+                .as_ref()
+                .is_some_and(|supervisor| supervisor.get_id() == parent.get_id())
+            {
+                *supervisor = None;
+            }
+        }
+
+        cells
     }
 
     /// Try and retrieve the set supervisor
@@ -81,25 +146,6 @@ impl SupervisionTree {
             if map.is_empty() {
                 *guard = None;
             }
-        }
-    }
-
-    /// Terminate all your supervised children and unlink them
-    /// from the supervision tree since the supervisor is shutting down
-    /// and can't deal with superivison events anyways
-    pub(crate) fn terminate_all_children(&self) {
-        let mut guard = self.children.lock().unwrap();
-        let cells = if let Some(map) = &mut *guard {
-            map.values().cloned().collect()
-        } else {
-            vec![]
-        };
-        *guard = None;
-        // drop the guard to not deadlock on double-link
-        drop(guard);
-        for cell in cells {
-            cell.terminate();
-            cell.clear_supervisor();
         }
     }
 
@@ -185,15 +231,6 @@ impl SupervisionTree {
                     _ => {}
                 }
             }
-        }
-    }
-
-    /// Determine if the specified actor is a parent of this actor
-    pub(crate) fn is_child_of(&self, id: ActorId) -> bool {
-        if let Some(parent) = &*(self.supervisor.lock().unwrap()) {
-            parent.get_id() == id
-        } else {
-            false
         }
     }
 

@@ -5,6 +5,8 @@
 
 //! General tests, more logic-specific tests are contained in sub-modules
 
+#[cfg(feature = "cluster")]
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
@@ -1129,6 +1131,116 @@ async fn kill_and_wait() {
 }
 
 #[crate::concurrency::test]
+async fn kill_interrupts_lifecycle_hooks() {
+    struct PreStartActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for PreStartActor {
+        type Msg = ();
+        type State = ();
+        type Arguments = Arc<AtomicU8>;
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            phase.store(1, Ordering::SeqCst);
+            std::future::pending().await
+        }
+    }
+
+    let phase = Arc::new(AtomicU8::new(0));
+    let (actor, startup_handle) =
+        crate::ActorRuntime::spawn_instant(None, PreStartActor, phase.clone())
+            .expect("actor should be created");
+    periodic_check(|| phase.load(Ordering::SeqCst) == 1, Duration::from_secs(1)).await;
+    actor
+        .kill_and_wait(Some(Duration::from_secs(1)))
+        .await
+        .expect("kill should interrupt pre_start");
+    assert!(startup_handle
+        .await
+        .expect("startup task should not panic")
+        .is_err());
+
+    struct PostStartActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for PostStartActor {
+        type Msg = ();
+        type State = Arc<AtomicU8>;
+        type Arguments = Arc<AtomicU8>;
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(phase)
+        }
+
+        async fn post_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            phase.store(1, Ordering::SeqCst);
+            std::future::pending().await
+        }
+    }
+
+    let phase = Arc::new(AtomicU8::new(0));
+    let (actor, handle) = Actor::spawn(None, PostStartActor, phase.clone())
+        .await
+        .expect("actor should complete pre_start");
+    periodic_check(|| phase.load(Ordering::SeqCst) == 1, Duration::from_secs(1)).await;
+    actor
+        .kill_and_wait(Some(Duration::from_secs(1)))
+        .await
+        .expect("kill should interrupt post_start");
+    handle.await.expect("actor task should finish");
+
+    struct PostStopActor;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for PostStopActor {
+        type Msg = ();
+        type State = Arc<AtomicU8>;
+        type Arguments = Arc<AtomicU8>;
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(phase)
+        }
+
+        async fn post_stop(
+            &self,
+            _: ActorRef<Self::Msg>,
+            phase: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            phase.store(1, Ordering::SeqCst);
+            std::future::pending().await
+        }
+    }
+
+    let phase = Arc::new(AtomicU8::new(0));
+    let (actor, handle) = Actor::spawn(None, PostStopActor, phase.clone())
+        .await
+        .expect("actor should start");
+    actor.stop(None);
+    periodic_check(|| phase.load(Ordering::SeqCst) == 1, Duration::from_secs(1)).await;
+    actor
+        .kill_and_wait(Some(Duration::from_secs(1)))
+        .await
+        .expect("kill should interrupt post_stop");
+    handle.await.expect("actor task should finish");
+}
+
+#[crate::concurrency::test]
 async fn aborting_actor_task_runs_lifecycle_cleanup() {
     struct WaitingActor;
 
@@ -1436,6 +1548,129 @@ async fn actor_drain_messages() {
     handle.await.unwrap();
 
     assert_eq!(1000, signal.load(Ordering::SeqCst));
+}
+
+#[cfg(all(
+    feature = "cluster",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
+#[crate::concurrency::test]
+async fn drain_defers_marker_for_reentrant_admitted_send() {
+    use crate::concurrency::{oneshot, OneshotReceiver, OneshotSender};
+    use crate::message::{BoxedDowncastErr, BoxedMessage, SerializedMessage};
+    use crate::Message;
+
+    enum TestMessage {
+        Hold {
+            entered: OneshotSender<()>,
+            release: OneshotReceiver<()>,
+        },
+        DrainWhileBoxing {
+            actor: ActorCell,
+            drain_returned: Arc<AtomicBool>,
+        },
+    }
+
+    impl Message for TestMessage {
+        fn box_message(self, _pid: &crate::ActorId) -> Result<BoxedMessage, BoxedDowncastErr> {
+            if let Self::DrainWhileBoxing {
+                actor,
+                drain_returned,
+            } = &self
+            {
+                actor.drain().expect("reentrant drain should be accepted");
+                drain_returned.store(true, Ordering::SeqCst);
+            }
+
+            Ok(BoxedMessage {
+                msg: Some(Box::new(self)),
+                serialized_msg: None,
+                #[cfg(feature = "message_span_propogation")]
+                span: None,
+            })
+        }
+    }
+
+    struct TestActor(Arc<AtomicU8>);
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for TestActor {
+        type Msg = TestMessage;
+        type Arguments = ();
+        type State = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            (): Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+
+        async fn handle(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            message: Self::Msg,
+            _state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            match message {
+                TestMessage::Hold { entered, release } => {
+                    let _ = entered.send(());
+                    let _ = release.await;
+                }
+                TestMessage::DrainWhileBoxing { .. } => {
+                    self.0.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let processed = Arc::new(AtomicU8::new(0));
+    let (actor, handle) = Actor::spawn(None, TestActor(processed.clone()), ())
+        .await
+        .unwrap();
+    let (handler_entered_tx, handler_entered_rx) = oneshot();
+    let (release_handler_tx, release_handler_rx) = oneshot();
+    actor
+        .cast(TestMessage::Hold {
+            entered: handler_entered_tx,
+            release: release_handler_rx,
+        })
+        .unwrap();
+    handler_entered_rx.await.unwrap();
+
+    let drain_returned = Arc::new(AtomicBool::new(false));
+    let sender_actor = actor.clone();
+    let message_actor = actor.get_cell();
+    let sender_drain_returned = drain_returned.clone();
+    let sender = std::thread::spawn(move || {
+        sender_actor.cast(TestMessage::DrainWhileBoxing {
+            actor: message_actor,
+            drain_returned: sender_drain_returned,
+        })
+    });
+
+    periodic_check(
+        || drain_returned.load(Ordering::SeqCst),
+        Duration::from_secs(1),
+    )
+    .await;
+    sender
+        .join()
+        .unwrap()
+        .expect("the admitted send should succeed");
+    actor.drain().expect("a repeated drain should remain valid");
+    assert!(actor
+        .send_serialized(SerializedMessage::Cast {
+            variant: "late".to_owned(),
+            args: Vec::new(),
+            metadata: None,
+        })
+        .is_err());
+    let _ = release_handler_tx.send(());
+    handle.await.unwrap();
+    assert_eq!(1, processed.load(Ordering::SeqCst));
 }
 
 #[crate::concurrency::test]

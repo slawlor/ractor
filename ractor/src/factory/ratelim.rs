@@ -60,6 +60,14 @@ where
         worker_pool: &mut HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Result<RouteResult<TKey, TMsg>, ActorProcessingErr> {
         if !self.rate_limiter.check() {
+            if let Some(wid) = worker_hint {
+                if worker_pool
+                    .get(&wid)
+                    .is_some_and(WorkerProperties::is_available)
+                {
+                    self.router.on_worker_availability_change(wid, true);
+                }
+            }
             Ok(RouteResult::RateLimited(job))
         } else {
             let result = self
@@ -188,6 +196,79 @@ impl RateLimiter for LeakyBucketRateLimiter {
 mod tests {
     use super::*;
     use crate::concurrency::sleep;
+    use crate::factory::discard::WorkerDiscardSettings;
+    use crate::factory::routing::QueuerRouting;
+    use crate::factory::WorkerMessage;
+    use crate::{Actor, ActorRef};
+
+    struct RouterWorker;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for RouterWorker {
+        type Msg = WorkerMessage<(), ()>;
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    struct RejectAll;
+
+    impl RateLimiter for RejectAll {
+        fn check(&mut self) -> bool {
+            false
+        }
+
+        fn bump(&mut self) {}
+    }
+
+    #[crate::concurrency::test]
+    async fn rate_limit_rejection_restores_a_reserved_available_worker() {
+        let (worker, handle) = Actor::spawn(None, RouterWorker, ()).await.unwrap();
+        let mut pool = HashMap::from([(
+            0,
+            WorkerProperties::new(
+                "test".to_string(),
+                0,
+                worker.clone(),
+                WorkerDiscardSettings::None,
+                None,
+                handle,
+                None,
+            ),
+        )]);
+        let mut router = RateLimitedRouter {
+            router: QueuerRouting::<(), ()>::default(),
+            rate_limiter: RejectAll,
+        };
+        router.on_worker_availability_change(0, true);
+        let job = Job::new((), ());
+
+        let selected = router
+            .choose_target_worker(&job, 1, None, &pool)
+            .expect("an available worker should be reserved");
+        assert!(matches!(
+            router.route_message(job, 1, Some(selected), &mut pool),
+            Ok(RouteResult::RateLimited(_))
+        ));
+        assert_eq!(
+            router.choose_target_worker(&Job::new((), ()), 1, None, &pool),
+            Some(0)
+        );
+
+        worker.stop(None);
+        pool.get_mut(&0)
+            .and_then(WorkerProperties::get_join_handle)
+            .unwrap()
+            .await
+            .unwrap();
+    }
 
     #[crate::concurrency::test]
     async fn test_basic_leaky_bucket() {

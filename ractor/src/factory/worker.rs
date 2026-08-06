@@ -30,7 +30,6 @@ use crate::concurrency::Instant;
 use crate::concurrency::JoinHandle;
 use crate::Actor;
 use crate::ActorCell;
-use crate::ActorId;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
 use crate::Message;
@@ -593,6 +592,9 @@ where
     /// Current pending jobs dispatched to the worker (for tracking stats)
     curr_jobs: HashMap<TKey, JobOptions>,
 
+    /// Counts active and queued jobs by key for resize-safe persistent routing.
+    pending_key_counts: HashMap<TKey, usize>,
+
     /// Flag indicating if this worker is currently "draining" work due to resizing
     pub(crate) is_draining: bool,
 }
@@ -623,6 +625,7 @@ where
             if !job.is_expired() {
                 return Some(job);
             } else {
+                self.untrack_pending_key(&job.key);
                 if let Some(handler) = &self.discard_handler {
                     handler.discard(DiscardReason::TtlExpired, &mut job);
                 }
@@ -648,6 +651,7 @@ where
             discard_handler,
             message_queue: VecDeque::new(),
             curr_jobs: HashMap::new(),
+            pending_key_counts: HashMap::new(),
             wid,
             heartbeat: WorkerHeartbeat::default(),
             stats,
@@ -658,10 +662,6 @@ where
 
     pub(crate) fn get_join_handle(&mut self) -> Option<JoinHandle<()>> {
         self.handle.take()
-    }
-
-    pub(crate) fn is_pid(&self, pid: ActorId) -> bool {
-        self.actor.get_id() == pid
     }
 
     /// Identifies if a worker is processing a specific job key
@@ -678,14 +678,15 @@ where
     ) -> Result<(), ActorProcessingErr> {
         // these jobs are now "lost" as the worker is going to be killed
         self.heartbeat.clear();
-        self.curr_jobs.clear();
+        let abandoned_jobs = std::mem::take(&mut self.curr_jobs);
+        for key in abandoned_jobs.keys() {
+            self.untrack_pending_key(key);
+        }
 
         self.actor = nworker;
         self.handle = Some(handle);
-        if let Some(mut job) = self.get_next_non_expired_job() {
-            self.curr_jobs.insert(job.key.clone(), job.options.clone());
-            job.set_worker_time();
-            self.actor.cast(WorkerMessage::Dispatch(job))?;
+        if let Some(job) = self.get_next_non_expired_job() {
+            self.dispatch_job(job);
         }
         Ok(())
     }
@@ -702,6 +703,52 @@ where
 
     pub(crate) fn queued_job_count(&self) -> usize {
         self.message_queue.len()
+    }
+
+    pub(crate) fn active_job_count(&self) -> usize {
+        self.curr_jobs.len()
+    }
+
+    pub(crate) fn has_pending_key(&self, key: &TKey) -> bool {
+        self.pending_key_counts.contains_key(key)
+    }
+
+    fn track_pending_key(&mut self, key: &TKey) {
+        *self.pending_key_counts.entry(key.clone()).or_default() += 1;
+    }
+
+    fn untrack_pending_key(&mut self, key: &TKey) {
+        if let std::collections::hash_map::Entry::Occupied(mut entry) =
+            self.pending_key_counts.entry(key.clone())
+        {
+            if *entry.get() == 1 {
+                entry.remove();
+            } else {
+                *entry.get_mut() -= 1;
+            }
+        }
+    }
+
+    fn dispatch_job(&mut self, mut job: Job<TKey, TMsg>) {
+        job.set_worker_time();
+        let key = job.key.clone();
+        let options = job.options.clone();
+        match self.actor.cast(WorkerMessage::Dispatch(job)) {
+            Ok(()) => {
+                self.curr_jobs.insert(key, options);
+            }
+            Err(error) => {
+                if let MessagingErr::SendErr(WorkerMessage::Dispatch(job)) = error {
+                    self.message_queue.push_front(job);
+                } else {
+                    self.untrack_pending_key(&key);
+                }
+                tracing::debug!(
+                    "Worker {} closed while dispatching; waiting for factory supervision",
+                    self.wid
+                );
+            }
+        }
     }
 
     /// Denotes if the worker is stuck (i.e. unable to complete it's current job)
@@ -726,9 +773,6 @@ where
         &mut self,
         mut job: Job<TKey, TMsg>,
     ) -> Result<(), Box<MessagingErr<WorkerMessage<TKey, TMsg>>>> {
-        // track per-job statistics
-        self.stats.new_job(&self.factory_name);
-
         if let Some((limit, DiscardMode::Newest)) = self.discard_settings.get_limit_and_mode() {
             if !self.is_available() && self.message_queue.len() >= limit {
                 // Discard THIS job as it's the newest one
@@ -743,15 +787,13 @@ where
 
         // if the job isn't front-load shedded, it's "accepted"
         job.accept();
+        self.track_pending_key(&job.key);
         if self.curr_jobs.is_empty() {
-            self.curr_jobs.insert(job.key.clone(), job.options.clone());
-            if let Some(mut older_job) = self.get_next_non_expired_job() {
+            if let Some(older_job) = self.get_next_non_expired_job() {
                 self.message_queue.push_back(job);
-                older_job.set_worker_time();
-                self.actor.cast(WorkerMessage::Dispatch(older_job))?;
+                self.dispatch_job(older_job);
             } else {
-                job.set_worker_time();
-                self.actor.cast(WorkerMessage::Dispatch(job))?;
+                self.dispatch_job(job);
             }
             return Ok(());
         }
@@ -761,6 +803,7 @@ where
             // load-shed the OLDEST jobs
             while self.message_queue.len() > limit {
                 if let Some(mut discarded) = self.get_next_non_expired_job() {
+                    self.untrack_pending_key(&discarded.key);
                     self.stats.job_discarded(&self.factory_name);
                     if let Some(handler) = &self.discard_handler {
                         handler.discard(DiscardReason::Loadshed, &mut discarded);
@@ -777,8 +820,14 @@ where
     ) -> Result<(), Box<MessagingErr<WorkerMessage<TKey, TMsg>>>> {
         if !self.heartbeat.is_pending() {
             let sent_at = Instant::now();
-            self.actor.cast(WorkerMessage::FactoryPing(sent_at))?;
-            self.heartbeat.sent(sent_at);
+            if self.actor.cast(WorkerMessage::FactoryPing(sent_at)).is_ok() {
+                self.heartbeat.sent(sent_at);
+            } else {
+                tracing::debug!(
+                    "Worker {} closed before ping; waiting for factory supervision",
+                    self.wid
+                );
+            }
             Ok(())
         } else {
             // don't send a new ping if one is currently pending
@@ -801,11 +850,12 @@ where
     ) -> Result<Option<JobOptions>, Box<MessagingErr<WorkerMessage<TKey, TMsg>>>> {
         // remove this pending job
         let options = self.curr_jobs.remove(&key);
-        // maybe queue up the next job
-        if let Some(mut job) = self.get_next_non_expired_job() {
-            self.curr_jobs.insert(job.key.clone(), job.options.clone());
-            job.set_worker_time();
-            self.actor.cast(WorkerMessage::Dispatch(job))?;
+        if options.is_some() {
+            self.untrack_pending_key(&key);
+            // maybe queue up the next job
+            if let Some(job) = self.get_next_non_expired_job() {
+                self.dispatch_job(job);
+            }
         }
 
         Ok(options)
@@ -879,5 +929,91 @@ mod heartbeat_tests {
 
         assert!(!heartbeat.is_stuck_at(sent_at + timeout, timeout));
         assert!(heartbeat.is_stuck_at(sent_at + timeout + Duration::from_nanos(1), timeout));
+    }
+}
+
+#[cfg(test)]
+mod child_send_tests {
+    use super::*;
+
+    struct ClosedWorker;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for ClosedWorker {
+        type Msg = WorkerMessage<(), ()>;
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    #[crate::concurrency::test]
+    async fn failed_child_dispatch_is_retained_for_replacement() {
+        let (worker, handle) = Actor::spawn(None, ClosedWorker, ()).await.unwrap();
+        worker.stop_and_wait(None, None).await.unwrap();
+        let mut properties = WorkerProperties::new(
+            "test".to_string(),
+            0,
+            worker,
+            WorkerDiscardSettings::None,
+            None,
+            handle,
+            None,
+        );
+
+        properties.enqueue_job(Job::new((), ())).unwrap();
+
+        assert!(properties.curr_jobs.is_empty());
+        assert_eq!(properties.queued_job_count(), 1);
+        assert!(properties.send_factory_ping().is_ok());
+        assert!(!properties.heartbeat.is_pending());
+    }
+
+    struct QueueWorker;
+
+    #[cfg_attr(feature = "async-trait", crate::async_trait)]
+    impl Actor for QueueWorker {
+        type Msg = WorkerMessage<u8, ()>;
+        type State = ();
+        type Arguments = ();
+
+        async fn pre_start(
+            &self,
+            _myself: ActorRef<Self::Msg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(())
+        }
+    }
+
+    #[crate::concurrency::test]
+    async fn stale_completion_does_not_advance_the_worker_queue() {
+        let (worker, handle) = Actor::spawn(None, QueueWorker, ()).await.unwrap();
+        let mut properties = WorkerProperties::new(
+            "test".to_string(),
+            0,
+            worker,
+            WorkerDiscardSettings::None,
+            None,
+            handle,
+            None,
+        );
+        properties.enqueue_job(Job::new(1, ())).unwrap();
+        properties.enqueue_job(Job::new(2, ())).unwrap();
+
+        assert!(properties.worker_complete(9).unwrap().is_none());
+        assert!(properties.curr_jobs.contains_key(&1));
+        assert_eq!(properties.queued_job_count(), 1);
+        assert!(properties.has_pending_key(&1));
+        assert!(properties.has_pending_key(&2));
+
+        properties.actor.stop(None);
+        properties.get_join_handle().unwrap().await.unwrap();
     }
 }

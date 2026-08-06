@@ -480,7 +480,6 @@ impl ActorLoopResult {
 /// lifecycle state, registry entries, spawn-time supervision links, children, or waiters.
 pub(crate) struct ActorLifecycleGuard {
     actor: ActorCell,
-    supervisor: Option<ActorCell>,
     notify_on_cancel: bool,
     armed: bool,
 }
@@ -489,14 +488,9 @@ impl ActorLifecycleGuard {
     pub(crate) fn new(actor: ActorCell) -> Self {
         Self {
             actor,
-            supervisor: None,
             notify_on_cancel: false,
             armed: true,
         }
-    }
-
-    pub(crate) fn set_supervisor(&mut self, supervisor: Option<ActorCell>) {
-        self.supervisor = supervisor;
     }
 
     pub(crate) fn mark_running(&mut self) {
@@ -519,7 +513,7 @@ impl ActorLifecycleGuard {
             self.actor.notify_supervisor(event);
         }
 
-        if let Some(supervisor) = self.supervisor.take() {
+        if let Some(supervisor) = self.actor.try_get_supervisor() {
             self.actor.unlink(supervisor);
         }
 
@@ -779,7 +773,7 @@ where
     #[tracing::instrument(name = "Actor", skip(self, ports, startup_args, supervisor), fields(id = self.id.to_string(), name = self.name))]
     async fn start(
         self,
-        ports: ActorPortSet,
+        mut ports: ActorPortSet,
         startup_args: TActor::Arguments,
         supervisor: Option<ActorCell>,
     ) -> Result<(ActorRef<TActor::Msg>, JoinHandle<()>), SpawnErr> {
@@ -798,18 +792,32 @@ where
 
         actor_ref.set_status(ActorStatus::Starting);
 
-        // Perform the pre-start routine, crashing immediately if we fail to start
-        let mut state = match Self::do_pre_start(actor_ref.clone(), &handler, startup_args).await {
-            Ok(Ok(state)) => state,
-            Ok(Err(e)) => return Err(SpawnErr::StartupFailed(e)),
-            Err(e) => return Err(e),
+        // Perform the pre-start routine, crashing immediately if we fail to start.
+        let pre_start = Box::pin(Self::do_pre_start(
+            actor_ref.clone(),
+            &handler,
+            startup_args,
+        ));
+        let mut state = match ports.run_with_signal(pre_start).await {
+            Ok(Ok(Ok(state))) => state,
+            Ok(Ok(Err(err))) => return Err(SpawnErr::StartupFailed(err)),
+            Ok(Err(err)) => return Err(err),
+            Err(signal) => {
+                Self::handle_signal(actor_ref, signal);
+                return Err(SpawnErr::StartupFailed(
+                    "Actor killed during startup".into(),
+                ));
+            }
         };
 
         // setup supervision
         if let Some(sup) = &supervisor {
-            actor_ref.link(sup.clone());
+            if !actor_ref.try_link(sup.clone()) {
+                return Err(SpawnErr::StartupFailed(
+                    "Supervisor is shutting down".into(),
+                ));
+            }
         }
-        lifecycle.set_supervisor(supervisor);
         lifecycle.mark_running();
 
         // Generate the ActorRef which will be returned
@@ -852,9 +860,20 @@ where
         _name: Option<String>,
     ) -> Result<Option<String>, ActorErr> {
         // perform the post-start, with supervision enabled
-        Self::do_post_start(myself.clone(), handler, state)
-            .await?
-            .map_err(ActorErr::Failed)?;
+        match ports
+            .run_with_signal(Box::pin(Self::do_post_start(
+                myself.clone(),
+                handler,
+                state,
+            )))
+            .await
+        {
+            Ok(result) => result?.map_err(ActorErr::Failed)?,
+            Err(signal) => {
+                Self::handle_signal(myself, signal);
+                return Err(ActorErr::Cancelled);
+            }
+        }
 
         myself.set_status(ActorStatus::Running);
         myself.notify_supervisor_and_monitors(SupervisionEvent::ActorStarted(myself.get_cell()));
@@ -877,7 +896,7 @@ where
                     .map_err(ActorErr::Failed)?;
                 // processing loop exit
                 if should_exit {
-                    return Ok((state, exit_reason, was_killed));
+                    return Ok((state, exit_reason, was_killed, ports));
                 }
             }
         });
@@ -890,13 +909,24 @@ where
         // set status to stopping
         myself_clone.set_status(ActorStatus::Stopping);
 
-        let (exit_state, exit_reason, was_killed) = loop_done??;
+        let (exit_state, exit_reason, was_killed, mut ports) = loop_done??;
 
         // if we didn't exit in error mode, call `post_stop`
         if !was_killed {
-            Self::do_post_stop(myself_clone, handler, exit_state)
-                .await?
-                .map_err(ActorErr::Failed)?;
+            match ports
+                .run_with_signal(Box::pin(Self::do_post_stop(
+                    myself_clone.clone(),
+                    handler,
+                    exit_state,
+                )))
+                .await
+            {
+                Ok(result) => result?.map_err(ActorErr::Failed)?,
+                Err(signal) => {
+                    Self::handle_signal(myself_clone, signal);
+                    return Err(ActorErr::Cancelled);
+                }
+            }
         }
 
         Ok(exit_reason)

@@ -18,6 +18,7 @@ use super::*;
 use crate::concurrency::Duration;
 use crate::concurrency::Instant;
 use crate::Actor;
+use crate::ActorId;
 use crate::ActorProcessingErr;
 use crate::ActorRef;
 use crate::Message;
@@ -36,6 +37,9 @@ const PING_FREQUENCY: Duration = Duration::from_millis(150);
 #[cfg(not(test))]
 const PING_FREQUENCY: Duration = Duration::from_millis(10_000);
 const CALCULATE_FREQUENCY: Duration = Duration::from_millis(100);
+
+type DeadMansCheck<TMessage> =
+    crate::concurrency::JoinHandle<Result<(), crate::MessagingErr<TMessage>>>;
 
 #[derive(Debug, Eq, PartialEq)]
 enum DrainState {
@@ -212,6 +216,7 @@ where
     worker_builder: Box<dyn WorkerBuilder<TWorker, TWorkerStart>>,
     pool_size: usize,
     pool: HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
+    worker_by_actor: HashMap<ActorId, WorkerId>,
     stats: Option<Arc<dyn FactoryStatsLayer>>,
     router: TRouter,
     queue: TQueue,
@@ -219,11 +224,9 @@ where
     discard_settings: DiscardSettings,
     drain_state: DrainState,
     dead_mans_switch: Option<DeadMansSwitchConfiguration>,
+    dead_mans_check: Option<DeadMansCheck<FactoryMessage<TKey, TMsg>>>,
     capacity_controller: Option<Box<dyn WorkerCapacityController>>,
     lifecycle_hooks: Option<Box<dyn FactoryLifecycleHooks<TKey, TMsg>>>,
-    // Local counter to avoid having to sum over the worker states for more performant metrics capturing
-    // in large worker-count factories
-    processing_messages: usize,
 }
 
 impl<TKey, TMsg, TWorkerStart, TWorker, TRouter, TQueue> Debug
@@ -255,7 +258,6 @@ where
             .field("has_lifecycle_hooks", &self.lifecycle_hooks.is_some())
             .field("has_stats", &self.stats.is_some())
             .field("has_discard_handler", &self.discard_handler.is_some())
-            .field("processing_messages", &self.processing_messages)
             .finish()
     }
 }
@@ -282,7 +284,7 @@ where
     ///     - If no hint provided, route to the next worker by routing protocol.
     fn try_route_next_active_job(
         &mut self,
-        worker_hint: WorkerId,
+        worker_hint: Option<WorkerId>,
     ) -> Result<(), ActorProcessingErr> {
         // cleanup expired messages at the head of the queue
         while let Some(true) = self.queue.peek().map(|m| m.is_expired()) {
@@ -303,7 +305,7 @@ where
         // no longer ratelimiting
         while let Some(worker) = self.queue.peek().and_then(|job| {
             self.router
-                .choose_target_worker(job, self.pool_size, Some(worker_hint), &self.pool)
+                .choose_target_worker(job, self.pool_size, worker_hint, &self.pool)
         }) {
             if let Some(job) = self.queue.pop_front() {
                 match self.router.route_message(
@@ -314,7 +316,6 @@ where
                 )? {
                     RouteResult::Handled => {
                         // routed a job, we're done trying to route the next active job.
-                        self.processing_messages += 1;
                         return Ok(());
                     }
                     RouteResult::RateLimited(mut job) => {
@@ -403,6 +404,7 @@ where
                 };
                 let (worker, handle) =
                     Actor::spawn_linked(None, handler, context, myself.get_cell()).await?;
+                let worker_actor_id = worker.get_id();
                 let discard_settings = if self.router.is_factory_queueing() {
                     discard::WorkerDiscardSettings::None
                 } else {
@@ -420,8 +422,12 @@ where
                         self.stats.clone(),
                     ),
                 );
+                self.worker_by_actor.insert(worker_actor_id, wid);
                 self.router.on_worker_availability_change(wid, true);
             }
+        }
+        if self.dead_mans_switch.is_some() {
+            self.ping_workers();
         }
         Ok(())
     }
@@ -440,7 +446,8 @@ where
                         tracing::trace!("Stopping worker {wid}");
                         self.router.on_worker_availability_change(wid, false);
                         mut_worker.actor.stop(None);
-                        existing_worker.remove();
+                        let removed = existing_worker.remove();
+                        self.worker_by_actor.remove(&removed.actor.get_id());
                     }
                 }
                 std::collections::hash_map::Entry::Vacant(_) => {
@@ -454,13 +461,14 @@ where
         &mut self,
         myself: &ActorRef<FactoryMessage<TKey, TMsg>>,
         requested_pool_size: usize,
-    ) -> Result<(), SpawnErr> {
+    ) -> Result<(), ActorProcessingErr> {
         if requested_pool_size == 0 {
             return Ok(());
         }
 
         let curr_size = self.pool_size;
         let new_pool_size = std::cmp::min(GLOBAL_WORKER_POOL_MAXIMUM, requested_pool_size);
+        let is_growing = new_pool_size > curr_size;
 
         match new_pool_size.cmp(&curr_size) {
             Ordering::Greater => {
@@ -489,6 +497,14 @@ where
         }
 
         self.pool_size = new_pool_size;
+        if is_growing {
+            for _ in 0..new_pool_size {
+                if self.queue.peek().is_none() {
+                    break;
+                }
+                self.try_route_next_active_job(None)?;
+            }
+        }
         Ok(())
     }
 
@@ -529,7 +545,6 @@ where
             {
                 RouteResult::Handled => {
                     // message was routed
-                    self.processing_messages += 1;
                 }
                 RouteResult::RateLimited(mut job) => {
                     self.stats.job_rate_limited(&self.factory_name);
@@ -554,10 +569,6 @@ where
     }
 
     fn worker_finished_job(&mut self, who: WorkerId, key: TKey) -> Result<(), ActorProcessingErr> {
-        if self.processing_messages > 0 {
-            self.processing_messages -= 1;
-        }
-
         let (is_worker_draining, should_drop_worker) = if let Some(worker) = self.pool.get_mut(&who)
         {
             if let Some(job_options) = worker.worker_complete(key)? {
@@ -577,11 +588,12 @@ where
         if should_drop_worker {
             let worker = self.pool.remove(&who);
             if let Some(w) = worker {
+                self.worker_by_actor.remove(&w.actor.get_id());
                 tracing::trace!("Stopping worker {}", w.wid);
                 w.actor.stop(None);
             }
         } else if !is_worker_draining {
-            self.try_route_next_active_job(who)?;
+            self.try_route_next_active_job(Some(who))?;
             if matches!(self.pool.get(&who), Some(w) if w.is_available()) {
                 self.router.on_worker_availability_change(who, true);
             }
@@ -618,11 +630,25 @@ where
         }
 
         let qlen = self.queue.len();
+        let processing_messages = self
+            .pool
+            .values()
+            .map(WorkerProperties::active_job_count)
+            .fold(0usize, usize::saturating_add);
+        let worker_queued_messages = self
+            .pool
+            .values()
+            .map(WorkerProperties::queued_job_count)
+            .fold(0usize, usize::saturating_add);
         self.stats.record_queue_depth(&self.factory_name, qlen);
         self.stats
-            .record_processing_messages_count(&self.factory_name, self.processing_messages);
-        self.stats
-            .record_in_flight_messages_count(&self.factory_name, self.processing_messages + qlen);
+            .record_processing_messages_count(&self.factory_name, processing_messages);
+        self.stats.record_in_flight_messages_count(
+            &self.factory_name,
+            processing_messages
+                .saturating_add(worker_queued_messages)
+                .saturating_add(qlen),
+        );
         self.stats
             .record_worker_count(&self.factory_name, self.pool_size);
 
@@ -649,9 +675,7 @@ where
             *limit = updater.compute(*limit).await;
         }
 
-        for worker in self.pool.values_mut() {
-            worker.send_factory_ping()?;
-        }
+        self.ping_workers();
 
         // schedule next ping
         myself.send_after(PING_FREQUENCY, || FactoryMessage::DoPings(Instant::now()));
@@ -659,7 +683,30 @@ where
         Ok(())
     }
 
+    fn ping_workers(&mut self) {
+        for worker in self.pool.values_mut() {
+            let _ = worker.send_factory_ping();
+        }
+    }
+
+    fn cancel_dead_mans_check(&mut self) {
+        if let Some(handle) = self.dead_mans_check.as_mut() {
+            handle.abort();
+        }
+        self.dead_mans_check = None;
+    }
+
+    fn reschedule_dead_mans_check(&mut self, myself: &ActorRef<FactoryMessage<TKey, TMsg>>) {
+        self.cancel_dead_mans_check();
+        if let Some(dmd) = &self.dead_mans_switch {
+            self.dead_mans_check = Some(myself.send_after(dmd.detection_timeout, || {
+                FactoryMessage::IdentifyStuckWorkers
+            }));
+        }
+    }
+
     async fn identify_stuck_workers(&mut self, myself: &ActorRef<FactoryMessage<TKey, TMsg>>) {
+        self.cancel_dead_mans_check();
         if let Some(dmd) = &self.dead_mans_switch {
             let mut dead_workers = vec![];
             for worker in self.pool.values_mut() {
@@ -679,10 +726,7 @@ where
                 let _ = w.await;
             }
 
-            // schedule next check
-            myself.send_after(dmd.detection_timeout, || {
-                FactoryMessage::IdentifyStuckWorkers
-            });
+            self.reschedule_dead_mans_check(myself);
         }
     }
 
@@ -711,7 +755,7 @@ where
             stats,
             worker_count,
         }: UpdateSettingsRequest<TKey, TMsg>,
-    ) -> Result<(), SpawnErr> {
+    ) -> Result<(), ActorProcessingErr> {
         if let Some(discard_handler) = discard_handler {
             tracing::debug!(
                 "Updating discard handler: HashValue={}",
@@ -740,6 +784,10 @@ where
                 dead_mans_switch.is_some()
             );
             self.dead_mans_switch = dead_mans_switch;
+            if self.dead_mans_switch.is_some() {
+                self.ping_workers();
+            }
+            self.reschedule_dead_mans_check(myself);
         }
         if let Some(capacity_controller) = capacity_controller {
             tracing::debug!(
@@ -839,6 +887,7 @@ where
 
         // build the pool
         let mut pool = HashMap::with_capacity(num_initial_workers);
+        let mut worker_by_actor = HashMap::with_capacity(num_initial_workers);
         for wid in 0..num_initial_workers {
             let (handler, custom_start) = worker_builder.build(wid);
             let context = WorkerStartContext {
@@ -848,6 +897,7 @@ where
             };
             let (worker, worker_handle) =
                 Actor::spawn_linked(None, handler, context, myself.get_cell()).await?;
+            let worker_actor_id = worker.get_id();
             let worker_discard_settings = if router.is_factory_queueing() {
                 discard::WorkerDiscardSettings::None
             } else {
@@ -866,21 +916,28 @@ where
                     stats.clone(),
                 ),
             );
+            worker_by_actor.insert(worker_actor_id, wid);
             router.on_worker_availability_change(wid, true);
         }
 
-        // Startup worker pinging
+        // Prime dead-man detection without advancing dynamic discard settings
+        // before the regular factory ping interval.
+        if dead_mans_switch.is_some() {
+            for worker in pool.values_mut() {
+                let _ = worker.send_factory_ping();
+            }
+        }
         myself.send_after(PING_FREQUENCY, || FactoryMessage::DoPings(Instant::now()));
 
         // startup calculations
         myself.send_after(CALCULATE_FREQUENCY, || FactoryMessage::Calculate);
 
         // startup stuck worker detection
-        if let Some(dmd) = &dead_mans_switch {
+        let dead_mans_check = dead_mans_switch.as_ref().map(|dmd| {
             myself.send_after(dmd.detection_timeout, || {
                 FactoryMessage::IdentifyStuckWorkers
-            });
-        }
+            })
+        });
 
         // initial state
         Ok(FactoryState {
@@ -888,16 +945,17 @@ where
             worker_builder,
             pool_size: num_initial_workers,
             pool,
+            worker_by_actor,
             drain_state: DrainState::NotDraining,
             capacity_controller,
             dead_mans_switch,
+            dead_mans_check,
             discard_handler,
             discard_settings,
             lifecycle_hooks,
             queue,
             router,
             stats,
-            processing_messages: 0,
         })
     }
 
@@ -919,6 +977,7 @@ where
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         tracing::debug!(factory = ?myself, "Factory stopped");
+        state.cancel_dead_mans_check();
 
         if let Some(handler) = &state.discard_handler {
             while let Some(mut msg) = state.queue.pop_front() {
@@ -952,64 +1011,74 @@ where
     ) -> Result<(), ActorProcessingErr> {
         match message {
             SupervisionEvent::ActorTerminated(who, _, reason) => {
-                let wid = if let Some(worker) = state
-                    .pool
-                    .values_mut()
-                    .find(|actor| actor.is_pid(who.get_id()))
-                {
-                    tracing::warn!(
-                        factory = ?myself, "Factory's worker {} terminated with {:?}",
-                        worker.wid,
-                        reason
-                    );
-                    let (new_worker, custom_start) = state.worker_builder.build(worker.wid);
-                    let spec = WorkerStartContext {
-                        wid: worker.wid,
-                        factory: myself.clone(),
-                        custom_start,
-                    };
-                    let (replacement, replacement_handle) =
-                        Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
+                let should_ping_replacement = state.dead_mans_switch.is_some();
+                let worker_id = state.worker_by_actor.get(&who.get_id()).copied();
+                let replacement =
+                    if let Some(worker) = worker_id.and_then(|wid| state.pool.get_mut(&wid)) {
+                        tracing::warn!(
+                            factory = ?myself, "Factory's worker {} terminated with {:?}",
+                            worker.wid,
+                            reason
+                        );
+                        let (new_worker, custom_start) = state.worker_builder.build(worker.wid);
+                        let spec = WorkerStartContext {
+                            wid: worker.wid,
+                            factory: myself.clone(),
+                            custom_start,
+                        };
+                        let (replacement, replacement_handle) =
+                            Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
-                    worker.replace_worker(replacement, replacement_handle)?;
-                    Some(worker.wid)
-                } else {
-                    None
-                };
-                if let Some(wid) = wid {
-                    state.try_route_next_active_job(wid)?;
+                        let replacement_id = replacement.get_id();
+                        worker.replace_worker(replacement, replacement_handle)?;
+                        if should_ping_replacement {
+                            let _ = worker.send_factory_ping();
+                        }
+                        Some((worker.wid, replacement_id))
+                    } else {
+                        None
+                    };
+                if let Some((wid, replacement_id)) = replacement {
+                    state.worker_by_actor.remove(&who.get_id());
+                    state.worker_by_actor.insert(replacement_id, wid);
+                    state.try_route_next_active_job(Some(wid))?;
                     if matches!(state.pool.get(&wid), Some(w) if w.is_available()) {
                         state.router.on_worker_availability_change(wid, true);
                     }
                 }
             }
             SupervisionEvent::ActorFailed(who, reason) => {
-                let wid = if let Some(worker) = state
-                    .pool
-                    .values_mut()
-                    .find(|actor| actor.is_pid(who.get_id()))
-                {
-                    tracing::warn!(
-                        factory = ?myself, "Factory's worker {} panicked with {}",
-                        worker.wid,
-                        reason
-                    );
-                    let (new_worker, custom_start) = state.worker_builder.build(worker.wid);
-                    let spec = WorkerStartContext {
-                        wid: worker.wid,
-                        factory: myself.clone(),
-                        custom_start,
-                    };
-                    let (replacement, replacement_handle) =
-                        Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
+                let should_ping_replacement = state.dead_mans_switch.is_some();
+                let worker_id = state.worker_by_actor.get(&who.get_id()).copied();
+                let replacement =
+                    if let Some(worker) = worker_id.and_then(|wid| state.pool.get_mut(&wid)) {
+                        tracing::warn!(
+                            factory = ?myself, "Factory's worker {} panicked with {}",
+                            worker.wid,
+                            reason
+                        );
+                        let (new_worker, custom_start) = state.worker_builder.build(worker.wid);
+                        let spec = WorkerStartContext {
+                            wid: worker.wid,
+                            factory: myself.clone(),
+                            custom_start,
+                        };
+                        let (replacement, replacement_handle) =
+                            Actor::spawn_linked(None, new_worker, spec, myself.get_cell()).await?;
 
-                    worker.replace_worker(replacement, replacement_handle)?;
-                    Some(worker.wid)
-                } else {
-                    None
-                };
-                if let Some(wid) = wid {
-                    state.try_route_next_active_job(wid)?;
+                        let replacement_id = replacement.get_id();
+                        worker.replace_worker(replacement, replacement_handle)?;
+                        if should_ping_replacement {
+                            let _ = worker.send_factory_ping();
+                        }
+                        Some((worker.wid, replacement_id))
+                    } else {
+                        None
+                    };
+                if let Some((wid, replacement_id)) = replacement {
+                    state.worker_by_actor.remove(&who.get_id());
+                    state.worker_by_actor.insert(replacement_id, wid);
+                    state.try_route_next_active_job(Some(wid))?;
                     if matches!(state.pool.get(&wid), Some(w) if w.is_available()) {
                         state.router.on_worker_availability_change(wid, true);
                     }
