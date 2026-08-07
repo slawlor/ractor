@@ -42,7 +42,7 @@ tracing = "0.1"
 async-trait = { version = "0.1", optional = true }
 
 [dev-dependencies]
-criterion = "0.7"
+criterion = "0.8"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "net", "io-util", "rt-multi-thread"] }
 
 [[bench]]
