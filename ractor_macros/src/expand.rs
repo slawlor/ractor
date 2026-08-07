@@ -552,6 +552,7 @@ struct Handler {
     is_fallible: bool,
     rpc: Option<RpcHandler>,
     cfg_attributes: Vec<Attribute>,
+    variant_attributes: Vec<Attribute>,
 }
 
 fn rewrite_impl_self_types(handlers: &mut [Handler], self_ty: &Type) -> syn::Result<()> {
@@ -754,6 +755,7 @@ fn parse_handler(
         .collect();
 
     let cfg_attributes = match_arm_cfg_attributes(&method.attrs)?;
+    let variant_attributes = generated_variant_attributes(&method.attrs)?;
 
     Ok(Handler {
         method_name: method.sig.ident.clone(),
@@ -767,6 +769,7 @@ fn parse_handler(
         is_fallible: !returns_unit(&method.sig.output),
         rpc: None,
         cfg_attributes,
+        variant_attributes,
     })
 }
 
@@ -856,6 +859,7 @@ fn parse_rpc_handler(
     debug_assert!(payload_types.next().is_none());
 
     let cfg_attributes = match_arm_cfg_attributes(&method.attrs)?;
+    let variant_attributes = generated_variant_attributes(&method.attrs)?;
     Ok(Handler {
         method_name: method.sig.ident.clone(),
         pattern,
@@ -872,13 +876,25 @@ fn parse_rpc_handler(
             propagates_processing_error,
         }),
         cfg_attributes,
+        variant_attributes,
     })
 }
 
 fn match_arm_cfg_attributes(attributes: &[Attribute]) -> syn::Result<Vec<Attribute>> {
+    filtered_attributes(attributes, filter_cfg_meta)
+}
+
+fn generated_variant_attributes(attributes: &[Attribute]) -> syn::Result<Vec<Attribute>> {
+    filtered_attributes(attributes, filter_generated_variant_meta)
+}
+
+fn filtered_attributes(
+    attributes: &[Attribute],
+    filter: fn(&Meta) -> syn::Result<Option<Meta>>,
+) -> syn::Result<Vec<Attribute>> {
     let mut filtered_attributes = Vec::new();
     for attribute in attributes {
-        if let Some(meta) = filter_cfg_meta(&attribute.meta)? {
+        if let Some(meta) = filter(&attribute.meta)? {
             let mut filtered_attribute = attribute.clone();
             filtered_attribute.meta = meta;
             filtered_attributes.push(filtered_attribute);
@@ -895,6 +911,26 @@ fn filter_cfg_meta(meta: &Meta) -> syn::Result<Option<Meta>> {
         return Ok(None);
     }
 
+    filter_cfg_attr_meta(meta, filter_cfg_meta)
+}
+
+fn filter_generated_variant_meta(meta: &Meta) -> syn::Result<Option<Meta>> {
+    if meta.path().is_ident("cfg")
+        || (meta.path().is_ident("doc") && matches!(meta, Meta::NameValue(_)))
+    {
+        return Ok(Some(meta.clone()));
+    }
+    if !meta.path().is_ident("cfg_attr") {
+        return Ok(None);
+    }
+
+    filter_cfg_attr_meta(meta, filter_generated_variant_meta)
+}
+
+fn filter_cfg_attr_meta(
+    meta: &Meta,
+    filter: fn(&Meta) -> syn::Result<Option<Meta>>,
+) -> syn::Result<Option<Meta>> {
     let Meta::List(list) = meta else {
         return Err(syn::Error::new(
             meta.span(),
@@ -918,7 +954,7 @@ fn filter_cfg_meta(meta: &Meta) -> syn::Result<Option<Meta>> {
 
     let mut filtered = Vec::new();
     for nested in items {
-        if let Some(nested) = filter_cfg_meta(&nested)? {
+        if let Some(nested) = filter(&nested)? {
             filtered.push(nested);
         }
     }
@@ -929,6 +965,197 @@ fn filter_cfg_meta(meta: &Meta) -> syn::Result<Option<Meta>> {
     let mut filtered_list = list.clone();
     filtered_list.tokens = quote!(#condition, #(#filtered),*);
     Ok(Some(Meta::List(filtered_list)))
+}
+
+#[cfg(test)]
+mod generated_variant_attribute_tests {
+    use super::*;
+    use syn::{Expr, ExprLit, Item, ItemEnum, Lit};
+
+    fn expand_file(config: TokenStream, actor_impl: ItemImpl) -> syn::File {
+        let config = syn::parse2::<ActorConfig>(config).expect("actor config should parse");
+        let expanded = expand_actor(config, actor_impl).expect("actor should expand");
+        syn::parse2(expanded).expect("expanded actor should parse as a Rust file")
+    }
+
+    fn generated_enum(file: &syn::File) -> &ItemEnum {
+        file.items
+            .iter()
+            .find_map(|item| match item {
+                Item::Enum(item) => Some(item),
+                _ => None,
+            })
+            .expect("expansion should contain a generated message enum")
+    }
+
+    fn inherent_method<'a>(file: &'a syn::File, name: &str) -> &'a ImplItemFn {
+        file.items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Impl(item) if item.trait_.is_none() => Some(item),
+                _ => None,
+            })
+            .flat_map(|item| &item.items)
+            .find_map(|item| match item {
+                ImplItem::Fn(method) if method.sig.ident == name => Some(method),
+                _ => None,
+            })
+            .expect("expansion should retain the inherent handler method")
+    }
+
+    fn doc_texts(attributes: &[Attribute]) -> Vec<String> {
+        attributes
+            .iter()
+            .filter_map(|attribute| match &attribute.meta {
+                Meta::NameValue(meta) if meta.path.is_ident("doc") => match &meta.value {
+                    Expr::Lit(ExprLit {
+                        lit: Lit::Str(value),
+                        ..
+                    }) => Some(value.value()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn generated_variants_copy_handler_doc_comments() {
+        let file = expand_file(
+            quote!(
+                message = pub enum StatsAggregatorMessage,
+                crate_path = ::ractor
+            ),
+            syn::parse_quote! {
+                impl StatsAggregator {
+                    /// Add a statistic to the aggregation collection.
+                    /// The statistic remains shared with its producer.
+                    #[ractor::message(AddStat(stat))]
+                    #[inline]
+                    fn add_stat(&self, stat: Arc<ThreadMap<BoxStatsManager>>) {}
+
+                    /// Do an aggregation.
+                    #[ractor::message(Aggregate)]
+                    fn aggregate(&self) {}
+
+                    #[doc = "Configure the aggregation interval."]
+                    #[ractor::message(Configure { interval })]
+                    fn configure(&self, interval: Duration) {}
+
+                    /// Return the current aggregate.
+                    #[ractor::rpc(Snapshot)]
+                    fn snapshot(&self) -> usize { 0 }
+
+                    /// (Test only) clear the internal actor statistics.
+                    #[cfg(test)]
+                    #[cfg_attr(
+                        test,
+                        cfg(unix),
+                        doc = "Only available to Unix tests.",
+                        doc(hidden),
+                        allow(dead_code)
+                    )]
+                    #[doc(alias = "clear")]
+                    #[deprecated]
+                    #[allow(dead_code)]
+                    #[ractor::message(ClearStats)]
+                    fn clear_stats(&self) {}
+                }
+            },
+        );
+
+        let message = generated_enum(&file);
+        let variant_names = message
+            .variants
+            .iter()
+            .map(|variant| variant.ident.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            variant_names,
+            [
+                "AddStat",
+                "Aggregate",
+                "Configure",
+                "Snapshot",
+                "ClearStats"
+            ]
+        );
+
+        assert_eq!(
+            doc_texts(&message.variants[0].attrs),
+            [
+                " Add a statistic to the aggregation collection.",
+                " The statistic remains shared with its producer."
+            ]
+        );
+        assert_eq!(
+            doc_texts(&message.variants[1].attrs),
+            [" Do an aggregation."]
+        );
+        assert_eq!(
+            doc_texts(&message.variants[2].attrs),
+            ["Configure the aggregation interval."]
+        );
+        assert_eq!(
+            doc_texts(&message.variants[3].attrs),
+            [" Return the current aggregate."]
+        );
+
+        let clear_attributes = &message.variants[4].attrs;
+        assert_eq!(
+            doc_texts(clear_attributes),
+            [" (Test only) clear the internal actor statistics."]
+        );
+        assert!(clear_attributes
+            .iter()
+            .any(|attribute| attribute.path().is_ident("cfg")));
+        let conditional = clear_attributes
+            .iter()
+            .find(|attribute| attribute.path().is_ident("cfg_attr"))
+            .expect("conditional cfg and docs should be retained");
+        let expected: Meta = syn::parse_quote!(cfg_attr(
+            test,
+            cfg(unix),
+            doc = "Only available to Unix tests."
+        ));
+        assert_eq!(
+            conditional.meta.to_token_stream().to_string(),
+            expected.to_token_stream().to_string()
+        );
+        assert!(!clear_attributes.iter().any(|attribute| {
+            attribute.path().is_ident("deprecated")
+                || attribute.path().is_ident("allow")
+                || matches!(&attribute.meta, Meta::List(meta) if meta.path.is_ident("doc"))
+        }));
+
+        assert_eq!(
+            doc_texts(&inherent_method(&file, "add_stat").attrs),
+            [
+                " Add a statistic to the aggregation collection.",
+                " The statistic remains shared with its producer."
+            ]
+        );
+    }
+
+    #[test]
+    fn existing_message_enums_are_not_generated_or_annotated() {
+        let file = expand_file(
+            quote!(message = ExistingMessage, crate_path = ::ractor),
+            syn::parse_quote! {
+                impl ExistingActor {
+                    /// Handle an enum owned by the caller.
+                    #[ractor::message(ExistingMessage::Ping)]
+                    fn ping(&self) {}
+                }
+            },
+        );
+
+        assert!(!file.items.iter().any(|item| matches!(item, Item::Enum(_))));
+        assert_eq!(
+            doc_texts(&inherent_method(&file, "ping").attrs),
+            [" Handle an enum owned by the caller."]
+        );
+    }
 }
 
 fn validate_method_shape(signature: &Signature, description: &str) -> syn::Result<()> {
@@ -1255,7 +1482,7 @@ fn generate_message_enum(
 }
 
 fn generate_message_variant(handler: &Handler) -> syn::Result<TokenStream> {
-    let cfg_attributes = &handler.cfg_attributes;
+    let variant_attributes = &handler.variant_attributes;
     let variant_ident = match &handler.pattern {
         Pat::Path(path) => path.path.segments.last().map(|segment| &segment.ident),
         Pat::TupleStruct(tuple) => tuple.path.segments.last().map(|segment| &segment.ident),
@@ -1271,7 +1498,7 @@ fn generate_message_variant(handler: &Handler) -> syn::Result<TokenStream> {
 
     match &handler.pattern {
         Pat::Path(_) => Ok(quote! {
-            #(#cfg_attributes)*
+            #(#variant_attributes)*
             #variant_ident
         }),
         Pat::TupleStruct(tuple) => {
@@ -1287,7 +1514,7 @@ fn generate_message_variant(handler: &Handler) -> syn::Result<TokenStream> {
             }
             let field_types = &handler.binding_types;
             Ok(quote! {
-                #(#cfg_attributes)*
+                #(#variant_attributes)*
                 #variant_ident(#(#field_types),*)
             })
         }
@@ -1309,7 +1536,7 @@ fn generate_message_variant(handler: &Handler) -> syn::Result<TokenStream> {
                 .map(|(field, ty)| generated_named_field(field, ty))
                 .collect::<syn::Result<Vec<_>>>()?;
             Ok(quote! {
-                #(#cfg_attributes)*
+                #(#variant_attributes)*
                 #variant_ident { #(#fields),* }
             })
         }

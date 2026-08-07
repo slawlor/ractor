@@ -163,8 +163,10 @@ where
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
             worker.enqueue_job(job)?;
+            Ok(RouteResult::Handled)
+        } else {
+            Ok(RouteResult::Backlog(job))
         }
-        Ok(RouteResult::Handled)
     }
 
     fn choose_target_worker(
@@ -172,11 +174,25 @@ where
         job: &Job<TKey, TMsg>,
         pool_size: usize,
         worker_hint: Option<WorkerId>,
-        _worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
+        worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
-        let key =
-            worker_hint.unwrap_or_else(|| crate::factory::hash::hash_with_max(&job.key, pool_size));
-        Some(key)
+        if let Some(wid) = worker_pool
+            .iter()
+            .find_map(|(wid, worker)| worker.has_pending_key(&job.key).then_some(*wid))
+        {
+            return Some(wid);
+        }
+
+        let worker = if let Some(hint) = worker_hint.filter(|wid| worker_pool.contains_key(wid)) {
+            hint
+        } else {
+            if pool_size == 0 {
+                return None;
+            }
+            crate::factory::hash::hash_with_max(&job.key, pool_size)
+        };
+
+        worker_pool.contains_key(&worker).then_some(worker)
     }
 
     fn is_factory_queueing(&self) -> bool {
@@ -457,8 +473,10 @@ where
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
             worker.enqueue_job(job)?;
+            Ok(RouteResult::Handled)
+        } else {
+            Ok(RouteResult::Backlog(job))
         }
-        Ok(RouteResult::Handled)
     }
 
     fn choose_target_worker(
@@ -468,6 +486,9 @@ where
         worker_hint: Option<WorkerId>,
         worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
+        if pool_size == 0 {
+            return None;
+        }
         if let Some(worker) = worker_hint.and_then(|worker| worker_pool.get(&worker)) {
             if worker.is_available() {
                 return worker_hint;
@@ -479,7 +500,7 @@ where
             key = 0;
         }
         self.last_worker = key;
-        Some(key)
+        worker_pool.contains_key(&key).then_some(key)
     }
 
     fn is_factory_queueing(&self) -> bool {
@@ -538,8 +559,10 @@ where
             .and_then(|wid| worker_pool.get_mut(&wid))
         {
             worker.enqueue_job(job)?;
+            Ok(RouteResult::Handled)
+        } else {
+            Ok(RouteResult::Backlog(job))
         }
-        Ok(RouteResult::Handled)
     }
 
     fn choose_target_worker(
@@ -547,10 +570,13 @@ where
         job: &Job<TKey, TMsg>,
         pool_size: usize,
         _worker_hint: Option<WorkerId>,
-        _worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
+        worker_pool: &HashMap<WorkerId, WorkerProperties<TKey, TMsg>>,
     ) -> Option<WorkerId> {
-        let key = self.hasher.hash(&job.key, pool_size);
-        Some(key)
+        if pool_size == 0 {
+            return None;
+        }
+        let key = self.hasher.hash(&job.key, pool_size) % pool_size;
+        worker_pool.contains_key(&key).then_some(key)
     }
 
     fn is_factory_queueing(&self) -> bool {

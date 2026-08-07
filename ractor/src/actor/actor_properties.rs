@@ -4,6 +4,7 @@
 // LICENSE-MIT file in the root directory of this source tree.
 
 use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 
@@ -33,6 +34,23 @@ pub(crate) enum MuxedMessage {
     Message(BoxedMessage),
 }
 
+const MESSAGE_ADMISSION_CLOSED: usize = 1usize << (usize::BITS - 1);
+const DRAIN_MARKER_SENT: usize = 1usize << (usize::BITS - 2);
+const MESSAGE_ADMISSION_COUNT_MASK: usize = DRAIN_MARKER_SENT - 1;
+
+struct MessageAdmission<'a>(&'a ActorProperties);
+
+impl Drop for MessageAdmission<'_> {
+    fn drop(&mut self) {
+        let previous = self.0.message_admission.fetch_sub(1, Ordering::AcqRel);
+        debug_assert_ne!(previous & MESSAGE_ADMISSION_COUNT_MASK, 0);
+        if previous & MESSAGE_ADMISSION_CLOSED != 0 && previous & MESSAGE_ADMISSION_COUNT_MASK == 1
+        {
+            let _ = self.0.send_drain_marker();
+        }
+    }
+}
+
 // The inner-properties of an Actor
 pub(crate) struct ActorProperties {
     pub(crate) id: ActorId,
@@ -43,6 +61,7 @@ pub(crate) struct ActorProperties {
     pub(crate) stop: Mutex<Option<OneshotInputPort<StopMessage>>>,
     pub(crate) supervision: InputPort<SupervisionEvent>,
     pub(crate) message: InputPort<MuxedMessage>,
+    pub(crate) message_admission: AtomicUsize,
     pub(crate) tree: SupervisionTree,
     pub(crate) type_id: std::any::TypeId,
     #[cfg(feature = "cluster")]
@@ -104,6 +123,7 @@ impl ActorProperties {
                 stop: Mutex::new(Some(tx_stop)),
                 supervision: tx_supervision,
                 message: tx_message,
+                message_admission: AtomicUsize::new(0),
                 tree: SupervisionTree::default(),
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
@@ -181,6 +201,9 @@ impl ActorProperties {
             return Err(MessagingErr::SendErr(message));
         }
 
+        let Some(_admission) = self.try_admit_message() else {
+            return Err(MessagingErr::SendErr(message));
+        };
         let boxed = message
             .box_message(&self.id)
             .map_err(|_e| MessagingErr::InvalidActorType)?;
@@ -192,7 +215,60 @@ impl ActorProperties {
             })
     }
 
+    fn try_admit_message(&self) -> Option<MessageAdmission<'_>> {
+        let mut state = self.message_admission.load(Ordering::Relaxed);
+        loop {
+            if state & MESSAGE_ADMISSION_CLOSED != 0 {
+                return None;
+            }
+            debug_assert!(state & MESSAGE_ADMISSION_COUNT_MASK < MESSAGE_ADMISSION_COUNT_MASK);
+
+            match self.message_admission.compare_exchange_weak(
+                state,
+                state + 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return Some(MessageAdmission(self)),
+                Err(observed) => state = observed,
+            }
+        }
+    }
+
+    fn close_message_admission(&self) {
+        self.message_admission
+            .fetch_or(MESSAGE_ADMISSION_CLOSED, Ordering::AcqRel);
+    }
+
+    fn send_drain_marker(&self) -> Result<(), MessagingErr<()>> {
+        let mut state = self.message_admission.load(Ordering::Acquire);
+        loop {
+            if state & MESSAGE_ADMISSION_CLOSED == 0
+                || state & MESSAGE_ADMISSION_COUNT_MASK != 0
+                || state & DRAIN_MARKER_SENT != 0
+            {
+                return Ok(());
+            }
+
+            match self.message_admission.compare_exchange_weak(
+                state,
+                state | DRAIN_MARKER_SENT,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    return self
+                        .message
+                        .send(MuxedMessage::Drain)
+                        .map_err(|_| MessagingErr::SendErr(()));
+                }
+                Err(observed) => state = observed,
+            }
+        }
+    }
+
     pub(crate) fn drain(&self) -> Result<(), MessagingErr<()>> {
+        self.close_message_admission();
         let _ = self
             .status
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |f| {
@@ -202,9 +278,7 @@ impl ActorProperties {
                     None
                 }
             });
-        self.message
-            .send(MuxedMessage::Drain)
-            .map_err(|_| MessagingErr::SendErr(()))
+        self.send_drain_marker()
     }
 
     /// Start draining, and wait for the actor to exit
@@ -219,6 +293,13 @@ impl ActorProperties {
         &self,
         message: SerializedMessage,
     ) -> Result<(), Box<MessagingErr<SerializedMessage>>> {
+        if self.get_status() >= ActorStatus::Draining {
+            return Err(Box::new(MessagingErr::SendErr(message)));
+        }
+
+        let Some(_admission) = self.try_admit_message() else {
+            return Err(Box::new(MessagingErr::SendErr(message)));
+        };
         let boxed = BoxedMessage {
             msg: None,
             serialized_msg: Some(message),

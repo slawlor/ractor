@@ -107,16 +107,13 @@ impl ActorPortSet {
     ///
     /// * `future` - The future to execute
     ///
-    /// Returns [Ok(`TState`)] when the future completes without
+    /// Returns [Ok(`T`)] when the future completes without
     /// signal interruption, [Err(Signal)] in the event the
     /// signal interrupts the async work.
-    pub(crate) async fn run_with_signal<TState>(
+    pub(crate) async fn run_with_signal<T>(
         &mut self,
-        future: impl std::future::Future<Output = TState>,
-    ) -> Result<TState, Signal>
-    where
-        TState: crate::State,
-    {
+        future: impl std::future::Future<Output = T>,
+    ) -> Result<T, Signal> {
         #[cfg(feature = "async-std")]
         {
             crate::concurrency::select! {
@@ -368,24 +365,28 @@ impl ActorCell {
 
     /// Terminate this [super::Actor] and all it's children
     pub(crate) fn terminate(&self) {
-        // we don't need to notify of exit if we're already stopping or stopped
-        if self.get_status() as u8 <= ActorStatus::Upgrading as u8 {
-            // kill myself immediately. Ignores failures, as a failure means either
-            // 1. we're already dead or
-            // 2. the channel is full of "signals"
-            self.kill();
-        }
+        let mut pending = vec![self.clone()];
+        while let Some(actor) = pending.pop() {
+            // We don't need to notify of exit if we're already stopping or stopped.
+            if actor.get_status() <= ActorStatus::Upgrading {
+                actor.kill();
+            }
 
-        // notify children they should die. They will unlink themselves from the supervisor
-        self.inner.tree.terminate_all_children();
+            let children = super::supervision::SupervisionTree::take_children(&actor);
+            // Reverse the snapshot so the worklist retains the previous depth-first order.
+            pending.extend(children.into_iter().rev());
+        }
     }
 
     /// Link this [super::Actor] to the provided supervisor
     ///
     /// * `supervisor` - The supervisor [super::Actor] of this actor
     pub fn link(&self, supervisor: ActorCell) {
-        supervisor.inner.tree.insert_child(self.clone());
-        self.inner.tree.set_supervisor(supervisor);
+        let _ = self.try_link(supervisor);
+    }
+
+    pub(crate) fn try_link(&self, supervisor: ActorCell) -> bool {
+        super::supervision::SupervisionTree::link(self, supervisor)
     }
 
     /// Unlink this [super::Actor] from the supervisor if it's
@@ -393,15 +394,7 @@ impl ActorCell {
     ///
     /// * `supervisor` - The supervisor to unlink this [super::Actor] from
     pub fn unlink(&self, supervisor: ActorCell) {
-        if self.inner.tree.is_child_of(supervisor.get_id()) {
-            supervisor.inner.tree.remove_child(self.get_id());
-            self.inner.tree.clear_supervisor();
-        }
-    }
-
-    /// Clear the supervisor field
-    pub(crate) fn clear_supervisor(&self) {
-        self.inner.tree.clear_supervisor();
+        super::supervision::SupervisionTree::unlink(self, &supervisor);
     }
 
     /// Monitor the provided [super::Actor] for supervision events. An actor in `ractor` can

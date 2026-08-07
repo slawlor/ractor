@@ -6,6 +6,7 @@
 //! Tests around dynamic setting changes in factories
 
 use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -53,6 +54,90 @@ impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
     fn build(&mut self, _wid: crate::factory::WorkerId) -> (TestWorker, ()) {
         (TestWorker, ())
     }
+}
+
+struct SilentPingWorker;
+
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
+impl Actor for SilentPingWorker {
+    type Msg = WorkerMessage<(), ()>;
+    type State = ();
+    type Arguments = WorkerStartContext<(), (), ()>;
+
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        _arguments: Self::Arguments,
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
+}
+
+struct SilentPingWorkerBuilder {
+    builds: Arc<AtomicUsize>,
+}
+
+impl WorkerBuilder<SilentPingWorker, ()> for SilentPingWorkerBuilder {
+    fn build(&mut self, _wid: WorkerId) -> (SilentPingWorker, ()) {
+        self.builds.fetch_add(1, Ordering::Relaxed);
+        (SilentPingWorker, ())
+    }
+}
+
+#[crate::concurrency::test]
+async fn dead_mans_switch_reconfiguration_uses_the_new_shorter_timeout() {
+    let builds = Arc::new(AtomicUsize::new(0));
+    let definition = Factory::<
+        (),
+        (),
+        (),
+        SilentPingWorker,
+        routing::RoundRobinRouting<(), ()>,
+        queues::DefaultQueue<(), ()>,
+    >::default();
+    let arguments = FactoryArguments::builder()
+        .worker_builder(Box::new(SilentPingWorkerBuilder {
+            builds: builds.clone(),
+        }))
+        .num_initial_workers(1)
+        .router(routing::RoundRobinRouting::default())
+        .queue(queues::DefaultQueue::default())
+        .build();
+    let (factory, handle) = Actor::spawn(None, definition, arguments).await.unwrap();
+
+    factory
+        .cast(FactoryMessage::UpdateSettings(
+            UpdateSettingsRequest::builder()
+                .dead_mans_switch(Some(
+                    DeadMansSwitchConfiguration::builder()
+                        .detection_timeout(Duration::from_secs(5))
+                        .kill_worker(true)
+                        .build(),
+                ))
+                .build(),
+        ))
+        .unwrap();
+    factory
+        .cast(FactoryMessage::UpdateSettings(
+            UpdateSettingsRequest::builder()
+                .dead_mans_switch(Some(
+                    DeadMansSwitchConfiguration::builder()
+                        .detection_timeout(Duration::from_millis(25))
+                        .kill_worker(true)
+                        .build(),
+                ))
+                .build(),
+        ))
+        .unwrap();
+
+    crate::periodic_check(
+        || builds.load(Ordering::Relaxed) >= 3,
+        Duration::from_secs(1),
+    )
+    .await;
+
+    factory.stop(None);
+    handle.await.unwrap();
 }
 
 #[crate::concurrency::test]

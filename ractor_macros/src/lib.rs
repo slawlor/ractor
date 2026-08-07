@@ -31,6 +31,11 @@ use crate::config::ActorConfig;
 /// the method's return value is sent automatically. A handler may also take an
 /// `ActorRef` first and `&State` or `&mut State` last.
 ///
+/// When the macro generates the message enum, textual documentation comments
+/// on message and RPC handler methods are copied to their enum variants. This
+/// keeps the message contract documented next to the behavior that implements
+/// it. Explicit message enums remain unchanged.
+///
 /// Handlers can be sync or async. An explicit non-unit message-handler return
 /// is propagated into the generated `handle` method with `?`. By default, an
 /// RPC handler's full return type is its reply type, including `Result`.

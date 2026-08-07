@@ -134,11 +134,12 @@ When focused message or RPC handlers are present, their generated dispatch is ex
 adding an unhandled enum variant is a compile error. With neither focused handlers nor a raw
 `handle`, the actor inherits the trait's no-op message handler; this supports lifecycle- and
 supervision-only actors. For local actors, `message = enum CounterMessage` can also generate the
-enum from handler patterns and parameter types. Focused `#[ractor::supervision(...)]` methods
-provide the same dispatch style for supervision events, while `#[ractor::rpc(...)]` sends a
-handler's return value through the omitted reply-port binding. The explicit trait-based API
-remains available when its flexibility is preferable. See the [guide](docs/actor-macros.md) and the
-[`actor_macro` example](ractor/examples/actor_macro.rs) for the supported method shapes.
+enum from handler patterns and parameter types, copying handler documentation comments to the
+generated variants. Focused `#[ractor::supervision(...)]` methods provide the same dispatch style
+for supervision events, while `#[ractor::rpc(...)]` sends a handler's return value through the
+omitted reply-port binding. The explicit trait-based API remains available when its flexibility is
+preferable. See the [guide](docs/actor-macros.md) and the [`actor_macro`
+example](ractor/examples/actor_macro.rs) for the supported method shapes.
 
 An example `ping-pong` actor might be the following
 

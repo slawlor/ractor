@@ -82,6 +82,56 @@ struct TestWorkerBuilder {
     id_map: Arc<dashmap::DashSet<usize>>,
 }
 
+#[derive(Debug)]
+enum OrderedMessage {
+    Block,
+    Record,
+}
+
+#[cfg(feature = "cluster")]
+impl crate::Message for OrderedMessage {}
+
+struct OrderedWorker {
+    events: crate::concurrency::MpscUnboundedSender<(WorkerId, &'static str)>,
+    release: Arc<crate::concurrency::Notify>,
+}
+
+#[cfg_attr(feature = "async-trait", crate::async_trait)]
+impl Worker for OrderedWorker {
+    type Key = TestKey;
+    type Message = OrderedMessage;
+    type State = ();
+    type Arguments = ();
+
+    async fn pre_start(
+        &self,
+        _wid: WorkerId,
+        _factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        _: (),
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
+    }
+
+    async fn handle(
+        &self,
+        wid: WorkerId,
+        _factory: &ActorRef<FactoryMessage<Self::Key, Self::Message>>,
+        Job { key, msg, .. }: Job<Self::Key, Self::Message>,
+        _state: &mut Self::State,
+    ) -> Result<Self::Key, ActorProcessingErr> {
+        match msg {
+            OrderedMessage::Block => {
+                let _ = self.events.send((wid, "block"));
+                self.release.notified().await;
+            }
+            OrderedMessage::Record => {
+                let _ = self.events.send((wid, "record"));
+            }
+        }
+        Ok(key)
+    }
+}
+
 impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
     fn build(&mut self, _wid: usize) -> (TestWorker, ()) {
         (
@@ -91,6 +141,103 @@ impl WorkerBuilder<TestWorker, ()> for TestWorkerBuilder {
             (),
         )
     }
+}
+
+async fn assert_key_persistent_resize_keeps_pending_key(
+    initial_workers: usize,
+    resized_workers: usize,
+) {
+    let key = (0..10_000)
+        .map(|id| TestKey { id })
+        .find(|key| {
+            crate::factory::hash::hash_with_max(key, initial_workers)
+                != crate::factory::hash::hash_with_max(key, resized_workers)
+        })
+        .expect("a key should map differently after resize");
+    let (events, mut event_rx) = crate::concurrency::mpsc_unbounded();
+    let release = Arc::new(crate::concurrency::Notify::new());
+    let worker_events = events.clone();
+    let worker_release = release.clone();
+    let definition = Factory::<
+        TestKey,
+        OrderedMessage,
+        (),
+        OrderedWorker,
+        routing::KeyPersistentRouting<TestKey, OrderedMessage>,
+        queues::DefaultQueue<TestKey, OrderedMessage>,
+    >::default();
+    let arguments = FactoryArguments::builder()
+        .worker_builder(Box::new(worker_builder(move |_wid| {
+            (
+                OrderedWorker {
+                    events: worker_events.clone(),
+                    release: worker_release.clone(),
+                },
+                (),
+            )
+        })))
+        .num_initial_workers(initial_workers)
+        .router(routing::KeyPersistentRouting::default())
+        .queue(queues::DefaultQueue::default())
+        .build();
+    let (factory, handle) = Actor::spawn(None, definition, arguments).await.unwrap();
+
+    factory
+        .cast(FactoryMessage::Dispatch(Job::new(
+            key.clone(),
+            OrderedMessage::Block,
+        )))
+        .unwrap();
+    let (original_worker, phase) =
+        crate::concurrency::timeout(Duration::from_secs(1), event_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(phase, "block");
+
+    factory
+        .cast(FactoryMessage::AdjustWorkerPool(resized_workers))
+        .unwrap();
+    let _ = factory
+        .call(
+            FactoryMessage::GetAvailableCapacity,
+            Some(Duration::from_secs(1)),
+        )
+        .await
+        .unwrap();
+    factory
+        .cast(FactoryMessage::Dispatch(Job::new(
+            key,
+            OrderedMessage::Record,
+        )))
+        .unwrap();
+
+    assert!(
+        crate::concurrency::timeout(Duration::from_millis(50), event_rx.recv())
+            .await
+            .is_err()
+    );
+    release.notify_one();
+
+    let (next_worker, phase) = crate::concurrency::timeout(Duration::from_secs(1), event_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(phase, "record");
+    assert_eq!(next_worker, original_worker);
+
+    factory.stop(None);
+    handle.await.unwrap();
+}
+
+#[crate::concurrency::test]
+async fn key_persistent_grow_keeps_pending_key_on_the_original_worker() {
+    assert_key_persistent_resize_keeps_pending_key(2, 3).await;
+}
+
+#[crate::concurrency::test]
+async fn key_persistent_shrink_keeps_pending_key_on_the_original_worker() {
+    assert_key_persistent_resize_keeps_pending_key(3, 2).await;
 }
 
 #[crate::concurrency::test]

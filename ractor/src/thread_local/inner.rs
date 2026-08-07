@@ -8,6 +8,7 @@
 use std::fmt::Debug;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -109,6 +110,7 @@ impl ActorProperties {
                 stop: Mutex::new(Some(tx_stop)),
                 supervision: tx_supervision,
                 message: tx_message,
+                message_admission: AtomicUsize::new(0),
                 tree: Default::default(),
                 type_id: std::any::TypeId::of::<TActor::Msg>(),
                 #[cfg(feature = "cluster")]
@@ -300,10 +302,12 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
 
         // setup supervision synchronously
         if let Some(sup) = &supervisor {
-            actor_ref.link(sup.clone());
+            if !actor_ref.try_link(sup.clone()) {
+                return Err(SpawnErr::StartupFailed(
+                    "Supervisor is shutting down".into(),
+                ));
+            }
         }
-        lifecycle.set_supervisor(supervisor);
-
         // Generate the ActorRef which will be returned
         let spawn_name = name.clone();
         let myself_ret = actor_ref.clone();
@@ -312,12 +316,23 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         let builder = Box::new(move || {
             let handler = TActor::default();
             async move {
-                // Perform the pre-start routine, crashing immediately if we fail to start
-                let result = Self::do_pre_start(actor_ref.clone(), &handler, startup_args).await;
-                let mut state = match result {
-                    Ok(Ok(state)) => state,
-                    Ok(Err(e)) => return Err(SpawnErr::StartupFailed(e)),
-                    Err(e) => return Err(e),
+                let mut ports = ports;
+                // Perform the pre-start routine, crashing immediately if we fail to start.
+                let pre_start = Box::pin(Self::do_pre_start(
+                    actor_ref.clone(),
+                    &handler,
+                    startup_args,
+                ));
+                let mut state = match ports.run_with_signal(pre_start).await {
+                    Ok(Ok(Ok(state))) => state,
+                    Ok(Ok(Err(err))) => return Err(SpawnErr::StartupFailed(err)),
+                    Ok(Err(err)) => return Err(err),
+                    Err(signal) => {
+                        Self::handle_signal(actor_ref, signal);
+                        return Err(SpawnErr::StartupFailed(
+                            "Actor killed during startup".into(),
+                        ));
+                    }
                 };
                 lifecycle.mark_running();
 
@@ -370,9 +385,20 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         _name: Option<String>,
     ) -> Result<Option<String>, ActorErr> {
         // perform the post-start, with supervision enabled
-        Self::do_post_start(myself.clone(), handler, state)
-            .await?
-            .map_err(ActorErr::Failed)?;
+        match ports
+            .run_with_signal(Box::pin(Self::do_post_start(
+                myself.clone(),
+                handler,
+                state,
+            )))
+            .await
+        {
+            Ok(result) => result?.map_err(ActorErr::Failed)?,
+            Err(signal) => {
+                Self::handle_signal(myself, signal);
+                return Err(ActorErr::Cancelled);
+            }
+        }
 
         myself.set_status(ActorStatus::Running);
         myself.notify_supervisor_and_monitors(SupervisionEvent::ActorStarted(myself.get_cell()));
@@ -392,7 +418,7 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
                     .map_err(ActorErr::Failed)?;
                 // processing loop exit
                 if should_exit {
-                    return Ok((state, exit_reason, was_killed));
+                    return Ok((state, exit_reason, was_killed, ports));
                 }
             }
         };
@@ -405,13 +431,24 @@ impl<TActor: ThreadLocalActor> ThreadLocalActorRuntime<TActor> {
         // set status to stopping
         myself_clone.set_status(ActorStatus::Stopping);
 
-        let (exit_state, exit_reason, was_killed) = loop_done??;
+        let (exit_state, exit_reason, was_killed, mut ports) = loop_done??;
 
         // if we didn't exit in error mode, call `post_stop`
         if !was_killed {
-            Self::do_post_stop(myself_clone, handler, exit_state)
-                .await?
-                .map_err(ActorErr::Failed)?;
+            match ports
+                .run_with_signal(Box::pin(Self::do_post_stop(
+                    myself_clone.clone(),
+                    handler,
+                    exit_state,
+                )))
+                .await
+            {
+                Ok(result) => result?.map_err(ActorErr::Failed)?,
+                Err(signal) => {
+                    Self::handle_signal(myself_clone, signal);
+                    return Err(ActorErr::Cancelled);
+                }
+            }
         }
 
         Ok(exit_reason)
