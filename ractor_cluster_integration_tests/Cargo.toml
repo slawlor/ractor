@@ -26,7 +26,7 @@ ractor = { default-features = false, features = ["tokio_runtime", "message_span_
 ractor_cluster = { path = "../ractor_cluster" }
 rand = "0.10"
 tokio-rustls = { version = "0.26" }
-rustls-pemfile = "2.1"
+rustls-pemfile = "2.2"
 rustyrepl = { version = "0.2", features = ["async"] }
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing", "net", "io-util"] }
 tracing = "0.1"

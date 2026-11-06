@@ -1160,7 +1160,7 @@ mod generated_variant_attribute_tests {
 
 fn validate_method_shape(signature: &Signature, description: &str) -> syn::Result<()> {
     if signature.constness.is_some()
-        || signature.unsafety.is_some()
+        || !matches!(signature.safety, syn::Safety::Default)
         || signature.abi.is_some()
         || signature.variadic.is_some()
         || !signature.generics.params.is_empty()
@@ -1178,9 +1178,8 @@ fn validate_method_shape(signature: &Signature, description: &str) -> syn::Resul
             format!("{description} must begin with `&self`"),
         ));
     };
-    if receiver.reference.is_none()
+    if !matches!(receiver.kind, syn::ReceiverKind::Reference(_, _, None))
         || receiver.mutability.is_some()
-        || receiver.colon_token.is_some()
     {
         return Err(syn::Error::new(
             receiver.span(),

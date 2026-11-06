@@ -55,15 +55,15 @@ pot = { version = "3.0", optional = true }
 
 
 [target.'cfg(all(target_arch = "wasm32",target_os = "unknown"))'.dependencies]
-js-sys = "0.3.77"
+js-sys = "0.3.107"
 tokio_with_wasm = { version = "0.9.2", features = [
     "macros",
     "sync",
     "rt",
     "time",
 ] }
-wasm-bindgen = "0.2.100"
-wasm-bindgen-futures = "0.4.50"
+wasm-bindgen = "0.2.130"
+wasm-bindgen-futures = "0.4.80"
 web-time = "1.1.0"
 
 [dev-dependencies]
@@ -80,7 +80,7 @@ trybuild = "1"
 ractor_example_entry_proc = { path = "../ractor_example_entry_proc" }
 
 [target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dev-dependencies]
-tokio = { version = "1.30", features = [
+tokio = { version = "1.54", features = [
     "rt",
     "time",
     "sync",
@@ -88,17 +88,17 @@ tokio = { version = "1.30", features = [
     "rt-multi-thread",
     "tracing",
 ] }
-criterion = "0.7"
+criterion = "0.8"
 tracing-test = "0.2"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
-tokio = { version = "1.30", features = ["rt", "time", "sync", "macros"] }
-wasm-bindgen-test = "0.3.50"
+tokio = { version = "1.54", features = ["rt", "time", "sync", "macros"] }
+wasm-bindgen-test = "0.3.80"
 # 'getrandom' isn't used directly, but it's used by a dependency, and, for WASM, we need to enable the feature 'js'.
 #   https://docs.rs/getrandom/latest/getrandom/#webassembly-support
 #
 getrandom = { version = "0.4", features = ["wasm_js"] }
-criterion = { version = "0.7", default-features = false }
+criterion = { version = "0.8", default-features = false }
 
 [[bench]]
 name = "actor"
