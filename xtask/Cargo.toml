@@ -8,4 +8,4 @@ rust-version.workspace = true
 
 [dependencies]
 xtaskops = "0.4"
-anyhow = "1.0.104"
+anyhow = "1"

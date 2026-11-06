@@ -18,7 +18,7 @@ proc-macro = true
 async-trait = []
 
 [dependencies]
-proc-macro-crate = "3.5.0"
-proc-macro2 = "1.0.107"
-quote = "1.0.47"
-syn = { version = "3.0.9", features = ["full", "visit", "visit-mut"] }
+proc-macro-crate = "3"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "3", features = ["full", "visit", "visit-mut"] }

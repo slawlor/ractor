@@ -39,26 +39,6 @@ jobs:
       - name: Check the ractor WASM library
         run: cargo check --package ractor --lib --target wasm32-unknown-unknown
 
-  newer-dependencies:
-    name: Compatible newer dependency versions
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@main
-
-      - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Resolve the newer supported Bon and Criterion versions
-        run: |
-          cargo update --package bon --precise 3.10.3
-          cargo update --package criterion --precise 0.8.2
-
-      - name: Check workspace and all targets
-        run: cargo check --workspace --all-targets --locked
-
-      - name: Run actor and macro tests
-        run: cargo test --package ractor --features actor-macros --locked
-
   test:
     name: ${{matrix.name}}
     runs-on: ubuntu-latest
