@@ -269,15 +269,8 @@ impl ActorProperties {
 
     pub(crate) fn drain(&self) -> Result<(), MessagingErr<()>> {
         self.close_message_admission();
-        let _ = self
-            .status
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |f| {
-                if f < (ActorStatus::Stopping as u8) {
-                    Some(ActorStatus::Draining as u8)
-                } else {
-                    None
-                }
-            });
+        self.status
+            .fetch_max(ActorStatus::Draining as u8, Ordering::SeqCst);
         self.send_drain_marker()
     }
 

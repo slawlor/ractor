@@ -147,6 +147,29 @@ fn actor_status_transitions_are_monotonic() {
 }
 
 #[test]
+fn draining_preserves_later_lifecycle_statuses() {
+    for initial in [
+        ActorStatus::Unstarted,
+        ActorStatus::Starting,
+        ActorStatus::Running,
+        ActorStatus::Upgrading,
+        ActorStatus::Draining,
+        ActorStatus::Stopping,
+        ActorStatus::Stopped,
+    ] {
+        let (actor, _ports) = ActorCell::new::<StatusTestActor>(None).unwrap();
+        actor.set_status(initial);
+        actor.drain().unwrap();
+        let expected = if initial < ActorStatus::Draining {
+            ActorStatus::Draining
+        } else {
+            initial
+        };
+        assert_eq!(actor.get_status(), expected);
+    }
+}
+
+#[test]
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn concurrent_shutdown_transitions_elect_cleanup_once() {
     use std::sync::Barrier;
