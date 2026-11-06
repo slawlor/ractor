@@ -18,23 +18,25 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Check workspace defaults and all targets
-        run: cargo check --workspace --all-targets
+      # Criterion 0.8 requires Rust 1.86; tests and benches run on stable below.
+      # Preserve the Rust 1.85 guarantee for library consumers.
+      - name: Check workspace libraries
+        run: cargo check --workspace --lib
 
       - name: Check actor macros with native async traits
-        run: cargo check --package ractor --features actor-macros --all-targets
+        run: cargo check --package ractor --features actor-macros --lib
 
       - name: Check async traits with Tokio
-        run: cargo check --package ractor --features async-trait,actor-macros --all-targets
+        run: cargo check --package ractor --features async-trait,actor-macros --lib
 
       - name: Check async traits with async-std
-        run: cargo check --package ractor --no-default-features --features async-std,async-trait,actor-macros --all-targets
+        run: cargo check --package ractor --no-default-features --features async-std,async-trait,actor-macros --lib
 
       - name: Check optional ractor APIs
-        run: cargo check --package ractor --features cluster,monitors,blanket_serde,output-port-v2,actor-macros --all-targets
+        run: cargo check --package ractor --features cluster,monitors,blanket_serde,output-port-v2,actor-macros --lib
 
       - name: Check ractor_cluster with async traits
-        run: cargo check --package ractor_cluster --features async-trait
+        run: cargo check --package ractor_cluster --lib --features async-trait
 
       - name: Check the ractor WASM library
         run: cargo check --package ractor --lib --target wasm32-unknown-unknown
