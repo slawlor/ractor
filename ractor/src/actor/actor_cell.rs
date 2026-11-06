@@ -10,7 +10,10 @@
 //! for references to a given actor and its communication channels
 
 use std::any::TypeId;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 
 #[cfg(feature = "async-std")]
 use futures::FutureExt;
@@ -155,40 +158,37 @@ impl ActorPortSet {
     pub(crate) async fn listen_in_priority(
         &mut self,
     ) -> Result<ActorPortMessage, MessagingErr<()>> {
-        #[cfg(feature = "async-std")]
-        {
-            crate::concurrency::select! {
-                signal = (&mut self.signal_rx).fuse() => {
-                    signal.map(ActorPortMessage::Signal).map_err(|_| MessagingErr::ChannelClosed)
-                }
-                stop = (&mut self.stop_rx).fuse() => {
-                    stop.map(ActorPortMessage::Stop).map_err(|_| MessagingErr::ChannelClosed)
-                }
-                supervision = self.supervisor_rx.recv().fuse() => {
-                    supervision.map(ActorPortMessage::Supervision).ok_or(MessagingErr::ChannelClosed)
-                }
-                message = self.message_rx.recv().fuse() => {
-                    message.map(ActorPortMessage::Message).ok_or(MessagingErr::ChannelClosed)
-                }
+        // Poll the existing channels directly to avoid constructing and moving a
+        // four-branch select future for every message. The channels still register
+        // their wakers and participate in Tokio's cooperative scheduling.
+        std::future::poll_fn(|cx| {
+            if let Poll::Ready(signal) = Pin::new(&mut self.signal_rx).poll(cx) {
+                return Poll::Ready(
+                    signal
+                        .map(ActorPortMessage::Signal)
+                        .map_err(|_| MessagingErr::ChannelClosed),
+                );
             }
-        }
-        #[cfg(not(feature = "async-std"))]
-        {
-            crate::concurrency::select! {
-                signal = &mut self.signal_rx => {
-                    signal.map(ActorPortMessage::Signal).map_err(|_| MessagingErr::ChannelClosed)
-                }
-                stop = &mut self.stop_rx => {
-                    stop.map(ActorPortMessage::Stop).map_err(|_| MessagingErr::ChannelClosed)
-                }
-                supervision = self.supervisor_rx.recv() => {
-                    supervision.map(ActorPortMessage::Supervision).ok_or(MessagingErr::ChannelClosed)
-                }
-                message = self.message_rx.recv() => {
-                    message.map(ActorPortMessage::Message).ok_or(MessagingErr::ChannelClosed)
-                }
+            if let Poll::Ready(stop) = Pin::new(&mut self.stop_rx).poll(cx) {
+                return Poll::Ready(
+                    stop.map(ActorPortMessage::Stop)
+                        .map_err(|_| MessagingErr::ChannelClosed),
+                );
             }
-        }
+            if let Poll::Ready(supervision) = self.supervisor_rx.poll_recv(cx) {
+                return Poll::Ready(
+                    supervision
+                        .map(ActorPortMessage::Supervision)
+                        .ok_or(MessagingErr::ChannelClosed),
+                );
+            }
+            self.message_rx.poll_recv(cx).map(|message| {
+                message
+                    .map(ActorPortMessage::Message)
+                    .ok_or(MessagingErr::ChannelClosed)
+            })
+        })
+        .await
     }
 }
 

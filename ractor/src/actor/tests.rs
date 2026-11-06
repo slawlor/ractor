@@ -47,6 +47,77 @@ impl Actor for StatusTestActor {
     }
 }
 
+#[crate::concurrency::test]
+async fn ready_mailbox_ports_preserve_priority() {
+    use super::actor_cell::ActorPortMessage;
+    use super::actor_properties::MuxedMessage;
+    use super::messages::StopMessage;
+
+    // Each case uses fresh oneshot ports because an actor exits after Stop/Kill.
+    for priority in 0..3 {
+        let (actor, mut ports) = ActorCell::new::<StatusTestActor>(None).unwrap();
+        actor.inner.message.send(MuxedMessage::Drain).unwrap();
+        actor
+            .send_supervisor_evt(SupervisionEvent::ActorStarted(actor.clone()))
+            .unwrap();
+        if priority <= 1 {
+            actor.stop(None);
+        }
+        if priority == 0 {
+            actor.kill();
+        }
+        let received = ports.listen_in_priority().await.unwrap();
+        match priority {
+            0 => assert!(matches!(
+                received,
+                ActorPortMessage::Signal(crate::Signal::Kill)
+            )),
+            1 => assert!(matches!(
+                received,
+                ActorPortMessage::Stop(StopMessage::Stop)
+            )),
+            _ => {
+                assert!(matches!(received, ActorPortMessage::Supervision(_)));
+                assert!(matches!(
+                    ports.listen_in_priority().await.unwrap(),
+                    ActorPortMessage::Message(MuxedMessage::Drain)
+                ));
+            }
+        }
+    }
+}
+
+#[cfg(all(not(feature = "async-std"), not(target_arch = "wasm32")))]
+#[tokio::test(flavor = "current_thread")]
+async fn ready_mailbox_yields_to_other_tasks() {
+    use super::actor_properties::MuxedMessage;
+
+    const MESSAGES: u32 = 8_192;
+    let (actor, mut ports) = ActorCell::new::<StatusTestActor>(None).unwrap();
+    for _ in 0..MESSAGES {
+        actor.inner.message.send(MuxedMessage::Drain).unwrap();
+    }
+    let processed = Arc::new(AtomicU32::new(0));
+    let count = processed.clone();
+    let (started, start) = tokio::sync::oneshot::channel();
+    let reader = tokio::spawn(async move {
+        ports.listen_in_priority().await.unwrap();
+        count.fetch_add(1, Ordering::Relaxed);
+        started.send(()).unwrap();
+        for _ in 1..MESSAGES {
+            ports.listen_in_priority().await.unwrap();
+            count.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+    start.await.unwrap();
+    assert!(
+        processed.load(Ordering::Relaxed) < MESSAGES,
+        "a ready mailbox must yield before consuming its entire backlog"
+    );
+    reader.await.unwrap();
+    assert_eq!(processed.load(Ordering::Relaxed), MESSAGES);
+}
+
 #[test]
 fn actor_status_transitions_are_monotonic() {
     let actor = ActorCell::new::<StatusTestActor>(None).unwrap().0;
@@ -73,6 +144,29 @@ fn actor_status_transitions_are_monotonic() {
         actor.set_status(ActorStatus::Stopping)
     );
     assert_eq!(ActorStatus::Stopped, actor.get_status());
+}
+
+#[test]
+fn draining_preserves_later_lifecycle_statuses() {
+    for initial in [
+        ActorStatus::Unstarted,
+        ActorStatus::Starting,
+        ActorStatus::Running,
+        ActorStatus::Upgrading,
+        ActorStatus::Draining,
+        ActorStatus::Stopping,
+        ActorStatus::Stopped,
+    ] {
+        let (actor, _ports) = ActorCell::new::<StatusTestActor>(None).unwrap();
+        actor.set_status(initial);
+        actor.drain().unwrap();
+        let expected = if initial < ActorStatus::Draining {
+            ActorStatus::Draining
+        } else {
+            initial
+        };
+        assert_eq!(actor.get_status(), expected);
+    }
 }
 
 #[test]

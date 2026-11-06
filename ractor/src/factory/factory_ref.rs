@@ -74,6 +74,10 @@ where
     ///
     /// `message_builder` receives the reply port used to construct the worker
     /// message. The factory routes the resulting job like any other dispatch.
+    #[allow(
+        clippy::result_large_err,
+        reason = "preserve ActorRef::call's public unboxed error type"
+    )]
     pub async fn call_job<TReply, TMessageBuilder>(
         &self,
         key: TKey,
@@ -92,6 +96,10 @@ where
     }
 
     /// Call a worker through the factory using explicit [`JobOptions`].
+    #[allow(
+        clippy::result_large_err,
+        reason = "preserve ActorRef::call's public unboxed error type"
+    )]
     pub async fn call_job_with_options<TReply, TMessageBuilder>(
         &self,
         key: TKey,
@@ -115,6 +123,10 @@ where
     /// Retrieve the number of jobs currently held in the factory's queue.
     ///
     /// This operation is only supported for local factories.
+    #[allow(
+        clippy::result_large_err,
+        reason = "preserve ActorRef::call's public unboxed error type"
+    )]
     pub async fn queue_depth(
         &self,
         timeout: Option<Duration>,
@@ -128,6 +140,10 @@ where
     /// workers. With a queue limit, it also includes the remaining queue space.
     ///
     /// This operation is only supported for local factories.
+    #[allow(
+        clippy::result_large_err,
+        reason = "preserve ActorRef::call's public unboxed error type"
+    )]
     pub async fn available_capacity(
         &self,
         timeout: Option<Duration>,
@@ -139,6 +155,10 @@ where
     /// Retrieve the number of workers currently processing jobs.
     ///
     /// This operation is only supported for local factories.
+    #[allow(
+        clippy::result_large_err,
+        reason = "preserve ActorRef::call's public unboxed error type"
+    )]
     pub async fn active_workers(
         &self,
         timeout: Option<Duration>,
