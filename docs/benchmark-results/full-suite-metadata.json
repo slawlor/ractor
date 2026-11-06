@@ -1,0 +1,40 @@
+{
+  "before_runtime_source": "1af0aaad5d340cda27c5370768c6c96a0376a543",
+  "after_source": "f31c0ff9f70747b115611c0b27c4177177c0f72d",
+  "toolchain": "1.97.0",
+  "lockfile_sha256": "848cda19e84c40c02e765e9ec990ce9a1fe0fd26a4dd62c9c9929335d3e13403",
+  "profile": "bench",
+  "debug": 1,
+  "CI": false,
+  "TOKIO_WORKER_THREADS": 16,
+  "sample_size": 30,
+  "warm_up_seconds": 1,
+  "measurement_seconds": 3,
+  "order": [
+    "before",
+    "after",
+    "after",
+    "before"
+  ],
+  "dependencies": {
+    "bon": "3.9.1",
+    "criterion": "0.7.0",
+    "futures": "0.3.32",
+    "tokio": "1.52.2"
+  },
+  "date": "2026-11-06",
+  "machine": {
+    "processor": "Apple M4 Max",
+    "architecture": "aarch64",
+    "cores": 16,
+    "performance_cores": 12,
+    "efficiency_cores": 4,
+    "memory_gib": 64,
+    "cpu_affinity": false
+  },
+  "benchmark_targets": 6,
+  "cases": 62,
+  "case_executions": 248,
+  "features": "default package features; native async traits; no tracing subscriber",
+  "full_suite_elapsed_minutes": 21.606964368733802
+}

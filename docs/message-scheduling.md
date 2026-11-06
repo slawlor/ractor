@@ -1,5 +1,8 @@
 # Profiling local message scheduling
 
+The follow-up [full benchmark comparison](full-benchmark-report.md) measures all
+62 registered cases, with repeated comparisons and additional contention checks.
+
 The `message_scheduling` benchmark compares ordinary Tokio scheduling with explicit
 placement of communicating tasks. It also measures raw Tokio unbounded channels as
 a control for the actor envelope, lifecycle admission, and handler dispatch costs.
