@@ -19,17 +19,17 @@ async-trait = ["ractor_cluster/async-trait"]
 default = []
 
 [dependencies]
-anyhow = "1"
-async-trait = "0.1"
-clap = { version = "4", features = ["derive"] }
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+clap = { version = "4.6.7", features = ["derive"] }
 ractor = { default-features = false, features = ["tokio_runtime", "message_span_propogation", "cluster", "actor-macros"], path = "../ractor" }
 ractor_cluster = { path = "../ractor_cluster" }
-rand = "0.10"
-tokio-rustls = { version = "0.26" }
-rustls-pemfile = "2.1"
+rand = "0.10.3"
+tokio-rustls = { version = "0.26.6" }
+rustls-pemfile = "2.2.0"
 rustyrepl = { version = "0.2", features = ["async"] }
-tokio = { version = "1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing", "net", "io-util"] }
-tracing = "0.1"
+tokio = { version = "1.54.1", features = ["rt", "time", "sync", "macros", "rt-multi-thread", "signal", "tracing", "net", "io-util"] }
+tracing = "0.1.41"
 tracing-glog = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"]}
-webpki = "0.22"
+webpki = "0.22.4"
