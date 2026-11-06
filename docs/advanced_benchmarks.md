@@ -196,6 +196,9 @@ spawn_rate_1000actors  time: [2 ms]  → 2µs per actor
 
 ## Running the Benchmarks
 
+For steady-state message throughput, raw Tokio channel controls, and runtime
+placement comparisons, see [Profiling local message scheduling](message-scheduling.md).
+
 ### Run all advanced benchmarks
 
 ```bash

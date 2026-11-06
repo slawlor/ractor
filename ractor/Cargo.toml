@@ -120,6 +120,11 @@ name = "factory"
 harness = false
 required-features = []
 
+[[bench]]
+name = "message_scheduling"
+harness = false
+required-features = ["tokio_runtime"]
+
 [[test]]
 name = "actor_macros"
 required-features = ["actor-macros"]
